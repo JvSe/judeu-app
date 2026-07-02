@@ -1,0 +1,32 @@
+{
+  "name": "judeu",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "check-types": "turbo run check-types",
+    "dev:native": "turbo run dev -F native",
+    "dev:web": "turbo run dev -F web",
+    "db:push": "turbo run db:push -F @judeu/db",
+    "db:studio": "turbo run db:studio -F @judeu/db",
+    "db:generate": "turbo run db:generate -F @judeu/db",
+    "db:migrate": "turbo run db:migrate -F @judeu/db"
+  },
+  "dependencies": {
+    "@judeu/env": "workspace:*",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@judeu/config": "workspace:*",
+    "@types/node": "^22.13.14",
+    "turbo": "^2.9.16",
+    "typescript": "catalog:"
+  },
+  "packageManager": "pnpm@11.6.0"
+}
