@@ -1,0 +1,4 @@
+# Dados do import vêm do PBF_URL/Volume em runtime — nada disso no build.
+data/
+*.osm.pbf
+*.md

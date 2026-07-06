@@ -1,10 +1,11 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
-type FontAwesomeProps = React.ComponentProps<typeof FontAwesome>;
+type IoniconsProps = React.ComponentProps<typeof Ionicons>;
 
 export const TabBarIcon = (props: {
-  name: FontAwesomeProps["name"];
-  color: FontAwesomeProps["color"];
+  name: IoniconsProps["name"];
+  color: IoniconsProps["color"];
+  focused?: boolean;
 }) => {
-  return <FontAwesome size={24} style={{ marginBottom: -3 }} {...props} />;
+  return <Ionicons size={22} {...props} />;
 };

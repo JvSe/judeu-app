@@ -8,12 +8,15 @@
     "start": "next start"
   },
   "dependencies": {
+    "@judeu/db": "workspace:*",
     "@judeu/env": "workspace:*",
     "@judeu/ui": "workspace:*",
     "@prisma/client": "catalog:",
     "@swc/helpers": "^0.5.23",
     "babel-plugin-react-compiler": "^1.0.0",
+    "bcryptjs": "^2.4.3",
     "dotenv": "catalog:",
+    "jose": "^5.9.6",
     "lucide-react": "catalog:",
     "next": "^16.2.0",
     "next-themes": "catalog:",
@@ -25,6 +28,7 @@
   "devDependencies": {
     "@judeu/config": "workspace:*",
     "@tailwindcss/postcss": "catalog:",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/react": "^19.2.17",
     "@types/react-dom": "catalog:",

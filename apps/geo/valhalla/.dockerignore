@@ -1,0 +1,5 @@
+# Nada de dados/tiles no contexto de build — vêm do Volume/entrypoint em runtime.
+custom_files/
+data/
+*.osm.pbf
+*.md

@@ -47,6 +47,11 @@ lerna-debug.log*
 coverage
 .nyc_output
 
+# Geo services (OSM data / build artifacts — nunca versionar)
+*.osm.pbf
+apps/geo/**/data/
+apps/geo/valhalla/custom_files/
+
 # Misc
 *.tgz
 .cache

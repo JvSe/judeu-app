@@ -11,6 +11,8 @@
     "build": "turbo run build",
     "check-types": "turbo run check-types",
     "dev:native": "turbo run dev -F native",
+    "dev:ios": "turbo run ios -F native",
+    "dev:android": "turbo run android -F native",
     "dev:web": "turbo run dev -F web",
     "db:push": "turbo run db:push -F @judeu/db",
     "db:studio": "turbo run db:studio -F @judeu/db",

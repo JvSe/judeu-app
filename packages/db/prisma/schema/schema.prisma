@@ -7,3 +7,354 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  CLIENT
+  PROVIDER
+  BOTH
+}
+
+enum ProviderStatus {
+  PENDING
+  APPROVED
+  BLOCKED
+}
+
+enum OrderStatus {
+  CREATED
+  ACCEPTED
+  EN_ROUTE
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  PIX
+  CARD
+  CASH
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+  FAILED
+}
+
+enum WalletTxType {
+  CREDIT
+  DEBIT
+}
+
+enum AiRole {
+  USER
+  ASSISTANT
+  TOOL
+}
+
+// ---------------------------------------------------------------------------
+// Identidade e autenticação (auth custom — email/senha via API própria)
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String
+  fullName      String
+  phone         String?
+  role          Role     @default(CLIENT)
+  avatarUrl     String?
+  emailVerified Boolean  @default(false)
+  phoneVerified Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  providerProfile ProviderProfile?
+  addresses       Address[]
+  ordersAsClient  Order[]           @relation("ClientOrders")
+  reviewsAuthored Review[]          @relation("ReviewAuthor")
+  reviewsReceived Review[]          @relation("ReviewTarget")
+  messages        Message[]
+  wallet          Wallet?
+  refreshTokens   RefreshToken[]
+  aiConversations AiConversation[]
+
+  @@index([role])
+}
+
+// Sessão persistida: refresh tokens rotacionáveis (hash guardado, nunca o token puro)
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Prestador (perfil profissional + KYC)
+// ---------------------------------------------------------------------------
+
+model ProviderProfile {
+  id              String         @id @default(uuid())
+  userId          String         @unique
+  headline        String? // ex.: "Eletricista"
+  bio             String?
+  yearsExperience Int            @default(0)
+  status          ProviderStatus @default(PENDING)
+  isAvailable     Boolean        @default(false)
+  ratingAvg       Float          @default(0)
+  ratingCount     Int            @default(0)
+  documentUrl     String? // documento de verificação (KYC) no Supabase Storage
+  // localização base + raio de atuação (matching por proximidade)
+  baseLat         Float?
+  baseLng         Float?
+  serviceRadiusKm Float          @default(10)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  services        Service[]
+  categories      ProviderCategory[]
+  ordersAsProvider Order[]           @relation("ProviderOrders")
+
+  @@index([status, isAvailable])
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  name      String
+  icon      String?
+  createdAt DateTime @default(now())
+
+  services   Service[]
+  providers  ProviderCategory[]
+  orders     Order[]
+}
+
+// join m2m explícito prestador <-> categoria
+model ProviderCategory {
+  providerId String
+  categoryId String
+
+  provider ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  category Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([providerId, categoryId])
+  @@index([categoryId])
+}
+
+model Service {
+  id         String   @id @default(uuid())
+  providerId String
+  categoryId String
+  name       String
+  priceCents Int
+  createdAt  DateTime @default(now())
+
+  provider ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  category Category        @relation(fields: [categoryId], references: [id])
+  orders   Order[]
+
+  @@index([providerId])
+  @@index([categoryId])
+}
+
+// ---------------------------------------------------------------------------
+// Endereços do cliente (pipeline CEP->endereço->coordenadas)
+// ---------------------------------------------------------------------------
+
+model Address {
+  id           String   @id @default(uuid())
+  userId       String
+  label        String? // ex.: "Casa", "Trabalho"
+  cep          String?
+  street       String
+  number       String?
+  complement   String?
+  neighborhood String?
+  city         String
+  state        String
+  lat          Float // coordenadas resolvidas via Nominatim (1x no cadastro)
+  lng          Float
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Pedido / Contratação (coração do marketplace)
+// ---------------------------------------------------------------------------
+
+model Order {
+  id              String      @id @default(uuid())
+  clientId        String
+  providerId      String?
+  serviceId       String?
+  categoryId      String?
+  addressId       String
+  description     String?
+  status          OrderStatus @default(CREATED)
+  scheduledAt     DateTime? // null = "agora"; preenchido = agendado
+  priceCents      Int         @default(0)
+  platformFeeCents Int        @default(0)
+  totalCents      Int         @default(0)
+  couponCode      String?
+  cancelReason    String?
+  acceptedAt      DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  client   User             @relation("ClientOrders", fields: [clientId], references: [id])
+  provider ProviderProfile? @relation("ProviderOrders", fields: [providerId], references: [id])
+  service  Service?         @relation(fields: [serviceId], references: [id])
+  category Category?        @relation(fields: [categoryId], references: [id])
+  address  Address          @relation(fields: [addressId], references: [id])
+  events   OrderEvent[]
+  messages Message[]
+  payment  Payment?
+  reviews  Review[]
+
+  @@index([clientId])
+  @@index([providerId])
+  @@index([status])
+}
+
+// auditoria da máquina de estados do pedido
+model OrderEvent {
+  id        String      @id @default(uuid())
+  orderId   String
+  status    OrderStatus
+  note      String?
+  createdAt DateTime    @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+// ---------------------------------------------------------------------------
+// Chat cliente <-> prestador (por pedido)
+// ---------------------------------------------------------------------------
+
+model Message {
+  id        String    @id @default(uuid())
+  orderId   String
+  senderId  String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  order  Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sender User  @relation(fields: [senderId], references: [id])
+
+  @@index([orderId])
+}
+
+// ---------------------------------------------------------------------------
+// Reputação (avaliação bidirecional)
+// ---------------------------------------------------------------------------
+
+model Review {
+  id        String   @id @default(uuid())
+  orderId   String
+  authorId  String
+  targetId  String
+  rating    Int // 1..5
+  comment   String?
+  createdAt DateTime @default(now())
+
+  order  Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  author User  @relation("ReviewAuthor", fields: [authorId], references: [id])
+  target User  @relation("ReviewTarget", fields: [targetId], references: [id])
+
+  @@unique([orderId, authorId]) // um review por autor por pedido
+  @@index([targetId])
+}
+
+// ---------------------------------------------------------------------------
+// Pagamentos e carteira
+// ---------------------------------------------------------------------------
+
+model Payment {
+  id          String        @id @default(uuid())
+  orderId     String        @unique
+  method      PaymentMethod
+  status      PaymentStatus @default(PENDING)
+  amountCents Int
+  gatewayRef  String? // id da transação no gateway (Pix/cartão)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model Wallet {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  balanceCents Int     @default(0)
+  updatedAt   DateTime @updatedAt
+
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+}
+
+model WalletTransaction {
+  id          String       @id @default(uuid())
+  walletId    String
+  type        WalletTxType
+  amountCents Int
+  description String?
+  orderId     String?
+  createdAt   DateTime     @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId])
+}
+
+// ---------------------------------------------------------------------------
+// Busca por IA conversacional (histórico da conversa)
+// ---------------------------------------------------------------------------
+
+model AiConversation {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AiMessage[]
+
+  @@index([userId])
+}
+
+model AiMessage {
+  id             String   @id @default(uuid())
+  conversationId String
+  role           AiRole
+  content        String
+  createdAt      DateTime @default(now())
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
