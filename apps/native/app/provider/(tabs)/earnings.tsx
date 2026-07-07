@@ -1,17 +1,31 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
-import { ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { fonts } from "@/constants/fonts";
-import { earningsHistory, weeklyEarnings } from "@/lib/mock-data";
+import { moneyFromCents, shortDateTime } from "@/lib/format";
+import { useWallet } from "@/lib/hooks";
 import { Screen } from "@/components/ui/screen";
 
 export default function ProviderEarnings() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
+  const { data: wallet, isLoading } = useWallet();
+
+  if (isLoading || !wallet) {
+    return (
+      <Screen>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator color={theme.colors.primary} />
+        </View>
+      </Screen>
+    );
+  }
+
+  const maxDayCents = Math.max(...wallet.daily.map((d) => d.totalCents), 1);
 
   return (
     <Screen>
@@ -29,7 +43,7 @@ export default function ProviderEarnings() {
 
         <LinearGradient colors={["#FF6600", "#d94f00"]} style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Saldo disponível</Text>
-          <Text style={styles.balanceValue}>R$ 1.240,00</Text>
+          <Text style={styles.balanceValue}>{moneyFromCents(wallet.balanceCents)}</Text>
           <View style={styles.balanceActions}>
             <View style={styles.withdrawButton}>
               <Text style={styles.withdrawText}>Sacar</Text>
@@ -43,22 +57,22 @@ export default function ProviderEarnings() {
         <View style={styles.chartCard}>
           <View style={styles.chartHeader}>
             <Text style={styles.chartTitle}>Ganhos por dia</Text>
-            <Text style={styles.chartTotal}>Total R$ 890</Text>
+            <Text style={styles.chartTotal}>Total {moneyFromCents(wallet.weekTotalCents)}</Text>
           </View>
           <View style={styles.chart}>
-            {weeklyEarnings.map((bar, index) => (
+            {wallet.daily.map((bar, index) => (
               <View key={index} style={styles.barColumn}>
                 <View style={styles.barTrack}>
                   <View
                     style={[
                       styles.bar,
-                      { height: `${bar.ratio * 100}%` },
-                      bar.highlighted && styles.barHighlighted,
+                      { height: `${(bar.totalCents / maxDayCents) * 100}%` },
+                      bar.isToday && styles.barHighlighted,
                     ]}
                   />
                 </View>
-                <Text style={[styles.barLabel, bar.highlighted && styles.barLabelHighlighted]}>
-                  {bar.day}
+                <Text style={[styles.barLabel, bar.isToday && styles.barLabelHighlighted]}>
+                  {bar.day[0]}
                 </Text>
               </View>
             ))}
@@ -66,8 +80,11 @@ export default function ProviderEarnings() {
         </View>
 
         <Text style={styles.sectionTitle}>Últimos recebimentos</Text>
-        {earningsHistory.map((entry) => {
-          const isIn = entry.type === "in";
+        {wallet.transactions.length === 0 && (
+          <Text style={styles.emptyText}>Nenhuma movimentação ainda.</Text>
+        )}
+        {wallet.transactions.map((entry) => {
+          const isIn = entry.type === "CREDIT";
           return (
             <View key={entry.id} style={styles.historyRow}>
               <View style={[styles.historyIcon, isIn ? styles.historyIconIn : styles.historyIconOut]}>
@@ -78,11 +95,11 @@ export default function ProviderEarnings() {
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.historyTitle}>{entry.title}</Text>
-                <Text style={styles.historyMeta}>{entry.meta}</Text>
+                <Text style={styles.historyTitle}>{entry.description ?? "Movimentação"}</Text>
+                <Text style={styles.historyMeta}>{shortDateTime(entry.createdAt)}</Text>
               </View>
               <Text style={[styles.historyAmount, isIn ? styles.amountIn : styles.amountOut]}>
-                {isIn ? "+" : "-"} R$ {entry.amount}
+                {isIn ? "+" : "-"} {moneyFromCents(entry.amountCents)}
               </Text>
             </View>
           );
@@ -245,6 +262,11 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     marginTop: 24,
     marginBottom: 13,
+  },
+  emptyText: {
+    fontSize: 14,
+    fontFamily: fonts.medium,
+    color: theme.colors.mutedForeground,
   },
   historyRow: {
     flexDirection: "row",

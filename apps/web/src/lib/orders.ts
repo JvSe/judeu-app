@@ -1,6 +1,8 @@
 import type { OrderStatus, Prisma } from "@judeu/db";
 
 import { prisma } from "./db";
+import { creditProviderWallet, refundIfPaid } from "./payments";
+import { sendPushNotification } from "./push";
 
 // ---------------------------------------------------------------------------
 // Pedidos: criação, consulta e máquina de estados (coração do marketplace).
@@ -185,6 +187,13 @@ export async function createOrder(
     },
     include: orderInclude,
   });
+
+  void sendPushNotification(provider.userId, {
+    title: "Novo pedido",
+    body: order.service?.name ?? order.category?.name ?? "Você recebeu um novo pedido",
+    data: { type: "order", orderId: order.id, role: "provider" },
+  });
+
   return toDTO(order);
 }
 
@@ -236,7 +245,7 @@ export async function transitionOrder(
 ): Promise<OrderDTO | { error: string; status: number }> {
   const order = await prisma.order.findUnique({
     where: { id },
-    include: { provider: { select: { userId: true } } },
+    include: { provider: { select: { userId: true } }, payment: true },
   });
   if (!order) return { error: "Pedido não encontrado", status: 404 };
 
@@ -269,5 +278,30 @@ export async function transitionOrder(
     },
     include: orderInclude,
   });
+
+  // Repasse ao prestador (ledger interno) na conclusão; dinheiro é "pago" na hora.
+  if (rule.to === "COMPLETED" && order.provider) {
+    if (order.payment?.method === "CASH") {
+      await prisma.payment.update({ where: { orderId: id }, data: { status: "PAID" } });
+    }
+    if (order.payment?.method === "CASH" || order.payment?.status === "PAID") {
+      await creditProviderWallet(order.provider.userId, updated.priceCents, updated.id);
+    }
+  }
+  // Estorna via Stripe se já havia pagamento capturado (Pix/cartão).
+  if (rule.to === "CANCELLED") {
+    await refundIfPaid(id);
+  }
+
+  // Notifica a outra parte da transição (quem disparou a ação já vê a mudança na hora).
+  const recipientId = rule.by === "provider" ? order.clientId : order.provider?.userId;
+  if (recipientId) {
+    void sendPushNotification(recipientId, {
+      title: updated.service?.name ?? updated.category?.name ?? "Pedido",
+      body: note ?? ACTION_NOTES[action],
+      data: { type: "order", orderId: id, role: rule.by === "provider" ? "client" : "provider" },
+    });
+  }
+
   return toDTO(updated);
 }

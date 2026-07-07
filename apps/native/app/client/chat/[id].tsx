@@ -2,29 +2,49 @@ import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { fonts } from "@/constants/fonts";
-import { chatMessages, providers } from "@/lib/mock-data";
+import { useAuth } from "@/lib/auth-context";
+import { initialsOf, moneyFromCents } from "@/lib/format";
+import { useMessages, useOrder, useSendMessage } from "@/lib/hooks";
 import { Avatar } from "@/components/ui/avatar";
 import { Screen } from "@/components/ui/screen";
 
 export default function Chat() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const provider = providers.find((item) => item.id === id) ?? providers[0];
   const insets = useSafeAreaInsets();
   const { theme } = useUnistyles();
+  const { user } = useAuth();
+  const { data: order, isLoading } = useOrder(id);
+  const { data: messages = [] } = useMessages(id);
+  const sendMessage = useSendMessage();
   const [draft, setDraft] = useState("");
-  const [messages, setMessages] = useState(chatMessages);
+
+  if (isLoading || !order) {
+    return (
+      <Screen>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator color={theme.colors.primary} />
+        </View>
+      </Screen>
+    );
+  }
 
   const send = () => {
     if (!draft.trim()) return;
-    setMessages((current) => [
-      ...current,
-      { id: `${current.length + 1}`, from: "client" as const, text: draft.trim() },
-    ]);
+    sendMessage.mutate({ orderId: order.id, body: draft.trim() });
     setDraft("");
   };
 
@@ -38,47 +58,34 @@ export default function Chat() {
           <Pressable onPress={() => router.back()} hitSlop={10}>
             <Ionicons name="chevron-back" size={20} color="#fff" />
           </Pressable>
-          <Avatar initials={provider.initials} color={provider.color} size={42} radius={13} />
+          <Avatar initials={initialsOf(order.provider?.name ?? "?")} size={42} radius={13} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.name}>{provider.name}</Text>
-            <View style={styles.onlineRow}>
-              <View style={styles.onlineDot} />
-              <Text style={styles.onlineText}>online</Text>
-            </View>
+            <Text style={styles.name}>{order.provider?.name ?? "Prestador"}</Text>
           </View>
-          <Pressable style={styles.phoneButton}>
-            <Ionicons name="call" size={18} color="#fff" />
-          </Pressable>
         </View>
 
         <ScrollView contentContainerStyle={styles.messages} showsVerticalScrollIndicator={false}>
-          <View style={styles.dayChip}>
-            <Text style={styles.dayChipText}>Hoje</Text>
-          </View>
-          <View style={styles.serviceChip}>
-            <Text style={styles.serviceChipEyebrow}>Serviço contratado</Text>
-            <Text style={styles.serviceChipTitle}>
-              {provider.services[0].name} · R$ {provider.services[0].price}
-            </Text>
-          </View>
-          {messages.map((message) => (
-            <View
-              key={message.id}
-              style={[
-                styles.bubble,
-                message.from === "client" ? styles.bubbleClient : styles.bubbleProvider,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.bubbleText,
-                  message.from === "client" && styles.bubbleTextClient,
-                ]}
-              >
-                {message.text}
+          {order.service && (
+            <View style={styles.serviceChip}>
+              <Text style={styles.serviceChipEyebrow}>Serviço contratado</Text>
+              <Text style={styles.serviceChipTitle}>
+                {order.service.name} · {moneyFromCents(order.totalCents)}
               </Text>
             </View>
-          ))}
+          )}
+          {messages.map((message) => {
+            const mine = message.senderId === user?.id;
+            return (
+              <View
+                key={message.id}
+                style={[styles.bubble, mine ? styles.bubbleClient : styles.bubbleProvider]}
+              >
+                <Text style={[styles.bubbleText, mine && styles.bubbleTextClient]}>
+                  {message.body}
+                </Text>
+              </View>
+            );
+          })}
         </ScrollView>
 
         <View style={[styles.inputBar, { paddingBottom: insets.bottom + 12 }]}>
@@ -118,48 +125,10 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fonts.bold,
     color: "#fff",
   },
-  onlineRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginTop: 2,
-  },
-  onlineDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: theme.colors.success,
-  },
-  onlineText: {
-    fontSize: 12.5,
-    fontFamily: fonts.semiBold,
-    color: theme.colors.success,
-  },
-  phoneButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
   messages: {
     padding: 16,
     gap: 10,
     paddingBottom: 16,
-  },
-  dayChip: {
-    alignSelf: "center",
-  },
-  dayChipText: {
-    backgroundColor: "rgba(255,255,255,0.07)",
-    color: theme.colors.mutedForeground,
-    fontSize: 11.5,
-    fontFamily: fonts.semiBold,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 10,
-    overflow: "hidden",
   },
   serviceChip: {
     alignSelf: "center",

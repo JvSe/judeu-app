@@ -30,13 +30,19 @@ export async function POST(req: Request) {
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) return error("E-mail já cadastrado", 409);
 
+  const finalRole = role ?? "CLIENT";
   const user = await prisma.user.create({
     data: {
       fullName,
       email,
       phone,
-      role: role ?? "CLIENT",
+      role: finalRole,
       passwordHash: await hashPassword(password),
+      // Prestador nasce com o cadastro profissional vazio (status PENDING) — ele
+      // só aparece pra clientes depois da KYC aprovada (RF-B2/B3, catalog.ts filtra APPROVED).
+      ...(finalRole === "PROVIDER" || finalRole === "BOTH"
+        ? { providerProfile: { create: {} } }
+        : {}),
     },
   });
 

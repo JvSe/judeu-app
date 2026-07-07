@@ -1,6 +1,7 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -9,7 +10,7 @@ import type { Order, OrderAction, OrderStatus } from "@/lib/api";
 import { fonts } from "@/constants/fonts";
 import { useAuth } from "@/lib/auth-context";
 import { initialsOf, moneyFromCents, orderStatusLabel, shortTime } from "@/lib/format";
-import { useOrders, useTransitionOrder } from "@/lib/hooks";
+import { useMyProviderProfile, useOrders, useTransitionOrder } from "@/lib/hooks";
 import { Avatar } from "@/components/ui/avatar";
 import { Screen } from "@/components/ui/screen";
 
@@ -35,6 +36,7 @@ export default function ProviderDashboard() {
   const insets = useSafeAreaInsets();
   const { theme } = useUnistyles();
   const { user } = useAuth();
+  const { data: profile } = useMyProviderProfile();
   const { data: orders = [], isLoading } = useOrders("provider");
   const transition = useTransitionOrder();
 
@@ -62,6 +64,37 @@ export default function ProviderDashboard() {
             <Text style={styles.activeText}>Ativo</Text>
           </View>
         </View>
+
+        {profile && profile.status !== "APPROVED" && (
+          <Pressable
+            style={[
+              styles.statusBanner,
+              profile.status === "BLOCKED" && styles.statusBannerBlocked,
+            ]}
+            onPress={() => router.push("/provider/kyc")}
+          >
+            <Ionicons
+              name={profile.status === "BLOCKED" ? "close-circle" : "time-outline"}
+              size={20}
+              color={profile.status === "BLOCKED" ? theme.colors.destructive : theme.colors.primary}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.statusBannerTitle}>
+                {profile.status === "BLOCKED"
+                  ? "Cadastro bloqueado"
+                  : profile.headline
+                    ? "Cadastro em análise"
+                    : "Complete seu cadastro profissional"}
+              </Text>
+              <Text style={styles.statusBannerText}>
+                {profile.status === "BLOCKED"
+                  ? "Fale com o suporte para entender o motivo."
+                  : "Você só aparece para clientes depois da aprovação."}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={theme.colors.mutedForeground} />
+          </Pressable>
+        )}
 
         <LinearGradient colors={["#FF6600", "#d94f00"]} style={styles.earningsCard}>
           <Text style={styles.earningsLabel}>Pedidos ativos</Text>
@@ -151,6 +184,14 @@ export default function ProviderDashboard() {
                 <View style={styles.statusChip}>
                   <Text style={styles.statusChipText}>{orderStatusLabel(order.status)}</Text>
                 </View>
+                <Pressable
+                  style={styles.chatIconButton}
+                  onPress={() =>
+                    router.push({ pathname: "/provider/chat/[id]", params: { id: order.id } })
+                  }
+                >
+                  <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
+                </Pressable>
               </View>
               {next && (
                 <Pressable
@@ -209,6 +250,32 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 12.5,
     fontFamily: fonts.bold,
     color: theme.colors.success,
+  },
+  statusBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "rgba(255,102,0,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(255,102,0,0.35)",
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+  },
+  statusBannerBlocked: {
+    backgroundColor: "rgba(255,77,77,0.1)",
+    borderColor: "rgba(255,77,77,0.35)",
+  },
+  statusBannerTitle: {
+    fontSize: 14,
+    fontFamily: fonts.bold,
+    color: theme.colors.foreground,
+  },
+  statusBannerText: {
+    fontSize: 12,
+    fontFamily: fonts.medium,
+    color: theme.colors.mutedForeground,
+    marginTop: 1,
   },
   earningsCard: {
     borderRadius: 26,
@@ -343,6 +410,15 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 11.5,
     fontFamily: fonts.extraBold,
     color: "#FF9a52",
+  },
+  chatIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginLeft: 10,
+    backgroundColor: theme.colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
   },
   requestActions: {
     flexDirection: "row",

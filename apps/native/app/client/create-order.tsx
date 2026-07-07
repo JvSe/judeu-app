@@ -58,7 +58,7 @@ export default function CreateOrder() {
           state: uf.trim(),
         },
       });
-      router.replace({ pathname: "/client/order/[id]", params: { id: order.id } });
+      router.replace({ pathname: "/client/payment/[id]", params: { id: order.id } });
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : "Não foi possível criar o pedido.");
     }

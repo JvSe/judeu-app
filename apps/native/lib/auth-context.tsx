@@ -1,7 +1,16 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
-import { authApi, type AppUser } from "@/lib/api";
+import { authApi, pushApi, type AppUser } from "@/lib/api";
+import { registerForPushNotificationsAsync } from "@/lib/push";
 import { clearTokens, saveTokens } from "@/lib/tokens";
+
+// Registra o token do dispositivo pro backend — best-effort, nunca bloqueia o login
+// (sem projeto EAS configurado ainda, retorna null e isso é um no-op silencioso).
+function syncPushToken() {
+  registerForPushNotificationsAsync()
+    .then((token) => (token ? pushApi.register(token) : undefined))
+    .catch(() => undefined);
+}
 
 type Status = "loading" | "authenticated" | "unauthenticated";
 
@@ -34,6 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (active) {
           setUser(user);
           setStatus("authenticated");
+          syncPushToken();
         }
       } catch {
         if (active) {
@@ -56,6 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await saveTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
         setUser(res.user);
         setStatus("authenticated");
+        syncPushToken();
         return res.user;
       },
       async signUp(input) {
@@ -63,6 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await saveTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
         setUser(res.user);
         setStatus("authenticated");
+        syncPushToken();
         return res.user;
       },
       async signOut() {

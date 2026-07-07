@@ -169,6 +169,51 @@ export const catalogApi = {
   },
 };
 
+// ---- Cadastro profissional + KYC do prestador (RF-B1/B2/B3) ----
+export type MyProviderProfile = {
+  status: "PENDING" | "APPROVED" | "BLOCKED";
+  headline: string | null;
+  bio: string | null;
+  yearsExperience: number;
+  serviceRadiusKm: number;
+  baseLat: number | null;
+  baseLng: number | null;
+  hasDocument: boolean;
+  categoryIds: string[];
+  services: { id: string; categoryId: string; name: string; priceCents: number }[];
+};
+
+export type UpsertProviderProfileInput = {
+  headline: string;
+  bio?: string;
+  yearsExperience: number;
+  serviceRadiusKm: number;
+  baseLat?: number;
+  baseLng?: number;
+  categoryIds: string[];
+  services: { name: string; priceCents: number; categoryId: string }[];
+};
+
+export const providerProfileApi = {
+  me() {
+    return apiFetch<{ profile: MyProviderProfile | null }>("/api/providers/me").then(
+      (r) => r.profile,
+    );
+  },
+  upsert(input: UpsertProviderProfileInput) {
+    return apiFetch<{ profile: MyProviderProfile }>("/api/providers/me", {
+      method: "POST",
+      body: input,
+    }).then((r) => r.profile);
+  },
+  uploadDocument(base64: string, mimeType: string) {
+    return apiFetch<{ profile: MyProviderProfile }>("/api/providers/me/document", {
+      method: "POST",
+      body: { base64, mimeType },
+    }).then((r) => r.profile);
+  },
+};
+
 // ---- Pedidos (ciclo de vida + máquina de estados) ----
 export type OrderStatus =
   | "CREATED"
@@ -282,5 +327,92 @@ export const reviewsApi = {
     return apiFetch<{ reviews: Review[] }>(`/api/providers/${providerId}/reviews`).then(
       (r) => r.reviews,
     );
+  },
+};
+
+// ---- Chat (mensagens reais ancoradas a um pedido) ----
+export type ChatMessage = {
+  id: string;
+  orderId: string;
+  senderId: string;
+  senderName: string;
+  body: string;
+  readAt: string | null;
+  createdAt: string;
+};
+
+export const chatApi = {
+  list(orderId: string) {
+    return apiFetch<{ messages: ChatMessage[] }>(`/api/orders/${orderId}/messages`).then(
+      (r) => r.messages,
+    );
+  },
+  send(orderId: string, body: string) {
+    return apiFetch<{ message: ChatMessage }>(`/api/orders/${orderId}/messages`, {
+      method: "POST",
+      body: { body },
+    }).then((r) => r.message);
+  },
+};
+
+// ---- Pagamento (Stripe: Pix/cartão/dinheiro) ----
+export type PaymentMethodOption = "PIX" | "CARD" | "CASH";
+
+export type Payment = {
+  id: string;
+  orderId: string;
+  method: PaymentMethodOption;
+  status: "PENDING" | "PAID" | "REFUNDED" | "FAILED";
+  amountCents: number;
+  createdAt: string;
+};
+
+export type PixDisplay = { data: string; imageUrl: string | null; expiresAt: string | null };
+
+export type CreatePaymentResult = { payment: Payment; clientSecret?: string; pix?: PixDisplay };
+
+export const paymentsApi = {
+  get(orderId: string) {
+    return apiFetch<{ payment: Payment | null }>(`/api/orders/${orderId}/payment`).then(
+      (r) => r.payment,
+    );
+  },
+  create(orderId: string, method: PaymentMethodOption) {
+    return apiFetch<CreatePaymentResult>(`/api/orders/${orderId}/payment`, {
+      method: "POST",
+      body: { method },
+    });
+  },
+};
+
+// ---- Carteira do prestador (saldo + ganhos + extrato) ----
+export type WalletTransaction = {
+  id: string;
+  type: "CREDIT" | "DEBIT";
+  amountCents: number;
+  description: string | null;
+  orderId: string | null;
+  createdAt: string;
+};
+
+export type WalletDailyEarning = { day: string; totalCents: number; isToday: boolean };
+
+export type WalletSummary = {
+  balanceCents: number;
+  weekTotalCents: number;
+  daily: WalletDailyEarning[];
+  transactions: WalletTransaction[];
+};
+
+export const walletApi = {
+  summary() {
+    return apiFetch<{ wallet: WalletSummary }>("/api/wallet").then((r) => r.wallet);
+  },
+};
+
+// ---- Push notifications (RF-E2) ----
+export const pushApi = {
+  register(pushToken: string) {
+    return apiFetch<{ ok: boolean }>("/api/push-token", { method: "POST", body: { pushToken } });
   },
 };

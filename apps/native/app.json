@@ -38,6 +38,38 @@
             "backgroundColor": "#000000"
           }
         }
+      ],
+      "expo-asset",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "17.0"
+          },
+          "android": {
+            "minSdkVersion": 33
+          }
+        }
+      ],
+      [
+        "@stripe/stripe-react-native",
+        {
+          "enableGooglePay": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Usado para enviar seu documento de identidade na verificação de prestador.",
+          "cameraPermission": "Usado para fotografar seu documento de identidade na verificação de prestador."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#FF6600"
+        }
       ]
     ],
     "experiments": {

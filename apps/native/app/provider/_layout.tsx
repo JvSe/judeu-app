@@ -24,6 +24,7 @@ export default function ProviderLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="kyc" />
+      <Stack.Screen name="chat/[id]" />
     </Stack>
   );
 }

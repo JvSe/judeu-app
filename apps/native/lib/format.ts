@@ -50,3 +50,13 @@ export function shortTime(iso: string): string {
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
+
+// Data+hora curtas ("Hoje, 14:02" ou "05/07, 14:02").
+export function shortDateTime(iso: string): string {
+  const d = new Date(iso);
+  const time = shortTime(iso);
+  if (d.toDateString() === new Date().toDateString()) return `Hoje, ${time}`;
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  return `${day}/${month}, ${time}`;
+}

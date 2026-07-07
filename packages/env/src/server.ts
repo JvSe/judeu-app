@@ -24,6 +24,13 @@ export const env = createEnv({
     // Serviços de geo self-hosted (Railway)
     VALHALLA_URL: z.url().optional(),
     NOMINATIM_URL: z.url().optional(),
+
+    // Pagamentos (Stripe) — Pix/cartão/dinheiro, cobrado na conta da plataforma
+    STRIPE_SECRET_KEY: z.string().min(1).optional(),
+    STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
+
+    // Painel admin (web, RF-H3) — senha única compartilhada, sem conta/role por ora
+    ADMIN_PASSWORD: z.string().min(8).optional(),
   },
   runtimeEnv: process.env,
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,

@@ -1,36 +1,51 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { router } from "expo-router";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { fonts } from "@/constants/fonts";
+import { aiAvailable } from "@/lib/assistant";
 import { useCategories } from "@/lib/hooks";
+import { AiAssistant } from "@/components/ai-assistant";
 import { Screen } from "@/components/ui/screen";
-
-const popularRequests = [
-  { id: "1", title: "Instalação de tomada", price: 80 },
-  { id: "2", title: "Troca de chuveiro", price: 120 },
-];
 
 export default function Explore() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const { data: categories = [], isLoading } = useCategories();
 
+  // Caminho primário: assistente de IA conversacional on-device (RF-J).
+  if (aiAvailable()) {
+    return (
+      <Screen>
+        <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
+          <Text style={styles.eyebrow}>Assistente Ajuda+</Text>
+          <Text style={styles.heading}>Do que você{"\n"}precisa hoje?</Text>
+        </View>
+        <AiAssistant />
+      </Screen>
+    );
+  }
+
+  // Fallback tradicional (RF-C4): grid de categorias — usado em Expo Go / web ou
+  // dispositivo sem o runtime nativo do ExecuTorch (build de desenvolvimento necessário).
   return (
     <Screen>
       <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
         <Text style={styles.eyebrow}>Explorar</Text>
         <Text style={styles.heading}>O que você{"\n"}precisa resolver?</Text>
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={18} color={theme.colors.mutedForeground} />
-          <Text style={styles.searchPlaceholder}>Buscar serviço</Text>
-        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.aiBanner}>
+          <Ionicons name="sparkles" size={18} color={theme.colors.primary} />
+          <Text style={styles.aiBannerText}>
+            O assistente de IA roda no aparelho e precisa de um build de desenvolvimento. Enquanto
+            isso, escolha uma categoria:
+          </Text>
+        </View>
+
         {isLoading ? (
           <ActivityIndicator color={theme.colors.primary} style={{ marginTop: 24 }} />
         ) : (
@@ -59,26 +74,6 @@ export default function Explore() {
             ))}
           </View>
         )}
-
-        <Text style={styles.sectionTitle}>Mais pedidos</Text>
-        <View style={{ gap: 10 }}>
-          {popularRequests.map((request) => (
-            <Pressable
-              key={request.id}
-              style={({ pressed }) => [styles.requestRow, { opacity: pressed ? 0.85 : 1 }]}
-              onPress={() => router.push("/client/create-order" as never)}
-            >
-              <View style={styles.requestIcon}>
-                <Ionicons name="flash" size={20} color={theme.colors.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.requestTitle}>{request.title}</Text>
-                <Text style={styles.requestPrice}>a partir de R$ {request.price}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={theme.colors.mutedForeground} />
-            </Pressable>
-          ))}
-        </View>
       </ScrollView>
     </Screen>
   );
@@ -102,27 +97,26 @@ const styles = StyleSheet.create((theme) => ({
     lineHeight: 36,
     marginTop: 4,
   },
-  searchBar: {
-    marginTop: 18,
-    height: 50,
-    backgroundColor: "rgba(28,28,58,0.8)",
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
-    paddingHorizontal: 15,
-  },
-  searchPlaceholder: {
-    fontSize: 15,
-    color: theme.colors.mutedForeground,
-    fontFamily: fonts.medium,
-  },
   content: {
     paddingHorizontal: 20,
-    paddingTop: 22,
+    paddingTop: 18,
     paddingBottom: 120,
+  },
+  aiBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: theme.colors.accent,
+    borderRadius: 14,
+    padding: 13,
+    marginBottom: 18,
+  },
+  aiBannerText: {
+    flex: 1,
+    fontSize: 12.5,
+    fontFamily: fonts.medium,
+    color: theme.colors.foreground,
+    lineHeight: 17,
   },
   grid: {
     flexDirection: "row",
@@ -163,39 +157,5 @@ const styles = StyleSheet.create((theme) => ({
   },
   categoryCountFeatured: {
     color: "rgba(255,255,255,0.85)",
-  },
-  sectionTitle: {
-    fontSize: 17,
-    fontFamily: fonts.extraBold,
-    color: theme.colors.foreground,
-    marginTop: 22,
-    marginBottom: 13,
-  },
-  requestRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 13,
-    backgroundColor: "rgba(28,28,58,0.7)",
-    borderRadius: 18,
-    padding: 13,
-  },
-  requestIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
-    backgroundColor: theme.colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  requestTitle: {
-    fontSize: 14.5,
-    fontFamily: fonts.bold,
-    color: theme.colors.foreground,
-  },
-  requestPrice: {
-    fontSize: 12.5,
-    fontFamily: fonts.medium,
-    color: theme.colors.mutedForeground,
-    marginTop: 1,
   },
 }));

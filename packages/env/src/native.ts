@@ -7,6 +7,8 @@ export const env = createEnv({
     EXPO_PUBLIC_SERVER_URL: z.url(),
     // Tiles do mapa (MapLibre + MapTiler) — usado no incremento de mapa
     EXPO_PUBLIC_MAPTILER_KEY: z.string().min(1).optional(),
+    // Chave pública do Stripe (PaymentSheet do cartão)
+    EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().min(1).optional(),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,

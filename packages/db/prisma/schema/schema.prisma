@@ -71,6 +71,7 @@ model User {
   avatarUrl     String?
   emailVerified Boolean  @default(false)
   phoneVerified Boolean  @default(false)
+  pushToken     String? // Expo push token do último dispositivo logado (RF-E2)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

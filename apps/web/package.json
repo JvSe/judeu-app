@@ -12,6 +12,7 @@
     "@judeu/env": "workspace:*",
     "@judeu/ui": "workspace:*",
     "@prisma/client": "catalog:",
+    "@supabase/supabase-js": "^2.110.0",
     "@swc/helpers": "^0.5.23",
     "babel-plugin-react-compiler": "^1.0.0",
     "bcryptjs": "^2.4.3",
@@ -23,6 +24,7 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "sonner": "catalog:",
+    "stripe": "^22.3.0",
     "zod": "catalog:"
   },
   "devDependencies": {
