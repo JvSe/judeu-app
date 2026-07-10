@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomInt } from "node:crypto";
 
 import { env } from "@judeu/env/server";
 import bcrypt from "bcryptjs";
@@ -86,6 +86,52 @@ export async function revokeRefreshToken(raw: string): Promise<void> {
       data: { revokedAt: new Date() },
     })
     .catch(() => undefined);
+}
+
+// Derruba todas as sessões do usuário — usado após reset de senha (RF-A4), por segurança.
+export async function revokeAllRefreshTokens(userId: string): Promise<void> {
+  await prisma.refreshToken.updateMany({
+    where: { userId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+}
+
+// ---- Recuperação de senha (RF-A4): código de 6 dígitos, hash no banco, TTL curto ----
+const RESET_TTL_MINUTES = 15;
+
+function hashResetCode(userId: string, code: string): string {
+  return createHash("sha256").update(`${userId}:${code}`).digest("hex");
+}
+
+// Gera um código de 6 dígitos e invalida códigos anteriores ainda não usados do
+// mesmo usuário (evita acumular vários códigos válidos ao pedir de novo).
+export async function issuePasswordResetCode(userId: string): Promise<string> {
+  const code = randomInt(100000, 999999).toString();
+  const expiresAt = new Date(Date.now() + RESET_TTL_MINUTES * 60 * 1000);
+  await prisma.$transaction([
+    prisma.passwordResetToken.updateMany({
+      where: { userId, usedAt: null },
+      data: { usedAt: new Date() },
+    }),
+    prisma.passwordResetToken.create({
+      data: { userId, tokenHash: hashResetCode(userId, code), expiresAt },
+    }),
+  ]);
+  return code;
+}
+
+// Valida o código pro usuário; se válido, marca como usado (não pode ser reaproveitado).
+export async function consumePasswordResetCode(userId: string, code: string): Promise<boolean> {
+  const record = await prisma.passwordResetToken.findUnique({
+    where: { tokenHash: hashResetCode(userId, code) },
+  });
+  if (!record || record.usedAt || record.expiresAt < new Date()) return false;
+
+  await prisma.passwordResetToken.update({
+    where: { id: record.id },
+    data: { usedAt: new Date() },
+  });
+  return true;
 }
 
 // Autoriza uma request pelo Bearer access token. Retorna claims ou null.

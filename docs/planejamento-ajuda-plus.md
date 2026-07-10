@@ -61,7 +61,7 @@ construído, incremento a incremento.
 - **RF-A1 (P0)** Cadastro com email + senha (nome, telefone) + verificação de email/telefone (OTP). — *base ✅*
 - **RF-A2 (P0)** Login/logout via API, sessão segura (`expo-secure-store` + refresh). — ✅
 - **RF-A3 (P0)** Papel cliente/prestador no backend (um usuário pode ter os dois). — ✅
-- **RF-A4 (P1)** Recuperação de senha.
+- **RF-A4 (P1)** Recuperação de senha. — ✅ *código de 6 dígitos; "envio" por e-mail best-effort (log no servidor, sem provedor real ainda)*
 - **RF-A5 (adiado)** Login social: só os botões na UI, sem função (Apple Sign-In será exigência da App Store se ativado).
 - **RF-A6 (P1)** Edição de perfil (foto via Storage, dados, endereço).
 - **RF-A7 (P2)** Exclusão de conta e exportação de dados (LGPD/lojas).
@@ -70,7 +70,7 @@ construído, incremento a incremento.
 - **RF-B1 (P0)** Cadastro profissional (categorias, serviços, preços, área/raio). — ✅
 - **RF-B2 (P0)** Verificação de identidade (documento/CPF) antes de aparecer para clientes. — ✅ *upload de documento; conta Supabase Storage pendente ativação*
 - **RF-B3 (P1)** Status de aprovação (pendente/aprovado/bloqueado) + moderação. — ✅ *status real (PENDING ao nascer, gate no catálogo) + moderação via painel admin (RF-H3)*
-- **RF-B4 (P1)** Disponibilidade on/off.
+- **RF-B4 (P1)** Disponibilidade on/off. — ✅
 - **RF-B5 (P2)** Portfólio (fotos) e certificações por categoria.
 
 ### RF-C · Descoberta, Busca e Geolocalização
@@ -98,7 +98,7 @@ construído, incremento a incremento.
 - **RF-D3 (P0)** Aceite/recusa pelo prestador. — ✅
 - **RF-D4 (P0)** Cancelamento (cliente/prestador) com regras. — ✅
 - **RF-D5 (P1)** Orçamento/negociação antes do aceite.
-- **RF-D6 (P1)** Agendamento (data/hora futura). — *toggle na UI, falta enviar data*
+- **RF-D6 (P1)** Agendamento (data/hora futura). — ✅
 - **RF-D7 (P1)** Histórico de pedidos. — ✅ (em andamento × concluídos)
 - **RF-D8 (P2)** Recontratar/repetir pedido; favoritos.
 
@@ -174,7 +174,7 @@ construído, incremento a incremento.
 | **Perfil Prestador** `provider/(tabs)/profile.tsx` | Estático | RF-B1/B2/B3 ✅, RF-B5, RF-A6/A2 |
 
 ### Novas a criar
-Login/Cadastro/OTP (RF-A1/A2/A4) · Busca por IA (RF-J, ✅ na Explorar) · Onboarding Prestador/KYC (RF-B1/B2/B3, ✅ · RF-B5 pendente) · Criar/Configurar Pedido (RF-D1/D5/D6, ✅ base) · Detalhe do Pedido/Estados (RF-D2/D4/D7, ✅) · Avaliação pós-serviço (RF-G1/G2, ✅) · Push (RF-E2, ✅ código) · Painel Admin (RF-H3, ✅) · Centro de Notificações in-app (RF-I1) · Suporte/Disputa (RF-H1/H2) · Termos & Permissões (RNF-4/5) · Anti-fraude/abuso (RF-H4, RNF-7).
+Login/Cadastro/OTP (RF-A1/A2) · Recuperação de senha (RF-A4, ✅) · Busca por IA (RF-J, ✅ na Explorar) · Onboarding Prestador/KYC (RF-B1/B2/B3, ✅ · RF-B5 pendente) · Criar/Configurar Pedido (RF-D1/D5/D6, ✅ base) · Detalhe do Pedido/Estados (RF-D2/D4/D7, ✅) · Avaliação pós-serviço (RF-G1/G2, ✅) · Push (RF-E2, ✅ código) · Painel Admin (RF-H3, ✅) · Centro de Notificações in-app (RF-I1) · Suporte/Disputa (RF-H1/H2) · Termos & Permissões (RNF-4/5) · Anti-fraude/abuso (RF-H4, RNF-7).
 
 ---
 
@@ -231,8 +231,24 @@ avaliado"); **Detalhe do prestador** com seção **Avaliações**.
 **Verificado E2E:** review 5★ (**201**) → reputação recalculada (`4.9/328` mock → `5/1` real); guardas
 **409/409/403/401/400**. Typecheck limpos.
 
-**Pendência:** avaliação **prestador → cliente** existe no backend, falta a tela do lado do prestador;
-gorjeta (RF-F7) removida da UI (depende de pagamento).
+**Pendência:** avaliação **prestador → cliente** existe no backend, falta a tela do lado do prestador
+(ver incremento abaixo, já resolvido); gorjeta (RF-F7) removida da UI (depende de pagamento).
+
+### ✅ Incremento — Avaliação do cliente pelo prestador (RF-G1, lado prestador)
+Sem migração e sem mudança de backend — `createReview`/`getMyReview` (`apps/web/src/lib/reviews.ts`)
+já eram genéricos (avaliam sempre "a outra parte" do pedido), só faltava a tela do lado do
+prestador para chamar essa API.
+
+**App:** nova tela `provider/rating/[id].tsx` — mesmo padrão visual/estrutural da avaliação do
+cliente (estrelas, tags, comentário, estado "já avaliado"), com tags trocadas para o contexto de
+avaliar um cliente (Pontual/Educado/Ambiente organizado/Pagamento em dia) e navegação de volta ao
+dashboard do prestador em vez de "Meus pedidos"; registrada em `provider/_layout.tsx`. **Dashboard
+do prestador** (`provider/(tabs)/index.tsx`) ganhou seção **Concluídos** (pedidos `COMPLETED`, até
+10 mais recentes) com CTA "★ avaliar" levando à nova tela — antes não havia nenhum jeito de chegar
+lá a partir do app do prestador.
+
+**Verificado:** `tsc --noEmit` do native limpo (rodado depois de regenerar os tipos de rota do Expo
+Router para a nova tela `provider/rating/[id]`, mesmo passo do incremento de recuperação de senha).
 
 ### ✅ Código concluído · ⏳ device — Busca por IA conversacional on-device (RF-J1..J5, J7)
 Abordagem **híbrida on-device** (substitui o Claude-via-API do plano original): LLM **no aparelho** via
@@ -537,6 +553,83 @@ projeto na máquina) em background; criei um usuário de teste (`teste.cliente@a
 recusou `keystroke`, sem `cliclick`/`idb` instalados) — não deu pra navegar sozinho até a Home/mapa
 pra confirmar visualmente o MapLibre renderizando. Você decidiu encerrar por aqui; o app segue no ar
 no simulador (Metro + backend rodando) caso queira entrar com o usuário de teste acima e conferir.
+
+### ✅ Incremento — Agendamento (RF-D6) + Disponibilidade on/off do prestador (RF-B4)
+Primeiro bloco de **P1** (produto sério/confiável) — os dois itens já eram só "pendências pequenas"
+citadas no roadmap. Sem migração (`Order.scheduledAt` e `ProviderProfile.isAvailable` já existiam no
+schema; o backend de `scheduledAt` já aceitava o campo desde o incremento de pedido, só a UI nunca
+enviava data).
+
+**RF-D6 — Agendamento:**
+- **App** (`client/create-order.tsx`): campos de **data** (`DD/MM/AAAA`) e **hora** (`HH:MM`) com
+  máscara, exibidos só quando o toggle "Agendar" está ativo; valida data/hora completas e no futuro
+  antes de enviar `scheduledAt` (ISO) — "Agora" continua omitindo o campo (`undefined` = imediato,
+  mesma semântica que já existia no backend).
+- **Detalhe do pedido** (`client/order/[id].tsx`) — card "Agendado para {data}" quando `scheduledAt`
+  existe, usando o helper `shortDateTime` já presente em `lib/format.ts`.
+- **Dashboard do prestador** (`provider/(tabs)/index.tsx`) — chip "Agendado para {data}" nos cards de
+  "Novos pedidos", pra diferenciar de pedidos imediatos.
+- **Backend** (`apps/web/src/lib/orders.ts`) — título do push pro prestador vira "Novo pedido
+  agendado" quando `scheduledAt` está presente (antes sempre "Novo pedido").
+
+**RF-B4 — Disponibilidade on/off:**
+- **Backend**: `setProviderAvailability` (`apps/web/src/lib/provider-profile.ts`) + rota nova
+  `POST /api/providers/me/availability` (`{ isAvailable: boolean }`, só `PROVIDER`/`BOTH`, não exige
+  `APPROVED`); `isAvailable` passou a fazer parte de `MyProviderProfileDTO`. `catalog.ts`
+  (`listProviders`/`getProvider`) passou a expor `isAvailable` no DTO público — **sem** filtrar o
+  catálogo por isso (decisão: prestador offline continua listado, já que o app suporta "Agendar" pra
+  depois; só muda o badge visual). Seed já cadastra os 3 prestadores com `isAvailable: true`, então o
+  catálogo não regrediu.
+- **App**: `useSetAvailability` (`lib/hooks.ts`); no **dashboard do prestador**, o chip estático
+  "Ativo" virou toggle real (`Pressable`) mostrando "Disponível"/"Offline" e chamando a API; no
+  **detalhe do prestador** (`client/provider/[id].tsx`) e nos **cards do assistente de IA**
+  (`components/ai-assistant.tsx`), badge/dot de disponibilidade visível ao cliente.
+
+**Verificado E2E** via curl contra o Supabase real: disponibilidade — 200 criando profile vazio no
+primeiro toggle, 403 pra `CLIENT`, 401 sem token, 422 payload inválido, toggle on→off refletido no
+`GET /api/providers/me` seguinte; agendamento — pedido com `scheduledAt` futuro grava e retorna o
+campo (201), pedido sem o campo grava `null` (comportamento "agora" preservado), data inválida
+rejeitada. Catálogo (`GET /api/providers`) confirma `isAvailable: true` nos 3 prestadores seedados
+(sem regressão). Typecheck web+native limpos.
+
+### ✅ Incremento — Recuperação de senha (RF-A4)
+Migração: novo model `PasswordResetToken` (`id`, `userId`, `tokenHash` único, `expiresAt`, `usedAt`,
+`createdAt`) — mesmo padrão do `RefreshToken` já existente (token opaco, só o hash fica no banco).
+Sem provedor de e-mail real configurado (mesma situação de infra pendente do Storage/Railway/EAS):
+o "envio" é best-effort via `apps/web/src/lib/mailer.ts` (`sendEmail`), que por ora só loga no
+console do servidor — troca por um provedor real (Resend, SES etc.) é só reescrever essa função.
+
+**Backend** (`apps/web/src/lib/auth.ts` + rotas `apps/web/src/app/api/auth/{forgot,reset}-password`):
+- `issuePasswordResetCode(userId)` — código numérico de 6 dígitos (`crypto.randomInt`), hash
+  `sha256(userId:code)` persistido com TTL de 15min; invalida (marca `usedAt`) qualquer código
+  anterior ainda não usado do mesmo usuário antes de criar um novo.
+- `consumePasswordResetCode(userId, code)` — valida hash/expiração/uso único; marca `usedAt` ao
+  aceitar (não pode ser reaproveitado).
+- `revokeAllRefreshTokens(userId)` — nova função em `auth.ts`, derruba todas as sessões ativas do
+  usuário (chamada no reset, por segurança — força novo login em outros dispositivos).
+- `POST /api/auth/forgot-password` — **sempre** responde `200 {ok:true}`, exista ou não a conta
+  (evita enumeração de e-mail, mesmo padrão do login); se existir, gera o código e loga via mailer.
+- `POST /api/auth/reset-password` — valida `{email, code, newPassword}`; código errado/expirado e
+  e-mail inexistente retornam a **mesma** mensagem genérica (400); ao aceitar, troca a senha
+  (`bcrypt`), revoga todas as sessões antigas e já devolve um par de tokens novo — mesma forma de
+  `AuthResponse` do login/registro (auto-login, sem tela extra de "faça login de novo").
+
+**App:** `authApi.forgotPassword`/`resetPassword`; `useAuth().resetPassword` (novo método no
+`auth-context.tsx`, espelha `signIn`/`signUp` — salva tokens, atualiza sessão, sincroniza push);
+duas telas novas em `app/(auth)/`: **Esqueci minha senha** (só e-mail) e **Confirmar código e nova
+senha** (código de 6 dígitos + nova senha + confirmação), registradas no `Stack` de `(auth)/_layout.tsx`;
+o texto estático "Esqueci minha senha" do login virou link de verdade. (A tela `otp.tsx` do
+protótipo original — verificação de SMS por telefone, RF-A1 — segue 100% mock e fora de escopo
+deste incremento; é um fluxo diferente do reset por e-mail.)
+
+**Verificado E2E** via curl contra o Supabase real: `forgot-password` sempre `200` (conta existente e
+inexistente, sem diferença observável); código aparece no log do servidor (`[mailer] ...`); código
+errado → `400`; payload inválido (código com 5 dígitos) → `422`; código certo → `200` com tokens
+novos; **reuso do mesmo código falha** (`400`, confirma consumo único); login com a senha antiga →
+`401`; login com a senha nova → `200`; refresh token emitido **antes** do reset falha depois (`401`,
+confirma que `revokeAllRefreshTokens` derrubou a sessão antiga). Regeneração dos tipos de rota do
+Expo Router (`.expo/types/router.d.ts`, gitignored) rodada localmente pras duas telas novas
+tipar certo. Typecheck web+native limpos.
 
 ---
 

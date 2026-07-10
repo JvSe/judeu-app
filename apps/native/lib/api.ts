@@ -114,6 +114,20 @@ export const authApi = {
       auth: false,
     });
   },
+  forgotPassword(email: string) {
+    return apiFetch<{ ok: boolean }>("/api/auth/forgot-password", {
+      method: "POST",
+      body: { email },
+      auth: false,
+    });
+  },
+  resetPassword(input: { email: string; code: string; newPassword: string }) {
+    return apiFetch<AuthResponse>("/api/auth/reset-password", {
+      method: "POST",
+      body: input,
+      auth: false,
+    });
+  },
   me() {
     return apiFetch<{ user: AppUser }>("/api/auth/me");
   },
@@ -149,6 +163,7 @@ export type ProviderListItem = {
   priceFromCents: number | null;
   baseLat: number | null;
   baseLng: number | null;
+  isAvailable: boolean;
 };
 
 export type ProviderDetail = ProviderListItem & {
@@ -178,6 +193,7 @@ export type MyProviderProfile = {
   serviceRadiusKm: number;
   baseLat: number | null;
   baseLng: number | null;
+  isAvailable: boolean;
   hasDocument: boolean;
   categoryIds: string[];
   services: { id: string; categoryId: string; name: string; priceCents: number }[];
@@ -210,6 +226,12 @@ export const providerProfileApi = {
     return apiFetch<{ profile: MyProviderProfile }>("/api/providers/me/document", {
       method: "POST",
       body: { base64, mimeType },
+    }).then((r) => r.profile);
+  },
+  setAvailability(isAvailable: boolean) {
+    return apiFetch<{ profile: MyProviderProfile }>("/api/providers/me/availability", {
+      method: "POST",
+      body: { isAvailable },
     }).then((r) => r.profile);
   },
 };

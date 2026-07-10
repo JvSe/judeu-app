@@ -25,6 +25,7 @@ type AuthContextValue = {
     phone?: string;
     role?: AppUser["role"];
   }) => Promise<AppUser>;
+  resetPassword: (input: { email: string; code: string; newPassword: string }) => Promise<AppUser>;
   signOut: () => Promise<void>;
 };
 
@@ -71,6 +72,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       async signUp(input) {
         const res = await authApi.register(input);
+        await saveTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
+        setUser(res.user);
+        setStatus("authenticated");
+        syncPushToken();
+        return res.user;
+      },
+      async resetPassword(input) {
+        const res = await authApi.resetPassword(input);
         await saveTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
         setUser(res.user);
         setStatus("authenticated");

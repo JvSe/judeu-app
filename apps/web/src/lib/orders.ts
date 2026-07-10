@@ -256,7 +256,7 @@ export async function createOrder(
   });
 
   void sendPushNotification(provider.userId, {
-    title: "Novo pedido",
+    title: order.scheduledAt ? "Novo pedido agendado" : "Novo pedido",
     body: order.service?.name ?? order.category?.name ?? "Você recebeu um novo pedido",
     data: { type: "order", orderId: order.id, role: "provider" },
   });

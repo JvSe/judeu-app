@@ -11,6 +11,42 @@ import { moneyFromCents } from "@/lib/format";
 import { useCreateOrder } from "@/lib/hooks";
 import { Screen } from "@/components/ui/screen";
 
+function maskDate(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function maskTime(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+}
+
+// Combina "DD/MM/AAAA" + "HH:MM" num Date local; null se incompleto/inválido.
+function parseScheduledAt(date: string, time: string): Date | null {
+  const dateMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(date);
+  const timeMatch = /^(\d{2}):(\d{2})$/.exec(time);
+  if (!dateMatch || !timeMatch) return null;
+  const [, dd, mm, yyyy] = dateMatch;
+  const [, hh, min] = timeMatch;
+  const parsed = new Date(
+    Number(yyyy),
+    Number(mm) - 1,
+    Number(dd),
+    Number(hh),
+    Number(min),
+  );
+  const valid =
+    parsed.getFullYear() === Number(yyyy) &&
+    parsed.getMonth() === Number(mm) - 1 &&
+    parsed.getDate() === Number(dd) &&
+    parsed.getHours() === Number(hh) &&
+    parsed.getMinutes() === Number(min);
+  return valid ? parsed : null;
+}
+
 export default function CreateOrder() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
@@ -23,6 +59,8 @@ export default function CreateOrder() {
   }>();
 
   const [when, setWhen] = useState<"agora" | "agendar">("agora");
+  const [scheduleDate, setScheduleDate] = useState(""); // DD/MM/AAAA
+  const [scheduleTime, setScheduleTime] = useState(""); // HH:MM
   const [description, setDescription] = useState("");
   const [cep, setCep] = useState("");
   const [cepLoading, setCepLoading] = useState(false);
@@ -75,11 +113,25 @@ export default function CreateOrder() {
       setErrorMsg("Preencha o endereço (rua, cidade e estado).");
       return;
     }
+    let scheduledAt: string | undefined;
+    if (when === "agendar") {
+      const parsed = parseScheduledAt(scheduleDate, scheduleTime);
+      if (!parsed) {
+        setErrorMsg("Informe uma data e hora válidas para o agendamento.");
+        return;
+      }
+      if (parsed.getTime() <= Date.now()) {
+        setErrorMsg("Escolha uma data e hora no futuro.");
+        return;
+      }
+      scheduledAt = parsed.toISOString();
+    }
     try {
       const order = await createOrder.mutateAsync({
         providerId: params.providerId,
         serviceId: params.serviceId,
         description: description.trim() || undefined,
+        scheduledAt,
         address: {
           label: "Casa",
           cep: cep.trim() || undefined,
@@ -151,6 +203,29 @@ export default function CreateOrder() {
             </Text>
           </Pressable>
         </View>
+
+        {when === "agendar" && (
+          <View style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
+            <TextInput
+              value={scheduleDate}
+              onChangeText={(v) => setScheduleDate(maskDate(v))}
+              placeholder="DD/MM/AAAA"
+              placeholderTextColor={theme.colors.mutedForeground}
+              keyboardType="number-pad"
+              maxLength={10}
+              style={[styles.input, { flex: 3 }]}
+            />
+            <TextInput
+              value={scheduleTime}
+              onChangeText={(v) => setScheduleTime(maskTime(v))}
+              placeholder="HH:MM"
+              placeholderTextColor={theme.colors.mutedForeground}
+              keyboardType="number-pad"
+              maxLength={5}
+              style={[styles.input, { flex: 2 }]}
+            />
+          </View>
+        )}
 
         <Text style={styles.label}>Endereço</Text>
         <View style={{ gap: 10 }}>

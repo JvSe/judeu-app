@@ -25,6 +25,7 @@ export default function ProviderLayout() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="kyc" />
       <Stack.Screen name="chat/[id]" />
+      <Stack.Screen name="rating/[id]" />
     </Stack>
   );
 }

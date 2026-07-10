@@ -232,7 +232,12 @@ export function AiAssistant() {
                 >
                   <Avatar initials={initialsOf(p.name)} color="#3a3a70" size={44} radius={14} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.providerName}>{p.name}</Text>
+                    <View style={styles.providerNameRow}>
+                      <Text style={styles.providerName}>{p.name}</Text>
+                      <View
+                        style={[styles.availabilityDot, !p.isAvailable && styles.availabilityDotOff]}
+                      />
+                    </View>
                     <Text style={styles.providerMeta}>
                       ★ {p.rating.toFixed(1)} · {p.reviews} aval. · a partir de {priceFromCents(p.priceFromCents)}
                     </Text>
@@ -360,7 +365,10 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 16,
     padding: 12,
   },
+  providerNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   providerName: { fontSize: 15, fontFamily: fonts.bold, color: theme.colors.foreground },
+  availabilityDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: theme.colors.success },
+  availabilityDotOff: { backgroundColor: theme.colors.mutedForeground },
   providerMeta: {
     fontSize: 12.5,
     fontFamily: fonts.medium,

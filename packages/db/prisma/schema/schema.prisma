@@ -75,15 +75,16 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  providerProfile ProviderProfile?
-  addresses       Address[]
-  ordersAsClient  Order[]           @relation("ClientOrders")
-  reviewsAuthored Review[]          @relation("ReviewAuthor")
-  reviewsReceived Review[]          @relation("ReviewTarget")
-  messages        Message[]
-  wallet          Wallet?
-  refreshTokens   RefreshToken[]
-  aiConversations AiConversation[]
+  providerProfile     ProviderProfile?
+  addresses           Address[]
+  ordersAsClient      Order[]              @relation("ClientOrders")
+  reviewsAuthored     Review[]             @relation("ReviewAuthor")
+  reviewsReceived     Review[]             @relation("ReviewTarget")
+  messages            Message[]
+  wallet              Wallet?
+  refreshTokens       RefreshToken[]
+  aiConversations     AiConversation[]
+  passwordResetTokens PasswordResetToken[]
 
   @@index([role])
 }
@@ -95,6 +96,21 @@ model RefreshToken {
   tokenHash String    @unique
   expiresAt DateTime
   revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Recuperação de senha (RF-A4): código de 6 dígitos com TTL curto, hash guardado
+// (nunca o código puro), mesmo padrão do RefreshToken.
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
   createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

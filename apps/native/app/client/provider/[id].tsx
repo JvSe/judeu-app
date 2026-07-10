@@ -63,6 +63,12 @@ export default function ProviderProfile() {
           <Ionicons name="checkmark-circle" size={20} color={theme.colors.primary} />
         </View>
         <Text style={styles.role}>{provider.role}</Text>
+        <View style={[styles.availabilityChip, !provider.isAvailable && styles.availabilityChipOff]}>
+          <View style={[styles.availabilityDot, !provider.isAvailable && styles.availabilityDotOff]} />
+          <Text style={[styles.availabilityText, !provider.isAvailable && styles.availabilityTextOff]}>
+            {provider.isAvailable ? "Disponível agora" : "Indisponível no momento"}
+          </Text>
+        </View>
 
         <View style={styles.statsRow}>
           <StatCard value={provider.rating.toFixed(1)} label={`★ ${provider.reviews} aval.`} />
@@ -181,6 +187,37 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fonts.semiBold,
     color: theme.colors.mutedForeground,
     marginTop: 4,
+  },
+  availabilityChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(49,208,127,0.14)",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 10,
+  },
+  availabilityChipOff: {
+    backgroundColor: "rgba(255,255,255,0.07)",
+  },
+  availabilityDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: theme.colors.success,
+  },
+  availabilityDotOff: {
+    backgroundColor: theme.colors.mutedForeground,
+  },
+  availabilityText: {
+    fontSize: 12,
+    fontFamily: fonts.bold,
+    color: theme.colors.success,
+  },
+  availabilityTextOff: {
+    color: theme.colors.mutedForeground,
   },
   statsRow: {
     flexDirection: "row",

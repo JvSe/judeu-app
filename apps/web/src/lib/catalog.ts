@@ -21,6 +21,7 @@ export type ProviderListDTO = {
   priceFromCents: number | null;
   baseLat: number | null;
   baseLng: number | null;
+  isAvailable: boolean;
 };
 
 export type ProviderDetailDTO = ProviderListDTO & {
@@ -67,6 +68,7 @@ export async function listProviders(categoryId?: string): Promise<ProviderListDT
     priceFromCents: minPrice(p.services),
     baseLat: p.baseLat,
     baseLng: p.baseLng,
+    isAvailable: p.isAvailable,
   }));
 }
 
@@ -86,6 +88,7 @@ export async function getProvider(id: string): Promise<ProviderDetailDTO | null>
     priceFromCents: minPrice(p.services),
     baseLat: p.baseLat,
     baseLng: p.baseLng,
+    isAvailable: p.isAvailable,
     bio: p.bio,
     services: p.services.map((s) => ({ id: s.id, name: s.name, priceCents: s.priceCents })),
   };

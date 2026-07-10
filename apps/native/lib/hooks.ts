@@ -187,3 +187,12 @@ export function useUploadProviderDocument() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["provider-profile", "me"] }),
   });
 }
+
+// Liga/desliga a disponibilidade do prestador para receber pedidos (RF-B4).
+export function useSetAvailability() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (isAvailable: boolean) => providerProfileApi.setAvailability(isAvailable),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["provider-profile", "me"] }),
+  });
+}

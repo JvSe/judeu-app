@@ -17,6 +17,7 @@ export type MyProviderProfileDTO = {
   serviceRadiusKm: number;
   baseLat: number | null;
   baseLng: number | null;
+  isAvailable: boolean;
   hasDocument: boolean;
   categoryIds: string[];
   services: { id: string; categoryId: string; name: string; priceCents: number }[];
@@ -41,6 +42,7 @@ function toDTO(p: {
   serviceRadiusKm: number;
   baseLat: number | null;
   baseLng: number | null;
+  isAvailable: boolean;
   documentUrl: string | null;
   categories: { categoryId: string }[];
   services: { id: string; categoryId: string; name: string; priceCents: number }[];
@@ -53,6 +55,7 @@ function toDTO(p: {
     serviceRadiusKm: p.serviceRadiusKm,
     baseLat: p.baseLat,
     baseLng: p.baseLng,
+    isAvailable: p.isAvailable,
     hasDocument: !!p.documentUrl,
     categoryIds: p.categories.map((c) => c.categoryId),
     services: p.services,
@@ -139,6 +142,22 @@ export async function setProviderDocument(
     include: profileInclude,
   });
 
+  return toDTO(profile);
+}
+
+// Liga/desliga a disponibilidade do prestador para receber pedidos (RF-B4).
+// Não exige status APPROVED — o prestador pode preparar isso antes da aprovação,
+// só não aparece no catálogo (listProviders) enquanto não for APPROVED.
+export async function setProviderAvailability(
+  userId: string,
+  isAvailable: boolean,
+): Promise<MyProviderProfileDTO> {
+  const profile = await prisma.providerProfile.upsert({
+    where: { userId },
+    update: { isAvailable },
+    create: { userId, isAvailable },
+    include: profileInclude,
+  });
   return toDTO(profile);
 }
 

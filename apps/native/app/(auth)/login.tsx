@@ -89,7 +89,9 @@ export default function Login() {
           </Pressable>
         </View>
 
-        <Text style={styles.forgot}>Esqueci minha senha</Text>
+        <Pressable onPress={() => router.push("/(auth)/forgot-password" as never)}>
+          <Text style={styles.forgot}>Esqueci minha senha</Text>
+        </Pressable>
 
         {error && <Text style={styles.error}>{error}</Text>}
 

@@ -7,7 +7,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import type { Order, OrderStatus } from "@/lib/api";
 import { fonts } from "@/constants/fonts";
-import { initialsOf, moneyFromCents, orderStatusLabel, shortTime } from "@/lib/format";
+import { initialsOf, moneyFromCents, orderStatusLabel, shortDateTime, shortTime } from "@/lib/format";
 import { useOrder, useTransitionOrder } from "@/lib/hooks";
 import { Avatar } from "@/components/ui/avatar";
 import { Screen } from "@/components/ui/screen";
@@ -91,6 +91,13 @@ export default function OrderDetail() {
             <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
           </Pressable>
         </View>
+
+        {order.scheduledAt && (
+          <View style={styles.scheduleCard}>
+            <Ionicons name="calendar" size={17} color={theme.colors.primary} />
+            <Text style={styles.scheduleText}>Agendado para {shortDateTime(order.scheduledAt)}</Text>
+          </View>
+        )}
 
         {(order.status === "ACCEPTED" || order.status === "EN_ROUTE") && (
           <Pressable
@@ -278,6 +285,20 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: "rgba(255,255,255,0.07)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  scheduleCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(255,102,0,0.1)",
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+  },
+  scheduleText: {
+    fontSize: 13.5,
+    fontFamily: fonts.bold,
+    color: "#FF9a52",
   },
   trackButton: {
     flexDirection: "row",
