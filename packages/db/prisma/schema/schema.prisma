@@ -60,6 +60,7 @@ enum AiRole {
 enum NotificationType {
   ORDER
   MESSAGE
+  SUPPORT
 }
 
 // ---------------------------------------------------------------------------
@@ -100,6 +101,7 @@ model User {
   aiConversations     AiConversation[]
   passwordResetTokens PasswordResetToken[]
   notifications       Notification[]
+  supportTickets      SupportTicket[]
 
   @@index([role])
 }
@@ -285,6 +287,7 @@ model Order {
   messages Message[]
   payment  Payment?
   reviews  Review[]
+  supportTickets SupportTicket[]
 
   @@index([clientId])
   @@index([providerId])
@@ -411,4 +414,44 @@ model AiMessage {
   conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId])
+}
+
+// ---------------------------------------------------------------------------
+// Suporte e disputas (RF-H1/H2): chamados abertos pelo usuário (dúvida geral ou
+// contestação vinculada a um pedido), respondidos pelo painel admin.
+// ---------------------------------------------------------------------------
+
+enum SupportTicketCategory {
+  PAYMENT
+  CANCELLATION
+  SECURITY
+  ACCOUNT
+  DISPUTE
+  OTHER
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+model SupportTicket {
+  id            String                @id @default(uuid())
+  userId        String
+  orderId       String?
+  category      SupportTicketCategory
+  subject       String
+  message       String
+  status        SupportTicketStatus   @default(OPEN)
+  adminResponse String?
+  resolvedAt    DateTime?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id])
+  order Order? @relation(fields: [orderId], references: [id])
+
+  @@index([userId])
+  @@index([status])
 }

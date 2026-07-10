@@ -52,7 +52,9 @@ export async function notifyUser(
       select: { notifyOrders: true, notifyMessages: true },
     });
     if (!user) return;
-    const enabled = type === "ORDER" ? user.notifyOrders : user.notifyMessages;
+    // SUPPORT (resposta de chamado, RF-H1) não tem toggle próprio — sempre notifica.
+    const enabled =
+      type === "ORDER" ? user.notifyOrders : type === "MESSAGE" ? user.notifyMessages : true;
     if (!enabled) return;
 
     await prisma.notification.create({

@@ -1,4 +1,5 @@
 import "@/unistyles";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -51,6 +52,15 @@ export default function ProviderProfileTab() {
           <Text style={styles.editLabel}>
             {profile ? "Editar cadastro profissional" : "Completar cadastro"}
           </Text>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [styles.menuRow, { opacity: pressed ? 0.7 : 1 }]}
+          onPress={() => router.push("/provider/support")}
+        >
+          <Ionicons name="help-circle-outline" size={19} color={theme.colors.primary} />
+          <Text style={styles.menuLabel}>Ajuda e suporte</Text>
+          <Ionicons name="chevron-forward" size={16} color={theme.colors.mutedForeground} />
         </Pressable>
 
         <Pressable
@@ -111,6 +121,23 @@ const styles = StyleSheet.create((theme) => ({
   editLabel: {
     fontFamily: fonts.bold,
     color: "#fff",
+    fontSize: theme.fontSize.sm,
+  },
+  menuRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: "rgba(28,28,58,0.6)",
+    width: "100%",
+  },
+  menuLabel: {
+    flex: 1,
+    fontFamily: fonts.semiBold,
+    color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
   },
   switchButton: {

@@ -195,6 +195,14 @@ export default function OrderDetail() {
             </Text>
           </Pressable>
         )}
+
+        <Pressable
+          onPress={() =>
+            router.push({ pathname: "/client/support-ticket-new", params: { orderId: order.id } })
+          }
+        >
+          <Text style={styles.reportText}>Reportar um problema com esse pedido</Text>
+        </Pressable>
       </ScrollView>
     </Screen>
   );
@@ -463,5 +471,12 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 14,
     fontFamily: fonts.bold,
     color: "#ff6b6b",
+  },
+  reportText: {
+    textAlign: "center",
+    marginTop: 14,
+    fontSize: 13,
+    fontFamily: fonts.semiBold,
+    color: theme.colors.mutedForeground,
   },
 }));

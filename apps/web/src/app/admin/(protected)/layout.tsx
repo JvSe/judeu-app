@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Button } from "@judeu/ui/components/button";
@@ -12,7 +13,14 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-lg font-medium">Moderação de prestadores</h1>
+        <nav className="flex gap-4">
+          <Link href="/admin" className="text-lg font-medium hover:underline">
+            Prestadores
+          </Link>
+          <Link href="/admin/support" className="text-lg font-medium hover:underline">
+            Chamados
+          </Link>
+        </nav>
         <form action={logoutAdmin}>
           <Button variant="outline" size="sm" type="submit">
             Sair

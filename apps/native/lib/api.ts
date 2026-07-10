@@ -542,10 +542,15 @@ export const pushApi = {
 // ---- Centro de notificações in-app + preferências (RF-I1) ----
 export type NotificationItem = {
   id: string;
-  type: "ORDER" | "MESSAGE";
+  type: "ORDER" | "MESSAGE" | "SUPPORT";
   title: string;
   body: string;
-  data: { type?: "order" | "chat"; orderId?: string; role?: "client" | "provider" } | null;
+  data: {
+    type?: "order" | "chat" | "support";
+    orderId?: string;
+    role?: "client" | "provider";
+    ticketId?: string;
+  } | null;
   readAt: string | null;
   createdAt: string;
 };
@@ -578,5 +583,48 @@ export const notificationsApi = {
       method: "POST",
       body: input,
     }).then((r) => r.preferences);
+  },
+};
+
+// ---- Central de ajuda/suporte + disputas (RF-H1/H2) ----
+export type SupportTicketCategory =
+  | "PAYMENT"
+  | "CANCELLATION"
+  | "SECURITY"
+  | "ACCOUNT"
+  | "DISPUTE"
+  | "OTHER";
+
+export type SupportTicket = {
+  id: string;
+  orderId: string | null;
+  category: SupportTicketCategory;
+  subject: string;
+  message: string;
+  status: "OPEN" | "IN_PROGRESS" | "RESOLVED";
+  adminResponse: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+};
+
+export type CreateSupportTicketInput = {
+  category: SupportTicketCategory;
+  subject: string;
+  message: string;
+  orderId?: string;
+};
+
+export const supportApi = {
+  list() {
+    return apiFetch<{ tickets: SupportTicket[] }>("/api/support/tickets").then((r) => r.tickets);
+  },
+  get(id: string) {
+    return apiFetch<{ ticket: SupportTicket }>(`/api/support/tickets/${id}`).then((r) => r.ticket);
+  },
+  create(input: CreateSupportTicketInput) {
+    return apiFetch<{ ticket: SupportTicket }>("/api/support/tickets", {
+      method: "POST",
+      body: input,
+    }).then((r) => r.ticket);
   },
 };

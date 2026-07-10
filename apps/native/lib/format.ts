@@ -1,5 +1,5 @@
 // Utilitários de apresentação compartilhados pelas telas.
-import type { OrderStatus } from "@/lib/api";
+import type { OrderStatus, SupportTicket, SupportTicketCategory } from "@/lib/api";
 
 // Iniciais a partir do nome (ex.: "Carlos Mendes" -> "CM").
 export function initialsOf(name: string): string {
@@ -83,4 +83,28 @@ export function dateGroupLabel(iso: string): string {
   const day = String(d.getDate()).padStart(2, "0");
   const month = String(d.getMonth() + 1).padStart(2, "0");
   return `${day}/${month}`;
+}
+
+// Central de ajuda/suporte + disputas (RF-H1/H2).
+export const SUPPORT_CATEGORY_LABELS: Record<SupportTicketCategory, string> = {
+  PAYMENT: "Pagamentos e reembolsos",
+  CANCELLATION: "Cancelamento de pedido",
+  SECURITY: "Segurança e verificação",
+  ACCOUNT: "Minha conta e dados",
+  DISPUTE: "Disputa / problema com um pedido",
+  OTHER: "Outro assunto",
+};
+
+export function supportCategoryLabel(category: SupportTicketCategory): string {
+  return SUPPORT_CATEGORY_LABELS[category];
+}
+
+const SUPPORT_STATUS_LABELS: Record<SupportTicket["status"], string> = {
+  OPEN: "Aberto",
+  IN_PROGRESS: "Em análise",
+  RESOLVED: "Respondido",
+};
+
+export function supportStatusLabel(status: SupportTicket["status"]): string {
+  return SUPPORT_STATUS_LABELS[status];
 }

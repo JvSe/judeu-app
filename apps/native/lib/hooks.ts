@@ -11,12 +11,14 @@ import {
   profileApi,
   providerProfileApi,
   reviewsApi,
+  supportApi,
   walletApi,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import type {
   CreateOrderInput,
   CreateReviewInput,
+  CreateSupportTicketInput,
   NotificationPreferences,
   OrderAction,
   PaymentMethodOption,
@@ -243,6 +245,27 @@ export function useSetNotificationPreferences() {
   return useMutation({
     mutationFn: (input: Partial<NotificationPreferences>) => notificationsApi.setPreferences(input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notification-preferences"] }),
+  });
+}
+
+// ---- Central de ajuda/suporte + disputas (RF-H1/H2) ----
+export function useSupportTickets() {
+  return useQuery({ queryKey: ["support-tickets"], queryFn: () => supportApi.list() });
+}
+
+export function useSupportTicket(id: string) {
+  return useQuery({
+    queryKey: ["support-ticket", id],
+    queryFn: () => supportApi.get(id),
+    enabled: !!id,
+  });
+}
+
+export function useCreateSupportTicket() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateSupportTicketInput) => supportApi.create(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["support-tickets"] }),
   });
 }
 

@@ -35,4 +35,20 @@ describe("pathForNotification", () => {
   it("sem type reconhecido não navega", () => {
     expect(pathForNotification({ orderId: "abc", role: "client" })).toBeNull();
   });
+
+  it("suporte + role cliente -> chamado do cliente (não depende de orderId)", () => {
+    expect(pathForNotification({ type: "support", ticketId: "t1", role: "client" })).toBe(
+      "/client/support-ticket/t1",
+    );
+  });
+
+  it("suporte + role prestador -> chamado do prestador", () => {
+    expect(pathForNotification({ type: "support", ticketId: "t1", role: "provider" })).toBe(
+      "/provider/support-ticket/t1",
+    );
+  });
+
+  it("suporte sem ticketId não navega", () => {
+    expect(pathForNotification({ type: "support", role: "client" })).toBeNull();
+  });
 });

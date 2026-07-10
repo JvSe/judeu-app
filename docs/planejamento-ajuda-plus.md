@@ -28,6 +28,7 @@
 | **Termos & LGPD (consentimento, exclusão/exportação de conta, permissões reais)** | RNF-4/5, RF-A7 | ✅ **Concluído** |
 | **Testes automatizados + CI** | RNF-8 | ✅ *unitários + CI · lint (ESLint) pendente* |
 | **Edição de perfil (dados, foto, endereços)** | RF-A6, RF-C6 (múltiplos endereços) | ✅ *foto pendente ativação do Storage* |
+| **Central de ajuda/suporte + disputas (FAQ, chamados, moderação admin)** | RF-H1, RF-H2 | ✅ **Concluído** |
 
 **Legenda de prioridade:** **P0** = essencial ao MVP · **P1** = produto sério/confiável · **P2** = maturidade/escala/diferencial.
 
@@ -128,9 +129,9 @@ construído, incremento a incremento.
 - **RF-G4 (P2)** Moderação de avaliações; resposta do prestador; selo "verificado".
 
 ### RF-H · Suporte, Disputas e Administração
-- **RF-H1 (P1)** Central de ajuda/suporte (FAQ, chamado).
-- **RF-H2 (P1)** Fluxo de disputa/contestação.
-- **RF-H3 (P1)** Painel administrativo (web, `apps/web`). — ✅ *moderação de KYC (fila + aprovar/bloquear)*
+- **RF-H1 (P1)** Central de ajuda/suporte (FAQ, chamado). — ✅ *FAQ real + abertura/acompanhamento de chamados*
+- **RF-H2 (P1)** Fluxo de disputa/contestação. — ✅ *chamado vinculado a um pedido (categoria Disputa), sem fluxo de retenção de valor*
+- **RF-H3 (P1)** Painel administrativo (web, `apps/web`). — ✅ *moderação de KYC (fila + aprovar/bloquear) + chamados de suporte (responder/resolver)*
 - **RF-H4 (P2)** Anti-fraude/abuso.
 
 ### RF-I · Notificações e Preferências
@@ -178,7 +179,7 @@ construído, incremento a incremento.
 | **Perfil Prestador** `provider/(tabs)/profile.tsx` | Estático | RF-B1/B2/B3 ✅, RF-B5, RF-A6/A2 |
 
 ### Novas a criar
-Login/Cadastro/OTP (RF-A1/A2) · Recuperação de senha (RF-A4, ✅) · Busca por IA (RF-J, ✅ na Explorar) · Onboarding Prestador/KYC (RF-B1/B2/B3, ✅ · RF-B5 pendente) · Criar/Configurar Pedido (RF-D1/D5/D6, ✅ base) · Detalhe do Pedido/Estados (RF-D2/D4/D7, ✅) · Avaliação pós-serviço (RF-G1/G2, ✅) · Push (RF-E2, ✅ código) · Painel Admin (RF-H3, ✅) · Centro de Notificações in-app (RF-I1, ✅) · Suporte/Disputa (RF-H1/H2) · Termos & Permissões (RNF-4/5, ✅) · Anti-fraude/abuso (RF-H4, RNF-7).
+Login/Cadastro/OTP (RF-A1/A2) · Recuperação de senha (RF-A4, ✅) · Busca por IA (RF-J, ✅ na Explorar) · Onboarding Prestador/KYC (RF-B1/B2/B3, ✅ · RF-B5 pendente) · Criar/Configurar Pedido (RF-D1/D5/D6, ✅ base) · Detalhe do Pedido/Estados (RF-D2/D4/D7, ✅) · Avaliação pós-serviço (RF-G1/G2, ✅) · Push (RF-E2, ✅ código) · Painel Admin (RF-H3, ✅) · Centro de Notificações in-app (RF-I1, ✅) · Suporte/Disputa (RF-H1/H2, ✅) · Termos & Permissões (RNF-4/5, ✅) · Anti-fraude/abuso (RF-H4, RNF-7).
 
 ---
 
@@ -186,7 +187,7 @@ Login/Cadastro/OTP (RF-A1/A2) · Recuperação de senha (RF-A4, ✅) · Busca po
 
 1. **Fundação (P0):** Supabase + Storage + RLS (RNF-1), Auth (RF-A1..A3), estado/dados (RNF-2), segurança (RNF-3), LGPD/permissões (RNF-4/5), infra de IA (RNF-1b). — ✅ *(núcleo)*
 2. **Núcleo do marketplace (P0):** KYC (RF-B1/B2) ✅, localização+mapa (RF-C1..C3), **IA conversacional (RF-J)** ✅, pedido+estados (RF-D1..D4) ✅, pagamento (RF-F1..F3), chat (RF-E1) ✅ + push (RF-E2) ✅, avaliação (RF-G1) ✅.
-3. **Confiança e financeiro (P1):** histórico (RF-D7) ✅, carteira (RF-F4/F5) ✅ · reembolso (RF-F6) ✅, tracking (RF-E3), avaliações no perfil (RF-G2) ✅, suporte/disputa (RF-H1/H2), admin (RF-H3) ✅, observabilidade/testes (RNF-7/8).
+3. **Confiança e financeiro (P1):** histórico (RF-D7) ✅, carteira (RF-F4/F5) ✅ · reembolso (RF-F6) ✅, tracking (RF-E3), avaliações no perfil (RF-G2) ✅, suporte/disputa (RF-H1/H2) ✅, admin (RF-H3) ✅, observabilidade/testes (RNF-7/8).
 4. **Maturidade/escala (P2):** filtros/agendamento/cupons/portfólio/i18n/anti-fraude/performance (RF-C4/C6, RF-D6, RF-F7, RNF-11/12).
 
 ---
@@ -893,6 +894,76 @@ criar o bucket público `avatars` — mesma pendência de conta já registrada n
 (`create-order.tsx`) continua com endereço avulso — não foi integrado a escolher um endereço salvo
 do livro (ficaria mais claro como um incremento à parte, envolve mudar o fluxo de pedido).
 
+### ✅ Incremento — Central de ajuda/suporte + disputas (RF-H1/H2)
+
+Primeiro bloco P1 pendente do roadmap que ainda estava 100% mock: `client/support.tsx` já existia no
+protótipo original com FAQ estática, um card de "disputa" fake (`#D-0192`) e nenhum botão funcional
+(nem os tópicos, nem "Falar com suporte" navegavam pra algum lugar). Migração: novo model
+`SupportTicket` (`id`, `userId`, `orderId?`, `category` [`PAYMENT`/`CANCELLATION`/`SECURITY`/
+`ACCOUNT`/`DISPUTE`/`OTHER`], `subject`, `message`, `status` [`OPEN`/`IN_PROGRESS`/`RESOLVED`],
+`adminResponse?`, `resolvedAt?`) + `NotificationType.SUPPORT` novo no enum existente (RF-I1). Modelo
+simples de pergunta/resposta única por chamado — sem fila, sem atribuição a um agente, sem
+reabertura.
+
+**Backend** (`apps/web/src/lib/support.ts` + rotas `apps/web/src/app/api/support/tickets/*`):
+- `createSupportTicket` — abre um chamado; se vier `orderId` (disputa vinculada a um pedido),
+  confirma que quem está abrindo é cliente ou prestador **daquele** pedido específico (404 genérico
+  senão, mesmo padrão anti-enumeração dos outros recursos por usuário do app).
+- `listMySupportTickets`/`getSupportTicket` — chamados do usuário atual; detalhe só pro autor.
+- `POST/GET /api/support/tickets`, `GET /api/support/tickets/[id]`.
+- Admin (`listAllSupportTickets`, `respondToSupportTicket`, `markSupportTicketInProgress`) — usados
+  só pelas Server Actions do painel, sem rota HTTP própria pro app nativo.
+- `respondToSupportTicket` grava a resposta, marca `RESOLVED` e notifica o autor via `notifyUser`
+  (empilhado no incremento de notificações in-app, RF-I1) — `notifyUser` ganhou um terceiro ramo
+  (`SUPPORT` sempre notifica, sem toggle de preferência próprio, diferente de `ORDER`/`MESSAGE`).
+
+**Admin** (`apps/web/src/app/admin/(protected)/support/page.tsx` + `actions.ts`): nova aba "Chamados"
+ao lado de "Prestadores" no layout do painel (antes só tinha o título fixo "Moderação de
+prestadores", sem nenhuma navegação); lista pendentes (`OPEN`/`IN_PROGRESS`) primeiro, depois
+respondidos; cada chamado pendente tem uma `Textarea` + botão "Responder e concluir" (finaliza numa
+tacada só — não existe fluxo de ida-e-volta) e, se ainda `OPEN`, um botão extra "Marcar em análise".
+
+**App:** `supportApi` + hooks (`useSupportTickets`/`useSupportTicket`/`useCreateSupportTicket`);
+dois novos helpers em `lib/format.ts` (`supportCategoryLabel`/`supportStatusLabel`). Seguindo o
+mesmo padrão de duplicação client/provider já usado em notificações e avaliação (sem componente
+compartilhado): `client/support.tsx` e `provider/support.tsx` (nova) reescritas com FAQ real
+(respostas específicas do que o app faz — pagamento/reembolso automático em cancelamento pago,
+janela de cancelamento, verificação de KYC, exportação/exclusão de conta) em acordeão, seção "Meus
+chamados" com status colorido, e CTA "Abrir um chamado"; `client/support-ticket-new.tsx` e
+`provider/support-ticket-new.tsx` (formulário: categoria em chips, título, mensagem) e
+`client/support-ticket/[id].tsx` e `provider/support-ticket/[id].tsx` (detalhe: mensagem enviada +
+resposta do suporte ou estado "aguardando"). **Perfil do prestador** ganhou o primeiro item de menu
+que já teve (só existiam os botões "Completar/editar cadastro" e "Trocar de perfil" antes) —
+"Ajuda e suporte" levando pra tela nova. **Detalhe do pedido do cliente** ganhou o link "Reportar um
+problema com esse pedido" (abre o formulário de chamado com `orderId` pré-preenchido e categoria
+`DISPUTE` já selecionada, RF-H2).
+
+`lib/notifications.ts` (`pathForNotification`) ganhou o ramo `type: "support"` — diferente de
+`order`/`chat`, um chamado não tem "duas partes" (é sempre só do dono), então o servidor não tinha
+de onde tirar o `role` como faz pra pedido/chat; `respondToSupportTicket` agora busca o `role` do
+dono do chamado (`PROVIDER` → `"provider"`, senão `"client"`) só pra decidir em qual árvore de telas
+(`client/` ou `provider/`) navegar ao tocar a notificação.
+
+**Verificado E2E** via curl contra o Supabase real (usuário `teste.cliente@ajuda.app`): 401 sem
+token; 422 assunto curto; 201 chamado geral; 201 chamado de disputa vinculado a um pedido real do
+próprio usuário; 404 `orderId` inexistente; 404 ao tentar abrir chamado com `orderId` de pedido de
+**outro** usuário (registrado na hora pra esse teste); 404 ao buscar chamado de outro usuário (não
+vaza existência); `GET` lista reflete os chamados criados. Painel admin verificado via Playwright
+(browser real, Chromium, mesmo método do incremento do painel de KYC): login → aba "Chamados" →
+ambos os chamados de teste visíveis → resposta escrita e enviada → status vira "Respondido" e o
+texto da resposta aparece persistido após reload — sem erros de console. Confirmado de volta pela
+API do app que o chamado ficou `RESOLVED` com `adminResponse`/`resolvedAt` preenchidos e que a
+notificação `SUPPORT` foi criada com `data: { type: "support", ticketId, role: "client" }` (mapeia
+certo pro `pathForNotification`). `pnpm check-types` (precisou de `npx next typegen` uma vez pras
+rotas novas do Next, mesmo passo dos incrementos anteriores) e `pnpm test` (54 testes, 3 casos novos
+cobrindo o ramo `support` de `pathForNotification`) limpos nos três pacotes.
+
+**Pendências:** sem retenção de valor durante uma disputa (o mock antigo mostrava "valor retido até
+resolução" — não implementado, exigiria mexer no fluxo de pagamento/wallet); sem categorização
+automática nem SLA; um chamado só permite uma resposta do admin (não há histórico de idas e vindas);
+push da resposta do suporte usa o mesmo best-effort de sempre (Expo Push API), então depende da
+mesma pendência de `eas init`/rebuild físico já registrada no incremento de push.
+
 ---
 
 ## 7. Próximos blocos sugeridos (P0 pendentes)
@@ -910,6 +981,11 @@ do livro (ficaria mais claro como um incremento à parte, envolve mudar o fluxo 
 Com isso, o punchlist de código P0 do roadmap (seção 5) fica completo — o que resta são handoffs de
 infraestrutura/conta que só você pode fazer (Railway, Supabase Storage, Stripe Pix, device
 físico/Android) — **EAS já foi resolvido nesta sessão**.
+
+Com suporte/disputa (RF-H1/H2) entregue, o bloco 3 do roadmap (Confiança e financeiro, P1) fica só
+com observabilidade (RNF-7: logs estruturados/Sentry/analytics de funil) em aberto — candidato
+natural pro próximo incremento de código, já que também não depende de handoff de infra além de uma
+conta Sentry gratuita.
 
 ---
 

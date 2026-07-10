@@ -12,6 +12,8 @@ export type {
   PaymentMethod,
   PaymentStatus,
   NotificationType,
+  SupportTicketCategory,
+  SupportTicketStatus,
 } from "../prisma/generated/client";
 
 export function createPrismaClient() {

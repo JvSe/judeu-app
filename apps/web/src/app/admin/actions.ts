@@ -12,6 +12,7 @@ import {
   signAdminSession,
 } from "@/lib/admin-auth";
 import { setProviderProfileStatus } from "@/lib/provider-profile";
+import { markSupportTicketInProgress, respondToSupportTicket as respondTicket } from "@/lib/support";
 
 export async function loginAdmin(formData: FormData): Promise<void> {
   const password = String(formData.get("password") ?? "");
@@ -44,4 +45,18 @@ export async function updateProviderStatus(
   await requireAdminSession();
   await setProviderProfileStatus(providerId, status);
   revalidatePath("/admin");
+}
+
+export async function respondToSupportTicket(ticketId: string, formData: FormData): Promise<void> {
+  await requireAdminSession();
+  const response = String(formData.get("response") ?? "").trim();
+  if (!response) return;
+  await respondTicket(ticketId, response);
+  revalidatePath("/admin/support");
+}
+
+export async function claimSupportTicket(ticketId: string): Promise<void> {
+  await requireAdminSession();
+  await markSupportTicketInProgress(ticketId);
+  revalidatePath("/admin/support");
 }
