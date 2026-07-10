@@ -1,43 +1,151 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
+import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
-import { Fragment, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Fragment, useEffect, useState } from "react";
+import { Alert, Linking, Pressable, ScrollView, Share, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { fonts } from "@/constants/fonts";
+import { authApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { Screen } from "@/components/ui/screen";
 
-type Permission = {
+type PermissionRow = {
   id: string;
   icon: React.ComponentProps<typeof Ionicons>["name"];
   label: string;
   detail: string;
-  on: boolean;
+  granted: boolean | null; // null = ainda não checado
+  request: () => Promise<boolean>;
 };
 
-const initialPermissions: Permission[] = [
-  { id: "location", icon: "location-outline", label: "Localização", detail: "Enquanto usa o app · para achar profissionais perto", on: true },
-  { id: "notifications", icon: "notifications-outline", label: "Notificações", detail: "Status do pedido, chat e chegada", on: true },
-  { id: "camera", icon: "camera-outline", label: "Câmera", detail: "Fotos do problema e verificação", on: false },
-  { id: "mic", icon: "mic-outline", label: "Microfone", detail: "Áudios no chat com o profissional", on: false },
-];
+// Status real das permissões do sistema (RNF-5) — sem app não pode "desligar" uma
+// permissão já concedida, então o toque abre o Settings do device quando aplicável.
+function usePermissionStatus() {
+  const [location, setLocation] = useState<boolean | null>(null);
+  const [notifications, setNotifications] = useState<boolean | null>(null);
+  const [camera, setCamera] = useState<boolean | null>(null);
 
-const documents: { id: string; icon: React.ComponentProps<typeof Ionicons>["name"]; label: string; value?: string; danger?: boolean }[] = [
-  { id: "terms", icon: "document-text-outline", label: "Termos de uso", value: "v3.2 · mai 2026" },
-  { id: "privacy", icon: "shield-checkmark-outline", label: "Política de privacidade", value: "LGPD" },
-  { id: "download", icon: "download-outline", label: "Baixar meus dados" },
-  { id: "delete", icon: "trash-outline", label: "Excluir minha conta", danger: true },
-];
+  const refresh = async () => {
+    const [loc, notif, cam] = await Promise.all([
+      Location.getForegroundPermissionsAsync(),
+      Notifications.getPermissionsAsync(),
+      ImagePicker.getCameraPermissionsAsync(),
+    ]);
+    setLocation(loc.status === "granted");
+    setNotifications(notif.status === "granted");
+    setCamera(cam.status === "granted");
+  };
+
+  useEffect(() => {
+    refresh().catch(() => undefined);
+  }, []);
+
+  return { location, notifications, camera, refresh };
+}
 
 export default function Privacy() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
-  const [permissions, setPermissions] = useState(initialPermissions);
+  const { signOut } = useAuth();
+  const status = usePermissionStatus();
+  const [busy, setBusy] = useState<"export" | "delete" | null>(null);
 
-  const toggle = (id: string) =>
-    setPermissions((current) => current.map((p) => (p.id === id ? { ...p, on: !p.on } : p)));
+  const permissions: PermissionRow[] = [
+    {
+      id: "location",
+      icon: "location-outline",
+      label: "Localização",
+      detail: "Enquanto usa o app · para achar profissionais perto",
+      granted: status.location,
+      request: async () => (await Location.requestForegroundPermissionsAsync()).status === "granted",
+    },
+    {
+      id: "notifications",
+      icon: "notifications-outline",
+      label: "Notificações",
+      detail: "Status do pedido, chat e chegada",
+      granted: status.notifications,
+      request: async () => (await Notifications.requestPermissionsAsync()).status === "granted",
+    },
+    {
+      id: "camera",
+      icon: "camera-outline",
+      label: "Câmera",
+      detail: "Foto do documento na verificação de prestador",
+      granted: status.camera,
+      request: async () => (await ImagePicker.requestCameraPermissionsAsync()).status === "granted",
+    },
+  ];
+
+  const togglePermission = async (permission: PermissionRow) => {
+    if (permission.granted) {
+      Linking.openSettings();
+      return;
+    }
+    await permission.request();
+    await status.refresh();
+  };
+
+  const downloadData = async () => {
+    setBusy("export");
+    try {
+      const { export: data, generatedAt } = await authApi.exportData();
+      await Share.share({
+        title: "Meus dados — Ajuda+",
+        message: JSON.stringify({ generatedAt, data }, null, 2),
+      });
+    } catch {
+      Alert.alert("Ops", "Não foi possível exportar seus dados agora. Tente novamente.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const deleteAccount = () => {
+    Alert.alert(
+      "Excluir sua conta",
+      "Seus dados de identificação serão removidos e você será desconectado. Pedidos e avaliações já feitos continuam no histórico da outra parte, sem seu nome. Essa ação não pode ser desfeita.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Excluir conta",
+          style: "destructive",
+          onPress: async () => {
+            setBusy("delete");
+            try {
+              await authApi.deleteAccount();
+              await signOut();
+              router.replace("/");
+            } catch {
+              Alert.alert("Ops", "Não foi possível excluir sua conta agora. Tente novamente.");
+            } finally {
+              setBusy(null);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const documents: {
+    id: string;
+    icon: React.ComponentProps<typeof Ionicons>["name"];
+    label: string;
+    value?: string;
+    danger?: boolean;
+    loading?: boolean;
+    onPress: () => void;
+  }[] = [
+    { id: "terms", icon: "document-text-outline", label: "Termos de uso", onPress: () => router.push("/terms" as never) },
+    { id: "privacy", icon: "shield-checkmark-outline", label: "Política de privacidade", value: "LGPD", onPress: () => router.push("/privacy-policy" as never) },
+    { id: "download", icon: "download-outline", label: "Baixar meus dados", loading: busy === "export", onPress: downloadData },
+    { id: "delete", icon: "trash-outline", label: "Excluir minha conta", danger: true, loading: busy === "delete", onPress: deleteAccount },
+  ];
 
   return (
     <Screen>
@@ -54,31 +162,28 @@ export default function Privacy() {
           {permissions.map((permission, index) => (
             <Fragment key={permission.id}>
               {index > 0 && <View style={styles.divider} />}
-              <View style={styles.permissionRow}>
-                <View style={[styles.permissionIcon, !permission.on && styles.permissionIconOff]}>
+              <Pressable style={styles.permissionRow} onPress={() => togglePermission(permission)}>
+                <View style={[styles.permissionIcon, !permission.granted && styles.permissionIconOff]}>
                   <Ionicons
                     name={permission.icon}
                     size={18}
-                    color={permission.on ? theme.colors.primary : theme.colors.mutedForeground}
+                    color={permission.granted ? theme.colors.primary : theme.colors.mutedForeground}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.permissionLabel}>{permission.label}</Text>
                   <Text style={styles.permissionDetail}>{permission.detail}</Text>
                 </View>
-                <Pressable
-                  style={[styles.toggle, permission.on ? styles.toggleOn : styles.toggleOff]}
-                  onPress={() => toggle(permission.id)}
-                >
+                <View style={[styles.toggle, permission.granted ? styles.toggleOn : styles.toggleOff]}>
                   <View
                     style={[
                       styles.knob,
-                      permission.on ? styles.knobOn : styles.knobOff,
-                      !permission.on && styles.knobOffColor,
+                      permission.granted ? styles.knobOn : styles.knobOff,
+                      !permission.granted && styles.knobOffColor,
                     ]}
                   />
-                </Pressable>
-              </View>
+                </View>
+              </Pressable>
             </Fragment>
           ))}
         </View>
@@ -88,7 +193,7 @@ export default function Privacy() {
           {documents.map((doc, index) => (
             <Fragment key={doc.id}>
               {index > 0 && <View style={styles.divider} />}
-              <View style={styles.docRow}>
+              <Pressable style={styles.docRow} onPress={doc.onPress} disabled={doc.loading}>
                 <Ionicons
                   name={doc.icon}
                   size={18}
@@ -96,8 +201,12 @@ export default function Privacy() {
                 />
                 <Text style={[styles.docLabel, doc.danger && styles.docLabelDanger]}>{doc.label}</Text>
                 {doc.value && <Text style={styles.docValue}>{doc.value}</Text>}
-                <Ionicons name="chevron-forward" size={16} color={theme.colors.mutedForeground} />
-              </View>
+                {doc.loading ? (
+                  <Text style={styles.docValue}>...</Text>
+                ) : (
+                  <Ionicons name="chevron-forward" size={16} color={theme.colors.mutedForeground} />
+                )}
+              </Pressable>
             </Fragment>
           ))}
         </View>

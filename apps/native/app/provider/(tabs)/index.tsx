@@ -10,7 +10,13 @@ import type { Order, OrderAction, OrderStatus } from "@/lib/api";
 import { fonts } from "@/constants/fonts";
 import { useAuth } from "@/lib/auth-context";
 import { initialsOf, moneyFromCents, orderStatusLabel, shortDateTime, shortTime } from "@/lib/format";
-import { useMyProviderProfile, useOrders, useSetAvailability, useTransitionOrder } from "@/lib/hooks";
+import {
+  useMyProviderProfile,
+  useNotifications,
+  useOrders,
+  useSetAvailability,
+  useTransitionOrder,
+} from "@/lib/hooks";
 import { useShareLocationWhileEnRoute } from "@/lib/location";
 import { Avatar } from "@/components/ui/avatar";
 import { Screen } from "@/components/ui/screen";
@@ -41,6 +47,8 @@ export default function ProviderDashboard() {
   const { data: orders = [], isLoading } = useOrders("provider");
   const transition = useTransitionOrder();
   const setAvailability = useSetAvailability();
+  const { data: notifications } = useNotifications();
+  const hasUnread = (notifications?.unreadCount ?? 0) > 0;
 
   const newOrders = orders.filter((o) => o.status === "CREATED");
   const activeOrders = orders.filter(
@@ -67,6 +75,12 @@ export default function ProviderDashboard() {
             <Text style={styles.welcome}>Bem-vindo,</Text>
             <Text style={styles.name}>{user?.fullName ?? "Prestador"}</Text>
           </View>
+          <Pressable onPress={() => router.push("/provider/notifications" as never)} hitSlop={8}>
+            <View style={styles.bellButton}>
+              <Ionicons name="notifications-outline" size={20} color={theme.colors.foreground} />
+              {hasUnread && <View style={styles.bellDot} />}
+            </View>
+          </Pressable>
           <Pressable
             style={[styles.activeChip, !profile?.isAvailable && styles.activeChipOff]}
             disabled={setAvailability.isPending}
@@ -268,6 +282,25 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: 12,
     marginBottom: 22,
+  },
+  bellButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: theme.colors.card,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bellDot: {
+    position: "absolute",
+    top: 8,
+    right: 9,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: theme.colors.primary,
   },
   welcome: {
     fontSize: 13,

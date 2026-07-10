@@ -12,6 +12,7 @@ export type AppUser = {
   avatarUrl: string | null;
   emailVerified: boolean;
   phoneVerified: boolean;
+  createdAt: string;
 };
 
 type AuthResponse = { user: AppUser; accessToken: string; refreshToken: string };
@@ -100,6 +101,7 @@ export const authApi = {
     password: string;
     phone?: string;
     role?: AppUser["role"];
+    acceptedTerms: true;
   }) {
     return apiFetch<AuthResponse>("/api/auth/register", {
       method: "POST",
@@ -131,6 +133,14 @@ export const authApi = {
   me() {
     return apiFetch<{ user: AppUser }>("/api/auth/me");
   },
+  // Exclusão de conta (RF-A7, LGPD) — anonimiza os dados e derruba as sessões no servidor.
+  deleteAccount() {
+    return apiFetch<{ ok: boolean }>("/api/auth/me", { method: "DELETE" });
+  },
+  // Exportação de dados (RF-A7, LGPD) — tudo que a conta gerou, pra portabilidade.
+  exportData() {
+    return apiFetch<{ export: unknown; generatedAt: string }>("/api/auth/me/export");
+  },
   async logout() {
     const tokens = await getTokens();
     if (tokens) {
@@ -140,6 +150,80 @@ export const authApi = {
         auth: false,
       }).catch(() => undefined);
     }
+  },
+};
+
+// ---- Edição de perfil (RF-A6) ----
+export type ClientStats = { completedOrders: number; ratingAvg: number | null; ratingCount: number };
+
+export const profileApi = {
+  update(input: { fullName?: string; phone?: string }) {
+    return apiFetch<{ user: AppUser }>("/api/auth/me", { method: "PATCH", body: input }).then(
+      (r) => r.user,
+    );
+  },
+  uploadAvatar(base64: string, mimeType: string) {
+    return apiFetch<{ user: AppUser }>("/api/auth/me/avatar", {
+      method: "POST",
+      body: { base64, mimeType },
+    }).then((r) => r.user);
+  },
+  stats() {
+    return apiFetch<{ stats: ClientStats }>("/api/auth/me/stats").then((r) => r.stats);
+  },
+};
+
+// ---- Livro de endereços do cliente (RF-A6) ----
+export type SavedAddress = {
+  id: string;
+  label: string | null;
+  cep: string | null;
+  street: string;
+  number: string | null;
+  complement: string | null;
+  neighborhood: string | null;
+  city: string;
+  state: string;
+  lat: number;
+  lng: number;
+  isDefault: boolean;
+};
+
+export type SavedAddressInput = {
+  label?: string;
+  cep?: string;
+  street: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city: string;
+  state: string;
+  isDefault?: boolean;
+};
+
+export const addressesApi = {
+  list() {
+    return apiFetch<{ addresses: SavedAddress[] }>("/api/addresses").then((r) => r.addresses);
+  },
+  create(input: SavedAddressInput) {
+    return apiFetch<{ address: SavedAddress }>("/api/addresses", {
+      method: "POST",
+      body: input,
+    }).then((r) => r.address);
+  },
+  update(id: string, input: Partial<SavedAddressInput>) {
+    return apiFetch<{ address: SavedAddress }>(`/api/addresses/${id}`, {
+      method: "PATCH",
+      body: input,
+    }).then((r) => r.address);
+  },
+  remove(id: string) {
+    return apiFetch<{ ok: boolean }>(`/api/addresses/${id}`, { method: "DELETE" });
+  },
+  setDefault(id: string) {
+    return apiFetch<{ address: SavedAddress }>(`/api/addresses/${id}/default`, {
+      method: "POST",
+    }).then((r) => r.address);
   },
 };
 
@@ -452,5 +536,47 @@ export const walletApi = {
 export const pushApi = {
   register(pushToken: string) {
     return apiFetch<{ ok: boolean }>("/api/push-token", { method: "POST", body: { pushToken } });
+  },
+};
+
+// ---- Centro de notificações in-app + preferências (RF-I1) ----
+export type NotificationItem = {
+  id: string;
+  type: "ORDER" | "MESSAGE";
+  title: string;
+  body: string;
+  data: { type?: "order" | "chat"; orderId?: string; role?: "client" | "provider" } | null;
+  readAt: string | null;
+  createdAt: string;
+};
+
+export type NotificationPreferences = { notifyOrders: boolean; notifyMessages: boolean };
+
+export const notificationsApi = {
+  list() {
+    return apiFetch<{ notifications: NotificationItem[]; unreadCount: number }>(
+      "/api/notifications",
+    );
+  },
+  markRead(id: string) {
+    return apiFetch<{ notification: NotificationItem }>(`/api/notifications/${id}/read`, {
+      method: "POST",
+    });
+  },
+  markAllRead() {
+    return apiFetch<{ ok: boolean; count: number }>("/api/notifications/read-all", {
+      method: "POST",
+    });
+  },
+  preferences() {
+    return apiFetch<{ preferences: NotificationPreferences }>(
+      "/api/notifications/preferences",
+    ).then((r) => r.preferences);
+  },
+  setPreferences(input: Partial<NotificationPreferences>) {
+    return apiFetch<{ preferences: NotificationPreferences }>("/api/notifications/preferences", {
+      method: "POST",
+      body: input,
+    }).then((r) => r.preferences);
   },
 };

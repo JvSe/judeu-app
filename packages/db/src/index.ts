@@ -11,6 +11,7 @@ export type {
   ProviderStatus,
   PaymentMethod,
   PaymentStatus,
+  NotificationType,
 } from "../prisma/generated/client";
 
 export function createPrismaClient() {

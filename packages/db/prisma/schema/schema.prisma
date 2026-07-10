@@ -57,6 +57,11 @@ enum AiRole {
   TOOL
 }
 
+enum NotificationType {
+  ORDER
+  MESSAGE
+}
+
 // ---------------------------------------------------------------------------
 // Identidade e autenticação (auth custom — email/senha via API própria)
 // ---------------------------------------------------------------------------
@@ -72,6 +77,15 @@ model User {
   emailVerified Boolean  @default(false)
   phoneVerified Boolean  @default(false)
   pushToken     String? // Expo push token do último dispositivo logado (RF-E2)
+  // Preferências do centro de notificações in-app (RF-I1) — desligar um tipo
+  // suprime tanto a notificação persistida quanto o push desse evento.
+  notifyOrders   Boolean  @default(true)
+  notifyMessages Boolean  @default(true)
+  // Consentimento explícito aos Termos de Uso/Política de Privacidade no cadastro (RNF-4, LGPD).
+  termsAcceptedAt DateTime?
+  // Marca a conta como excluída (RF-A7) sem quebrar FKs de pedidos/avaliações/mensagens já
+  // existentes — os dados pessoais são anonimizados, o registro em si é preservado.
+  deletedAt       DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -85,6 +99,7 @@ model User {
   refreshTokens       RefreshToken[]
   aiConversations     AiConversation[]
   passwordResetTokens PasswordResetToken[]
+  notifications       Notification[]
 
   @@index([role])
 }
@@ -116,6 +131,24 @@ model PasswordResetToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// Centro de notificações in-app (RF-I1): espelha cada push disparado pelo domínio
+// (novo pedido, transição de status, mensagem de chat) para o usuário poder ver
+// o histórico dentro do app, além de receber a notificação do sistema.
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 // ---------------------------------------------------------------------------

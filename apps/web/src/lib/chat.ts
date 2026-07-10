@@ -1,5 +1,5 @@
 import { prisma } from "./db";
-import { sendPushNotification } from "./push";
+import { notifyUser } from "./notifications";
 
 // ---------------------------------------------------------------------------
 // Chat: mensagens reais cliente ↔ prestador, ancoradas a um pedido (RF-E1).
@@ -100,7 +100,7 @@ export async function sendMessage(
   const recipientId =
     senderId === participants.clientId ? participants.providerUserId : participants.clientId;
   if (recipientId) {
-    void sendPushNotification(recipientId, {
+    void notifyUser(recipientId, "MESSAGE", {
       title: `Nova mensagem de ${message.sender.fullName}`,
       body: input.body,
       data: { type: "chat", orderId, role: senderId === participants.clientId ? "provider" : "client" },

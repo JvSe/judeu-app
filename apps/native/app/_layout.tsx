@@ -17,6 +17,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useUnistyles } from "react-native-unistyles";
 
 import { AuthProvider } from "@/lib/auth-context";
+import { pathForNotification } from "@/lib/notifications";
 import { QueryProvider } from "@/lib/query";
 import { initAssistant } from "@/lib/assistant";
 
@@ -35,20 +36,6 @@ Notifications.setNotificationHandler({
     shouldSetBadge: false,
   }),
 });
-
-// Navega pro pedido/chat certo quando o usuário toca numa notificação (RF-E2).
-type PushData = { type?: "order" | "chat"; orderId?: string; role?: "client" | "provider" };
-
-function pathForPush(data: PushData): string | null {
-  if (!data.orderId) return null;
-  if (data.type === "chat") {
-    return data.role === "provider" ? `/provider/chat/${data.orderId}` : `/client/chat/${data.orderId}`;
-  }
-  if (data.type === "order") {
-    return data.role === "provider" ? "/provider" : `/client/order/${data.orderId}`;
-  }
-  return null;
-}
 
 export const unstable_settings = {
   initialRouteName: "index",
@@ -73,7 +60,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      const path = pathForPush(response.notification.request.content.data as PushData);
+      const path = pathForNotification(response.notification.request.content.data ?? {});
       if (path) router.push(path as never);
     });
     return () => sub.remove();
@@ -98,6 +85,8 @@ export default function RootLayout() {
               <Stack.Screen name="(auth)" />
               <Stack.Screen name="client" />
               <Stack.Screen name="provider" />
+              <Stack.Screen name="terms" />
+              <Stack.Screen name="privacy-policy" />
             </Stack>
           </AuthProvider>
         </QueryProvider>

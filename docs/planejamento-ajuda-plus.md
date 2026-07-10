@@ -20,10 +20,14 @@
 | **Geo (Valhalla + Nominatim) na Railway** | RF-C5/C6, RF-E3 (base) | ✅ **Código concluído** · deploy Railway pendente (URLs a caminho) |
 | **Carteira/ganhos do prestador (saldo + extrato)** | RF-F4/F5 | ✅ **Concluído** |
 | **Onboarding profissional + KYC do prestador** | RF-B1/B2, RF-B3 (parcial) | ✅ **Concluído** · upload de documento pendente ativação do Storage |
-| **Notificações push (novo pedido, updates, mensagens)** | RF-E2 | ✅ **Código concluído** · projeto EAS pendente (`eas init`) |
+| **Notificações push (novo pedido, updates, mensagens)** | RF-E2 | ✅ **Concluído** · projeto EAS vinculado (`eas init`) · falta testar token real em device físico |
 | **Painel admin (moderação de KYC)** | RF-H3 | ✅ **Concluído** |
 | **Tracking em tempo real (posição do prestador + ETA)** | RF-E3 | ✅ **Código concluído** · ETA real depende do deploy Railway (Valhalla) |
 | **Mapa real (MapLibre + tiles OpenFreeMap)** | RF-C1/C2 | ✅ **Código concluído** · rebuild nativo (`expo prebuild` + build Xcode) validado no simulador iOS — app abre normal; render visual do mapa (por trás do login) ainda não conferida |
+| **Centro de notificações in-app + preferências por evento** | RF-I1 | ✅ **Concluído** |
+| **Termos & LGPD (consentimento, exclusão/exportação de conta, permissões reais)** | RNF-4/5, RF-A7 | ✅ **Concluído** |
+| **Testes automatizados + CI** | RNF-8 | ✅ *unitários + CI · lint (ESLint) pendente* |
+| **Edição de perfil (dados, foto, endereços)** | RF-A6, RF-C6 (múltiplos endereços) | ✅ *foto pendente ativação do Storage* |
 
 **Legenda de prioridade:** **P0** = essencial ao MVP · **P1** = produto sério/confiável · **P2** = maturidade/escala/diferencial.
 
@@ -63,8 +67,8 @@ construído, incremento a incremento.
 - **RF-A3 (P0)** Papel cliente/prestador no backend (um usuário pode ter os dois). — ✅
 - **RF-A4 (P1)** Recuperação de senha. — ✅ *código de 6 dígitos; "envio" por e-mail best-effort (log no servidor, sem provedor real ainda)*
 - **RF-A5 (adiado)** Login social: só os botões na UI, sem função (Apple Sign-In será exigência da App Store se ativado).
-- **RF-A6 (P1)** Edição de perfil (foto via Storage, dados, endereço).
-- **RF-A7 (P2)** Exclusão de conta e exportação de dados (LGPD/lojas).
+- **RF-A6 (P1)** Edição de perfil (foto via Storage, dados, endereço). — ✅ *foto pendente ativação do Storage, mesmo padrão do KYC*
+- **RF-A7 (P2)** Exclusão de conta e exportação de dados (LGPD/lojas). — ✅
 
 ### RF-B · Onboarding e Verificação do Prestador (KYC)
 - **RF-B1 (P0)** Cadastro profissional (categorias, serviços, preços, área/raio). — ✅
@@ -79,7 +83,7 @@ construído, incremento a incremento.
 - **RF-C3 (P0)** Consulta de prestadores no Supabase por categoria/serviço + geo — alimenta mapa e IA. — ✅
 - **RF-C4 (P1)** Filtros/ordenação tradicionais (fallback à IA). — *fallback em uso na Explorar*
 - **RF-C5 (P1)** Distância/ETA real via Valhalla. — ✅ *código pronto (rota prestador→endereço); ETA real depende do deploy Railway*
-- **RF-C6 (P2)** Busca por endereço/CEP (ViaCEP + Nominatim) + múltiplos endereços. — ✅ *ViaCEP no cadastro do pedido; geocoding Nominatim no servidor (fallback pro centro de Palmas sem Railway); múltiplos endereços fora de escopo*
+- **RF-C6 (P2)** Busca por endereço/CEP (ViaCEP + Nominatim) + múltiplos endereços. — ✅ *ViaCEP no cadastro do pedido; geocoding Nominatim no servidor (fallback pro centro de Palmas sem Railway); múltiplos endereços agora têm livro de endereços real (RF-A6) — só não estão integrados de volta ao formulário de pedido (`create-order.tsx` continua com endereço avulso)*
 
 ### RF-J · Busca por IA conversacional (funcionalidade central) 🌟
 - **RF-J1 (P0)** Chat com assistente em linguagem natural (caminho primário de descoberta). — ✅ (on-device)
@@ -104,7 +108,7 @@ construído, incremento a incremento.
 
 ### RF-E · Comunicação em tempo real
 - **RF-E1 (P0)** Chat cliente↔prestador real (persistido, entregue/lido). — ✅
-- **RF-E2 (P0)** Notificações push (novo pedido, updates, mensagens). — ✅ *código pronto; falta rodar `eas init` pra gerar o projectId*
+- **RF-E2 (P0)** Notificações push (novo pedido, updates, mensagens). — ✅ *projeto EAS vinculado (`eas init`); falta confirmar token real num device físico*
 - **RF-E3 (P1)** Tracking em tempo real (Supabase Realtime + rota Valhalla no MapLibre). — ✅ *código pronto; REST+GPS foreground (não Supabase Realtime, não MapLibre — ver incremento); ETA real depende do deploy Railway*
 - **RF-E4 (P2)** Áudio/mascaramento de telefone.
 
@@ -130,7 +134,7 @@ construído, incremento a incremento.
 - **RF-H4 (P2)** Anti-fraude/abuso.
 
 ### RF-I · Notificações e Preferências
-- **RF-I1 (P1)** Centro de notificações in-app + preferências por evento.
+- **RF-I1 (P1)** Centro de notificações in-app + preferências por evento. — ✅
 - **RF-I2 (P2)** i18n (hoje pt-BR hardcoded).
 
 ---
@@ -141,11 +145,11 @@ construído, incremento a incremento.
 - **RNF-1b · Infra de IA (P0):** orquestração do assistente. — ✅ *revisado para on-device (sem servidor/chave); ver [ai-search-planning](../apps/native/docs/ai-search-planning.md)*
 - **RNF-2 · Estado/dados no app (P0):** TanStack Query + sessão/auth. — ✅
 - **RNF-3 · Segurança (P0):** hash de senha, tokens/refresh, secure-store, validação, rate limiting, endpoints por papel. — ✅ *(base)*
-- **RNF-4 · Privacidade/LGPD (P0):** consentimento, política/termos, exclusão/exportação, minimização de localização.
-- **RNF-5 · Permissões do device (P0):** localização, notificações, câmera/galeria com justificativas.
-- **RNF-6 · Confiabilidade/tempo real (P1):** push (Expo) — ✅ *código pronto, EAS pendente*; WebSocket, reconexão, offline.
+- **RNF-4 · Privacidade/LGPD (P0):** consentimento, política/termos, exclusão/exportação, minimização de localização. — ✅ *minimização de localização já valia (só compartilha durante atendimento ativo, foreground)*
+- **RNF-5 · Permissões do device (P0):** localização, notificações, câmera/galeria com justificativas. — ✅ *status real na tela de privacidade; justificativas já existiam nos plugins do `app.json`*
+- **RNF-6 · Confiabilidade/tempo real (P1):** push (Expo) — ✅ *projeto EAS vinculado*; WebSocket, reconexão, offline.
 - **RNF-7 · Observabilidade (P1):** logs, Sentry, analytics de funil.
-- **RNF-8 · Qualidade (P1):** testes, CI, lint/typecheck no `turbo.json`, tipagem ponta-a-ponta.
+- **RNF-8 · Qualidade (P1):** testes, CI, lint/typecheck no `turbo.json`, tipagem ponta-a-ponta. — ✅ *testes unitários (Vitest) + CI (GitHub Actions) + `check-types` real em `web`/`native`; lint segue pendente (sem ESLint configurado ainda)*
 - **RNF-9 · Acessibilidade (P1):** labels, contraste, tamanho de toque.
 - **RNF-10 · Release (P1):** nome real, ícones/splash, envs por ambiente, EAS Build/Submit, versionamento.
 - **RNF-11 · Performance (P2):** paginação/virtualização, otimização de imagem/mapa, cache.
@@ -162,7 +166,7 @@ construído, incremento a incremento.
 | **Home Cliente** `client/(tabs)/index.tsx` | Mapa-imagem + mock | RF-C1/C2 ✅, RF-C3/C5, RNF-5; barra abre IA (RF-J1) |
 | **Explorar/IA** `client/(tabs)/explore.tsx` | Grid mock | **RF-J1..J7** (assistente); RF-C4 fallback — ✅ |
 | **Pedidos (Cliente)** `client/(tabs)/orders.tsx` | Placeholder | RF-D7/D2/D8 — ✅ |
-| **Perfil Cliente** `client/(tabs)/profile.tsx` | Estático | RF-A6/A2/A7, RF-C6, RF-I1 |
+| **Perfil Cliente** `client/(tabs)/profile.tsx` | Estático | RF-A6 ✅/A2 ✅/A7 ✅, RF-C6 ✅, RF-I1 ✅ |
 | **Detalhe do Prestador** `client/provider/[id].tsx` | Perfil mock | RF-D1 ✅, RF-G2 ✅, RF-B5, RF-C5 |
 | **Pagamento** `client/payment/[id].tsx` | Fake | RF-F1/F2 ✅, F5, RNF-3 |
 | **Tracking** `client/tracking/[id].tsx` | Animação | RF-E3, RF-D2 ✅, RF-E2 ✅ |
@@ -174,7 +178,7 @@ construído, incremento a incremento.
 | **Perfil Prestador** `provider/(tabs)/profile.tsx` | Estático | RF-B1/B2/B3 ✅, RF-B5, RF-A6/A2 |
 
 ### Novas a criar
-Login/Cadastro/OTP (RF-A1/A2) · Recuperação de senha (RF-A4, ✅) · Busca por IA (RF-J, ✅ na Explorar) · Onboarding Prestador/KYC (RF-B1/B2/B3, ✅ · RF-B5 pendente) · Criar/Configurar Pedido (RF-D1/D5/D6, ✅ base) · Detalhe do Pedido/Estados (RF-D2/D4/D7, ✅) · Avaliação pós-serviço (RF-G1/G2, ✅) · Push (RF-E2, ✅ código) · Painel Admin (RF-H3, ✅) · Centro de Notificações in-app (RF-I1) · Suporte/Disputa (RF-H1/H2) · Termos & Permissões (RNF-4/5) · Anti-fraude/abuso (RF-H4, RNF-7).
+Login/Cadastro/OTP (RF-A1/A2) · Recuperação de senha (RF-A4, ✅) · Busca por IA (RF-J, ✅ na Explorar) · Onboarding Prestador/KYC (RF-B1/B2/B3, ✅ · RF-B5 pendente) · Criar/Configurar Pedido (RF-D1/D5/D6, ✅ base) · Detalhe do Pedido/Estados (RF-D2/D4/D7, ✅) · Avaliação pós-serviço (RF-G1/G2, ✅) · Push (RF-E2, ✅ código) · Painel Admin (RF-H3, ✅) · Centro de Notificações in-app (RF-I1, ✅) · Suporte/Disputa (RF-H1/H2) · Termos & Permissões (RNF-4/5, ✅) · Anti-fraude/abuso (RF-H4, RNF-7).
 
 ---
 
@@ -631,6 +635,264 @@ confirma que `revokeAllRefreshTokens` derrubou a sessão antiga). Regeneração 
 Expo Router (`.expo/types/router.d.ts`, gitignored) rodada localmente pras duas telas novas
 tipar certo. Typecheck web+native limpos.
 
+### ✅ Incremento — Projeto EAS vinculado (`eas init`, RF-E2)
+
+Rodei `eas init --force` (você já estava logado no EAS CLI como `nextmed`) — criou o projeto
+[`@nextmed/judeu`](https://expo.dev/accounts/nextmed/projects/judeu) e gravou `extra.eas.projectId`
+(`422fcb7a-6da6-47c4-908c-727b03b2ce12`) + `owner: "nextmed"` em `apps/native/app.json`. Isso é
+config JS/`expo-constants` (não código nativo), então **não deveria exigir rebuild** — o dev client
+já buildado nesta sessão (simulador iOS) deve conseguir gerar um push token real só reabrindo o app.
+
+**Efeito colateral notado e corrigido:** o comando também resolveu/sincronizou `android.permissions`,
+adicionando `android.permission.RECORD_AUDIO` (`ACCESS_COARSE_LOCATION`/`ACCESS_FINE_LOCATION` já
+eram esperadas do `expo-location`) — o plugin do `expo-image-picker` inclui essa permissão por
+padrão (`microphonePermission` não setado), mesmo o app não usando áudio em lugar nenhum. Adicionado
+`"microphonePermission": false` na config do plugin em `app.json` (RNF-5, minimização de permissão).
+**A pasta `android/` já prebuilada (gitignored) ainda tem o `RECORD_AUDIO` no `AndroidManifest.xml`
+de uma sessão anterior** — só sai de fato depois do próximo `expo prebuild`, que já é pendência
+conhecida (item 2 abaixo).
+
+**Pendência:** ainda falta abrir o app (simulador ou device) depois dessa mudança e confirmar que
+`getExpoPushTokenAsync` retorna um token de verdade (ver dashboard do Expo em
+expo.dev/accounts/nextmed/projects/judeu) — não tentei automatizar isso porque exige interação manual
+no dispositivo (mesmo bloqueio de Acessibilidade no macOS já registrado no incremento do build Xcode).
+
+### ✅ Incremento — Centro de notificações in-app + preferências por evento (RF-I1)
+
+Primeiro bloco de **P1** implementado a partir de código (não handoff de infra). Migração: novo
+model `Notification` (`id`, `userId`, `type: NotificationType` [`ORDER`/`MESSAGE`], `title`, `body`,
+`data Json?`, `readAt`, `createdAt`) + dois novos campos em `User` (`notifyOrders`/`notifyMessages`,
+ambos `Boolean @default(true)`).
+
+**Backend** (`apps/web/src/lib/notifications.ts` + rotas `apps/web/src/app/api/notifications/*`):
+- `notifyUser(userId, type, payload)` — nova função central de disparo de notificação: checa a
+  preferência do usuário pro tipo (`notifyOrders`/`notifyMessages`); se desligada, não persiste nem
+  dispara push; se ligada, grava a `Notification` e chama `sendPushNotification` (a função de push
+  do incremento RF-E2 não mudou, só passou a ser chamada por trás de `notifyUser`). Fire-and-forget
+  (`void`) nos call sites, mesmo padrão best-effort do push — nunca derruba criar pedido/transição/
+  mensagem.
+- `orders.ts` (`createOrder`, `transitionOrder`) e `chat.ts` (`sendMessage`) trocaram a chamada direta
+  a `sendPushNotification` por `notifyUser(..., "ORDER" | "MESSAGE", ...)` — nenhuma outra mudança de
+  comportamento nesses fluxos.
+- `GET /api/notifications` — últimas 50 notificações do usuário + `unreadCount`.
+- `POST /api/notifications/read-all` — marca todas como lidas ("Marcar lidas" no centro).
+- `POST /api/notifications/[id]/read` — marca uma notificação como lida (403/404 se não for do
+  usuário — na prática 404 pra não vazar existência do id de outro usuário).
+- `GET/POST /api/notifications/preferences` — lê/atualiza `notifyOrders`/`notifyMessages`.
+
+**App:** `notificationsApi` + hooks (`useNotifications` com poll opcional em foco, mesmo padrão do
+chat; `useMarkNotificationRead`/`useMarkAllNotificationsRead`/`useNotificationPreferences`/
+`useSetNotificationPreferences`); nova função compartilhada `lib/notifications.ts`
+(`pathForNotification`) que decide pra onde navegar a partir do `data` da notificação (pedido do
+cliente, dashboard do prestador ou chat) — extraída do handler de tap em push já existente no
+`_layout.tsx` (RF-E2) pra ser reaproveitada também no centro de notificações, sem duplicar a lógica.
+
+Duas telas do **protótipo original que eram 100% mock** (`mock-data.ts`, array `notifications`)
+viraram reais: `client/notifications.tsx` (reescrita) e `provider/notifications.tsx` (nova, mesmo
+padrão visual, registrada em `provider/_layout.tsx`) — cada uma com: filtro Todas/Pedidos/Mensagens,
+lista agrupada por dia ("HOJE"/"ONTEM"/data, novo helper `dateGroupLabel` em `lib/format.ts`), tempo
+relativo (`relativeTime`, novo helper), tap marca como lida e navega pro destino, botão "Marcar
+lidas", e um cartão de preferências (2 toggles: Pedidos/Mensagens) no topo. O sino da Home do
+cliente e um sino novo no dashboard do prestador (`headerRow`, ao lado do toggle Disponível/Offline)
+passaram a mostrar um badge real (`unreadCount > 0`) em vez do ponto estático sempre visível que
+havia antes. O array `notifications`/tipos `NotificationGroup`/`NotificationTone` foram removidos de
+`mock-data.ts` (última tela que os usava).
+
+**Verificado E2E** via curl contra o Supabase real (usuário `teste.cliente@ajuda.app` + prestador
+seed `carlos.mendes@ajuda.app`): pedido criado → notificação `ORDER` persistida pro prestador
+(`unreadCount: 1`, `data` com `orderId`/`role` corretos); marcar como lida por outro usuário → `404`;
+pelo dono → `200` e `unreadCount` cai pra 0; desligar `notifyMessages` do prestador → mensagem do
+chat não gera notificação nem push (nenhuma entrada nova); religar → mensagem seguinte gera
+`MESSAGE` normalmente; `read-all` zera `unreadCount`; preferências com payload vazio → `422`; rotas
+sem token → `401`. Typecheck web (`tsc --noEmit`) e native limpos.
+
+**Pendências:** sem migração de dados — usuários existentes já nascem com as duas preferências
+`true` (default do schema); sem paginação além do `take: 50` (suficiente por ora, RNF-11 fica pra
+quando o volume justificar); o badge do sino usa fetch simples (sem poll) na Home/dashboard — só a
+tela do centro de notificações faz poll (8s, só em foco).
+
+### ✅ Incremento — Termos & LGPD: consentimento, exclusão/exportação de conta, permissões reais (RNF-4/5, RF-A7)
+
+Migração: `User.termsAcceptedAt` (`DateTime?`, carimbado no cadastro) e `User.deletedAt`
+(`DateTime?`, marca a conta como excluída sem quebrar FKs de `Order`/`Review`/`Message` que outras
+pessoas ainda precisam ver no histórico delas).
+
+**Backend:**
+- `POST /api/auth/register` passou a exigir `acceptedTerms: true` no corpo (422 sem isso) e grava
+  `termsAcceptedAt`.
+- `apps/web/src/lib/account.ts` (novo) — `deleteAccount(userId)`: **anonimiza** em vez de apagar a
+  linha — troca `email` por `deleted-<uuid>@ajuda.app` (libera o e-mail original pra um cadastro
+  novo), `fullName` por "Usuário excluído", zera `phone`/`avatarUrl`/`pushToken`, troca
+  `passwordHash` por um hash de senha aleatória inutilizável, e derruba todas as sessões
+  (`revokeAllRefreshTokens`); se a conta tem `ProviderProfile`, marca `BLOCKED`/`isAvailable: false`
+  e limpa `headline`/`bio` (some do catálogo). Pedidos, avaliações e mensagens continuam intactos —
+  são histórico legítimo da outra parte, só deixam de identificar quem foi excluído.
+  `exportAccountData(userId)` — dump de tudo que a conta gerou (perfil, endereços, pedidos como
+  cliente/prestador, avaliações, mensagens, carteira, notificações) pra portabilidade.
+- `DELETE /api/auth/me` e `GET /api/auth/me/export` — novas rotas, ambas autenticadas.
+
+**App:**
+- `client/(auth)/signup.tsx` — o checkbox de aceite deixou de vir **pré-marcado** (`useState(true)`
+  → `useState(false)`, consentimento explícito de verdade) e "Termos de uso"/"Política de
+  privacidade" viraram links reais; `signUp()` manda `acceptedTerms: true`.
+- Duas telas de conteúdo novas, reais (não placeholder): `app/terms.tsx` e `app/privacy-policy.tsx`
+  — registradas na **raiz** do Stack (`app/_layout.tsx`), não em `client/`, porque precisam abrir a
+  partir do cadastro **antes** do login (a guarda de autenticação do `client/_layout.tsx` barraria
+  isso). Layout compartilhado extraído em `components/ui/legal-screen.tsx` (só o texto muda entre
+  as duas).
+- `client/privacy.tsx` reescrita — era 100% mock (toggles em `useState` local que não liam nem
+  mudavam nada de verdade, botão "Excluir minha conta" sem ação). Agora: status real das 3
+  permissões que o app de fato usa (localização, notificações, câmera — via
+  `getForegroundPermissionsAsync`/`getPermissionsAsync`/`getCameraPermissionsAsync`); toque **pede**
+  a permissão se ainda não foi decidida, ou abre o **Settings do sistema** (`Linking.openSettings`)
+  se já concedida (o app não pode revogar uma permissão do usuário, só o SO permite isso); removido
+  o toggle de "Microfone" (o app não usa áudio em lugar nenhum — coerente com o
+  `microphonePermission: false` do incremento do `eas init`). "Baixar meus dados" chama
+  `GET /api/auth/me/export` e abre o share sheet nativo (`Share.share`, API do próprio React Native
+  — evitou instalar `expo-sharing`, que exigiria mais um rebuild nativo); "Excluir minha conta" pede
+  confirmação (`Alert.alert`, destrutivo) antes de chamar `DELETE /api/auth/me` e desloga de verdade.
+- **Bug encontrado e corrigido nessa varredura:** "Sair da conta" no perfil do cliente
+  (`client/(tabs)/profile.tsx`) só navegava pra `/` sem nunca chamar `signOut()` — a sessão
+  (tokens + estado de auth) continuava viva; corrigido pra deslogar de verdade antes de navegar.
+
+**Verificado E2E** via curl contra o Supabase real: registro sem `acceptedTerms`/com `false` → `422`
+nos dois; com `true` → `201`; `GET /api/auth/me/export` sem token → `401`, com token → dump correto
+da conta; `DELETE /api/auth/me` sem token → `401`, com token → `200`; login com a senha antiga da
+conta excluída → `401` (falha, como esperado); **novo cadastro com o mesmo e-mail da conta excluída**
+→ `201` (confirma que o e-mail foi liberado pela anonimização). Typecheck web+native limpos.
+
+**Pendências:** conteúdo dos Termos/Política é texto real e específico do que o app faz, mas não
+passou por revisão jurídica formal — recomendo validar com um advogado antes de publicar nas lojas;
+um access token (JWT) emitido **antes** da exclusão continua válido até expirar (15min) mesmo
+depois — mesma janela de tolerância que o resto da autenticação já aceita (stateless, sem checar o
+banco a cada request); storage do documento de KYC (Supabase Storage) não é apagado na exclusão —
+seguem a mesma pendência de ativação da conta Storage já registrada no incremento de KYC.
+
+### ✅ Incremento — Testes automatizados + CI (RNF-8)
+
+Zero cobertura de teste e zero CI antes deste incremento — `turbo.json` já tinha as tarefas
+`lint`/`check-types` declaradas, mas **nem `apps/web` nem `apps/native` tinham o script
+`check-types` no próprio `package.json`**, então `pnpm check-types` da raiz rodava só o
+`@judeu/ui` silenciosamente, sem avisar que os dois apps principais estavam de fora — bug real
+encontrado e corrigido (adicionado `check-types` nos dois).
+
+**Framework:** Vitest (catalogado em `pnpm-workspace.yaml` como as demais libs compartilhadas),
+com `vitest.config.ts` próprio em `apps/web` (alias `@` -> `src`) e `apps/native` (alias `@` ->
+raiz do app), cada um só resolvendo os `*.test.ts` do seu workspace.
+
+**O que ganhou teste** (só lógica pura/schemas — sem mockar Prisma nem subir banco de teste, ver
+pendência abaixo):
+- `apps/web/src/lib/user.test.ts` — `roleSchema`, e que `publicUser()` nunca vaza `passwordHash`.
+- `apps/web/src/lib/orders.test.ts` — a tabela `TRANSITIONS` (máquina de estados do pedido)
+  exportada pra teste: espelha o fluxo documentado, nenhuma transição sai de um estado terminal
+  (`COMPLETED`/`CANCELLED`), nenhuma é reflexiva, só `client`/`provider` disparam ação, e só
+  `cancel` é do cliente; `PLATFORM_FEE_RATE` (8%) batendo com o exemplo já verificado manualmente
+  em incremento anterior (R$60 → taxa R$4,80 → total R$64,80).
+- `apps/web/src/lib/geo.test.ts` — `decodePolyline6` (decodificador de polyline do Valhalla,
+  exportado pra teste): string vazia, ponto na origem, e o **exemplo canônico do algoritmo de
+  polyline do Google** (`_p~iF~ps|U_ulLnnqC_mqNvxq\`@` → 3 pontos), ajustado pra precisão 1e6 que
+  o projeto usa (1e5 no exemplo oficial).
+- `apps/web/src/app/api/auth/register/route.test.ts` e
+  `.../notifications/preferences/route.test.ts` — os schemas Zod inline dessas rotas foram
+  exportados (`registerSchema`, `notificationPreferencesSchema`) pra testar as regras de validação
+  direto, sem subir o Next.js: `acceptedTerms` tem que ser `true` (RNF-4), preferências não podem
+  vir com os dois campos ausentes, etc.
+- `apps/native/lib/format.test.ts` — todos os helpers de formatação (`initialsOf`,
+  `priceFromCents`, `moneyFromCents`, `orderStatusLabel`/`isOrderActive`, `shortTime`/
+  `shortDateTime`, e os dois novos do incremento de notificações, `relativeTime`/
+  `dateGroupLabel`, com `vi.useFakeTimers()` pra fixar "agora" e evitar teste flaky por fuso
+  horário).
+- `apps/native/lib/notifications.test.ts` — `pathForNotification` nos 6 casos (chat/pedido ×
+  cliente/prestador × sem orderId/type).
+
+**CI** (`.github/workflows/ci.yml`, novo): dispara em push pra `main` e em pull requests;
+`pnpm install --frozen-lockfile` → `pnpm check-types` → `pnpm test`. Usa env vars **fake** (não os
+segredos reais do `.env`) só pra `@judeu/env` conseguir validar o schema na hora de importar os
+módulos — os testes são unitários e não abrem conexão de verdade com Supabase/Stripe.
+
+**Verificado:** `pnpm check-types` e `pnpm test` (via turbo, na raiz) — 3 pacotes cada, todos
+passando; **51 testes** no total (27 web + 24 native), todos verdes, incluindo o vetor do polyline
+que bati manualmente bit a bit contra o algoritmo antes de rodar (bateu de primeira).
+
+**Pendências:** lint (ESLint) não foi configurado — o repo nunca teve nenhum arquivo de config, e
+decidir o conjunto de regras (quão estrito, React Native + Next.js) é uma escolha de produto que
+prefiro alinhar com você antes de aplicar (pode gerar centenas de avisos no código já existente);
+cobertura ainda não chega nas rotas que tocam o banco (`createOrder`, `transitionOrder`,
+`deleteAccount` etc.) — isso exigiria mockar o Prisma ou provisionar um banco de teste dedicado
+(hoje só existe o Supabase de desenvolvimento, o mesmo usado pra verificação manual); `pnpm build`
+não entrou no CI porque exige segredos reais (Stripe, Supabase, JWT de produção) como secrets do
+GitHub Actions — configuração de conta, mesmo padrão dos outros handoffs de infra.
+
+### ✅ Incremento — Edição de perfil: dados, foto, livro de endereços (RF-A6, RF-C6)
+
+A tela **Perfil do cliente** era 100% mock — nome "João Silva" fixo, "Membro desde 2024" fixo, stats
+fake ("12 Serviços", "4.9 ★ Como cliente", "3 Favoritos" sem favoritos existir como feature), botão
+"Sair da conta" já corrigido num incremento anterior, e os menus "Meus endereços"/"Formas de
+pagamento"/"Prestadores favoritos" sem nenhum destino (`href` ausente). Sem migração — `User.
+fullName/phone/avatarUrl` e o model `Address` já existiam; só nunca tinham CRUD nem UI de gestão
+fora do fluxo de criar pedido (que sempre cria um `Address` novo, avulso).
+
+**Backend:**
+- `apps/web/src/lib/user.ts` — `PublicUser`/`publicUser()` ganharam `createdAt` (pro "Membro desde
+  {ano}" real).
+- `apps/web/src/lib/profile.ts` (novo) — `updateProfile` (nome/telefone), `updateAvatar` (sobe a
+  foto e grava a URL), `getClientStats` (pedidos concluídos + nota média recebida **como cliente**
+  — `Review` onde `targetId = userId` e `order.clientId = userId`; diferente do prestador, o cliente
+  não tem coluna agregada própria, calculado na hora só pra essa tela).
+- `apps/web/src/lib/storage.ts` — novo `uploadAvatar`, bucket **público** `avatars` (diferente do
+  `kyc-documents`, privado — a foto de perfil é vista por outros usuários), retorna a URL pública
+  (não só o path).
+- `apps/web/src/lib/addresses.ts` (novo) — CRUD completo do livro de endereços: `listAddresses`
+  (padrão primeiro), `createAddress` (geocodifica via Nominatim igual ao pedido, mesmo fallback pro
+  centro de Palmas; primeiro endereço da conta vira padrão automaticamente), `updateAddress`,
+  `deleteAddress` (promove outro a padrão se apagar o que era padrão), `setDefaultAddress`
+  (transação: desliga o padrão anterior, liga o novo). `FALLBACK_LAT`/`FALLBACK_LNG` exportados de
+  `orders.ts` pra não duplicar os números mágicos.
+- Rotas: `PATCH /api/auth/me`, `POST /api/auth/me/avatar`, `GET /api/auth/me/stats`,
+  `GET/POST /api/addresses`, `PATCH/DELETE /api/addresses/[id]`, `POST /api/addresses/[id]/default`.
+
+**App:**
+- `components/ui/avatar.tsx` — passou a aceitar `imageUri` opcional (`Image` real quando presente,
+  cai pras iniciais senão); antes só renderizava iniciais, `avatarUrl` existia no tipo mas nunca era
+  usado em lugar nenhum da UI.
+- `lib/auth-context.tsx` — novo `updateUser()` no contexto, pra sincronizar o usuário local na hora
+  depois de editar perfil/subir avatar (sem precisar de um round-trip extra a `/api/auth/me`).
+- `lib/cep.ts` (novo) — `useCepAutofill`, hook extraído da lógica de ViaCEP que já existia (só)
+  dentro de `create-order.tsx`; agora reaproveitado ali **e** no formulário de endereço novo.
+- **Perfil do cliente** reescrito: avatar/nome/"Membro desde" reais (`useAuth().user`), 2 stats reais
+  (pedidos concluídos, nota como cliente — a 3ª stat, "Favoritos", foi **removida** por não existir
+  a feature, RF-D8 é P2 e não foi construído); menu com destinos reais ("Editar perfil", "Meus
+  endereços", "Ajuda e suporte") — removidos "Formas de pagamento" e "Prestadores favoritos", que
+  não levavam a lugar nenhum e não têm feature correspondente no escopo atual.
+- **Nova tela** `client/edit-profile.tsx` — avatar (toque pra trocar via `expo-image-picker`, mesmo
+  padrão do upload de documento da KYC), nome, telefone; e-mail mostrado como somente-leitura (fora
+  de escopo alterar e-mail de login nesta rodada).
+- **Novas telas** `client/addresses.tsx` (lista, com badge "Padrão", "Tornar padrão"/excluir por
+  endereço) e `client/address-form.tsx` (criar/editar, CEP com autofill via `useCepAutofill`,
+  "Definir como padrão" só na criação — trocar o padrão de um endereço existente é sempre pela
+  lista).
+- `create-order.tsx` — sem mudança de comportamento, só passou a usar o `useCepAutofill`
+  compartilhado em vez da cópia própria da mesma lógica.
+
+**Verificado E2E** via curl contra o Supabase real: `GET /api/auth/me` já retorna `createdAt`;
+`PATCH` 401 sem token, 422 nome curto, 200 com nome/telefone novos (revertido depois pro valor
+original do usuário de teste); `GET .../stats` retorna zerado pra conta sem pedido concluído/review;
+livro de endereços — criar 2 endereços (1º não virou padrão automático porque essa conta **já tinha**
+um `Address` de um pedido anterior, então `existingCount` não era zero — comportamento correto dado
+que o "padrão automático" conta qualquer `Address` da conta, incluindo os avulsos de pedidos
+antigos); marcar padrão (transação troca corretamente); editar; excluir o padrão promove o endereço
+mais recente restante a padrão; excluir/editar endereço **de outro usuário** → `404` (não vaza que o
+recurso existe); payload inválido → `422`; upload de avatar sem Storage configurado → erro claro
+("Supabase Storage não configurado"), mesmo padrão do KYC, não um 500 genérico. Typecheck web+native
+e os 51 testes automatizados seguem limpos.
+
+**Pendências:** foto de perfil só funciona de ponta a ponta depois de ativar o Supabase Storage e
+criar o bucket público `avatars` — mesma pendência de conta já registrada no incremento de KYC;
+"padrão automático no primeiro endereço" pode surpreender quem já tem `Address` de pedidos antigos
+(explicado acima, comportamento intencional, não bug); o formulário de criar pedido
+(`create-order.tsx`) continua com endereço avulso — não foi integrado a escolher um endereço salvo
+do livro (ficaria mais claro como um incremento à parte, envolve mudar o fluxo de pedido).
+
 ---
 
 ## 7. Próximos blocos sugeridos (P0 pendentes)
@@ -642,12 +904,12 @@ tipar certo. Typecheck web+native limpos.
    opcional, com um PBF pequeno, se quiser rodar você mesmo).
 2. **Rebuild nativo** — build+boot no simulador iOS **já validado nesta sessão** (ver log acima);
    falta rodar num **device físico** (câmera/GPS/push reais) e no **Android**, além de navegar
-   manualmente pelas telas de mapa/tracking pra conferir o MapLibre, localização, push e o
-   `PaymentSheet` do Stripe na prática.
+   manualmente pelas telas de mapa/tracking pra conferir o MapLibre, localização, push (agora com
+   projeto EAS vinculado) e o `PaymentSheet` do Stripe na prática.
 
 Com isso, o punchlist de código P0 do roadmap (seção 5) fica completo — o que resta são handoffs de
-infraestrutura/conta que só você pode fazer (Railway, EAS, Supabase Storage, Stripe Pix, device
-físico/Android).
+infraestrutura/conta que só você pode fazer (Railway, Supabase Storage, Stripe Pix, device
+físico/Android) — **EAS já foi resolvido nesta sessão**.
 
 ---
 

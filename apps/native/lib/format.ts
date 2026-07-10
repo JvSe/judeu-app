@@ -60,3 +60,27 @@ export function shortDateTime(iso: string): string {
   const month = String(d.getMonth() + 1).padStart(2, "0");
   return `${day}/${month}, ${time}`;
 }
+
+// Tempo relativo curto ("agora", "há 5 min", "há 2h") — usado no centro de notificações.
+export function relativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "agora";
+  if (minutes < 60) return `há ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `há ${hours}h`;
+  return shortDateTime(iso);
+}
+
+// Rótulo do grupo de data ("HOJE", "ONTEM" ou "05/07") pra agrupar listas por dia.
+export function dateGroupLabel(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return "HOJE";
+  if (d.toDateString() === yesterday.toDateString()) return "ONTEM";
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  return `${day}/${month}`;
+}

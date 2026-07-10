@@ -2,19 +2,25 @@ import { useIsFocused } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  addressesApi,
   catalogApi,
   chatApi,
+  notificationsApi,
   ordersApi,
   paymentsApi,
+  profileApi,
   providerProfileApi,
   reviewsApi,
   walletApi,
 } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import type {
   CreateOrderInput,
   CreateReviewInput,
+  NotificationPreferences,
   OrderAction,
   PaymentMethodOption,
+  SavedAddressInput,
   UpsertProviderProfileInput,
 } from "@/lib/api";
 
@@ -194,5 +200,108 @@ export function useSetAvailability() {
   return useMutation({
     mutationFn: (isAvailable: boolean) => providerProfileApi.setAvailability(isAvailable),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["provider-profile", "me"] }),
+  });
+}
+
+// ---- Centro de notificações in-app + preferências (RF-I1) ----
+// `poll`: refetch curto só em foco (mesmo padrão do chat) — a tela do centro de
+// notificações liga; o badge do sino na Home/dashboard só usa o cache/fetch inicial.
+export function useNotifications(opts: { poll?: boolean } = {}) {
+  const isFocused = useIsFocused();
+  return useQuery({
+    queryKey: ["notifications"],
+    queryFn: () => notificationsApi.list(),
+    refetchInterval: opts.poll && isFocused ? 8000 : false,
+  });
+}
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => notificationsApi.markRead(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+}
+
+export function useMarkAllNotificationsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => notificationsApi.markAllRead(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+}
+
+export function useNotificationPreferences() {
+  return useQuery({
+    queryKey: ["notification-preferences"],
+    queryFn: () => notificationsApi.preferences(),
+  });
+}
+
+export function useSetNotificationPreferences() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Partial<NotificationPreferences>) => notificationsApi.setPreferences(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notification-preferences"] }),
+  });
+}
+
+// ---- Edição de perfil (RF-A6) ----
+export function useUpdateProfile() {
+  const { updateUser } = useAuth();
+  return useMutation({
+    mutationFn: (input: { fullName?: string; phone?: string }) => profileApi.update(input),
+    onSuccess: updateUser,
+  });
+}
+
+export function useUploadAvatar() {
+  const { updateUser } = useAuth();
+  return useMutation({
+    mutationFn: ({ base64, mimeType }: { base64: string; mimeType: string }) =>
+      profileApi.uploadAvatar(base64, mimeType),
+    onSuccess: updateUser,
+  });
+}
+
+export function useClientStats() {
+  return useQuery({ queryKey: ["client-stats"], queryFn: () => profileApi.stats() });
+}
+
+// ---- Livro de endereços do cliente (RF-A6) ----
+export function useAddresses() {
+  return useQuery({ queryKey: ["addresses"], queryFn: () => addressesApi.list() });
+}
+
+export function useCreateAddress() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SavedAddressInput) => addressesApi.create(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["addresses"] }),
+  });
+}
+
+export function useUpdateAddress() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Partial<SavedAddressInput> }) =>
+      addressesApi.update(id, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["addresses"] }),
+  });
+}
+
+export function useDeleteAddress() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => addressesApi.remove(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["addresses"] }),
+  });
+}
+
+export function useSetDefaultAddress() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => addressesApi.setDefault(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["addresses"] }),
   });
 }

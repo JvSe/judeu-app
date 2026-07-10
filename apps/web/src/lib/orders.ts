@@ -2,20 +2,20 @@ import type { OrderStatus, Prisma } from "@judeu/db";
 
 import { prisma } from "./db";
 import { geocodeAddress, routeBetween } from "./geo";
+import { notifyUser } from "./notifications";
 import { creditProviderWallet, refundIfPaid } from "./payments";
-import { sendPushNotification } from "./push";
 
 // ---------------------------------------------------------------------------
 // Pedidos: criação, consulta e máquina de estados (coração do marketplace).
 // ---------------------------------------------------------------------------
 
 // Comissão da plataforma sobre o valor do serviço.
-const PLATFORM_FEE_RATE = 0.08;
+export const PLATFORM_FEE_RATE = 0.08;
 
 // Centro de Palmas/TO — fallback quando o endereço ainda não foi geocodificado
 // (o geocoding real via Nominatim entra no incremento de cadastro de endereço).
-const FALLBACK_LAT = -10.1841;
-const FALLBACK_LNG = -48.3336;
+export const FALLBACK_LAT = -10.1841;
+export const FALLBACK_LNG = -48.3336;
 
 export type OrderAction =
   | "accept"
@@ -26,7 +26,7 @@ export type OrderAction =
   | "cancel";
 
 // Transições permitidas: estado atual -> ação -> novo estado, com o papel que pode disparar.
-const TRANSITIONS: Record<
+export const TRANSITIONS: Record<
   OrderAction,
   { from: OrderStatus[]; to: OrderStatus; by: "client" | "provider" }
 > = {
@@ -255,7 +255,7 @@ export async function createOrder(
     include: orderInclude,
   });
 
-  void sendPushNotification(provider.userId, {
+  void notifyUser(provider.userId, "ORDER", {
     title: order.scheduledAt ? "Novo pedido agendado" : "Novo pedido",
     body: order.service?.name ?? order.category?.name ?? "Você recebeu um novo pedido",
     data: { type: "order", orderId: order.id, role: "provider" },
@@ -390,7 +390,7 @@ export async function transitionOrder(
   // Notifica a outra parte da transição (quem disparou a ação já vê a mudança na hora).
   const recipientId = rule.by === "provider" ? order.clientId : order.provider?.userId;
   if (recipientId) {
-    void sendPushNotification(recipientId, {
+    void notifyUser(recipientId, "ORDER", {
       title: updated.service?.name ?? updated.category?.name ?? "Pedido",
       body: note ?? ACTION_NOTES[action],
       data: { type: "order", orderId: id, role: rule.by === "provider" ? "client" : "provider" },

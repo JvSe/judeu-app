@@ -8,14 +8,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { fonts } from "@/constants/fonts";
+import { useAuth } from "@/lib/auth-context";
+import { initialsOf } from "@/lib/format";
+import { useClientStats } from "@/lib/hooks";
 import { Avatar } from "@/components/ui/avatar";
 import { Screen } from "@/components/ui/screen";
-
-const stats = [
-  { value: "12", label: "Serviços" },
-  { value: "4.9 ★", label: "Como cliente" },
-  { value: "3", label: "Favoritos" },
-];
 
 const menu: {
   id: string;
@@ -23,15 +20,18 @@ const menu: {
   label: string;
   href?: string;
 }[] = [
-  { id: "addresses", icon: "location-outline", label: "Meus endereços" },
-  { id: "payments", icon: "card-outline", label: "Formas de pagamento" },
-  { id: "favorites", icon: "heart-outline", label: "Prestadores favoritos" },
+  { id: "edit", icon: "person-outline", label: "Editar perfil", href: "/client/edit-profile" },
+  { id: "addresses", icon: "location-outline", label: "Meus endereços", href: "/client/addresses" },
   { id: "support", icon: "help-circle-outline", label: "Ajuda e suporte", href: "/client/support" },
 ];
 
 export default function ClientProfile() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
+  const { user, signOut } = useAuth();
+  const { data: stats } = useClientStats();
+
+  const memberSince = user?.createdAt ? new Date(user.createdAt).getFullYear() : null;
 
   return (
     <Screen>
@@ -52,23 +52,35 @@ export default function ClientProfile() {
 
         <View style={styles.body}>
           <View style={styles.identityRow}>
-            <Avatar initials="JS" size={92} fontSize={30} radius={28} />
+            <Avatar
+              initials={initialsOf(user?.fullName ?? "?")}
+              imageUri={user?.avatarUrl}
+              size={92}
+              fontSize={30}
+              radius={28}
+            />
             <View style={styles.identityText}>
               <View style={styles.nameRow}>
-                <Text style={styles.name}>João Silva</Text>
-                <Ionicons name="star" size={17} color={theme.colors.primary} />
+                <Text style={styles.name}>{user?.fullName ?? "Você"}</Text>
+                {!!stats?.ratingCount && (
+                  <Ionicons name="star" size={17} color={theme.colors.primary} />
+                )}
               </View>
-              <Text style={styles.memberSince}>Membro desde 2024</Text>
+              {memberSince && <Text style={styles.memberSince}>Membro desde {memberSince}</Text>}
             </View>
           </View>
 
           <View style={styles.statsRow}>
-            {stats.map((stat) => (
-              <View key={stat.label} style={styles.statCard}>
-                <Text style={styles.statValue}>{stat.value}</Text>
-                <Text style={styles.statLabel}>{stat.label}</Text>
-              </View>
-            ))}
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{stats?.completedOrders ?? "—"}</Text>
+              <Text style={styles.statLabel}>Concluídos</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>
+                {stats?.ratingCount ? `${stats.ratingAvg?.toFixed(1)} ★` : "Novo"}
+              </Text>
+              <Text style={styles.statLabel}>Como cliente</Text>
+            </View>
           </View>
 
           <View style={styles.menu}>
@@ -91,7 +103,10 @@ export default function ClientProfile() {
 
           <Pressable
             style={({ pressed }) => [styles.logout, { opacity: pressed ? 0.85 : 1 }]}
-            onPress={() => router.replace("/")}
+            onPress={() => {
+              signOut();
+              router.replace("/");
+            }}
           >
             <Ionicons name="log-out-outline" size={18} color="#ff6b6b" />
             <Text style={styles.logoutText}>Sair da conta</Text>

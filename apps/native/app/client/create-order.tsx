@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { fonts } from "@/constants/fonts";
+import { useCepAutofill } from "@/lib/cep";
 import { moneyFromCents } from "@/lib/format";
 import { useCreateOrder } from "@/lib/hooks";
 import { Screen } from "@/components/ui/screen";
@@ -63,7 +64,6 @@ export default function CreateOrder() {
   const [scheduleTime, setScheduleTime] = useState(""); // HH:MM
   const [description, setDescription] = useState("");
   const [cep, setCep] = useState("");
-  const [cepLoading, setCepLoading] = useState(false);
   const [street, setStreet] = useState("");
   const [number, setNumber] = useState("");
   const [neighborhood, setNeighborhood] = useState("");
@@ -71,33 +71,17 @@ export default function CreateOrder() {
   const [uf, setUf] = useState("TO");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Autofill via ViaCEP (API pública, sem chave) — endereço final ainda é
-  // geocodificado no servidor via Nominatim ao criar o pedido (RF-C6).
-  const handleCepChange = async (value: string) => {
+  const { loading: cepLoading, handleCepChange: resolveCep } = useCepAutofill((resolved) => {
+    if (resolved.street) setStreet(resolved.street);
+    if (resolved.neighborhood) setNeighborhood(resolved.neighborhood);
+    if (resolved.city) setCity(resolved.city);
+    if (resolved.state) setUf(resolved.state);
+  });
+
+  const handleCepChange = (value: string) => {
     const digits = value.replace(/\D/g, "").slice(0, 8);
     setCep(digits);
-    if (digits.length !== 8) return;
-    setCepLoading(true);
-    try {
-      const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
-      const data = (await res.json()) as {
-        erro?: boolean;
-        logradouro?: string;
-        bairro?: string;
-        localidade?: string;
-        uf?: string;
-      };
-      if (!data.erro) {
-        if (data.logradouro) setStreet(data.logradouro);
-        if (data.bairro) setNeighborhood(data.bairro);
-        if (data.localidade) setCity(data.localidade);
-        if (data.uf) setUf(data.uf);
-      }
-    } catch {
-      // ViaCEP indisponível — segue com preenchimento manual.
-    } finally {
-      setCepLoading(false);
-    }
+    void resolveCep(digits);
   };
 
   const createOrder = useCreateOrder();

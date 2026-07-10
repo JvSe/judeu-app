@@ -10,6 +10,7 @@ export type PublicUser = {
   avatarUrl: string | null;
   emailVerified: boolean;
   phoneVerified: boolean;
+  createdAt: string;
 };
 
 export function publicUser(u: {
@@ -21,6 +22,7 @@ export function publicUser(u: {
   avatarUrl: string | null;
   emailVerified: boolean;
   phoneVerified: boolean;
+  createdAt: Date;
 }): PublicUser {
   return {
     id: u.id,
@@ -31,6 +33,7 @@ export function publicUser(u: {
     avatarUrl: u.avatarUrl,
     emailVerified: u.emailVerified,
     phoneVerified: u.phoneVerified,
+    createdAt: u.createdAt.toISOString(),
   };
 }
 

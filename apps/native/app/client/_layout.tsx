@@ -34,6 +34,9 @@ export default function ClientLayout() {
       <Stack.Screen name="notifications" />
       <Stack.Screen name="support" />
       <Stack.Screen name="privacy" />
+      <Stack.Screen name="edit-profile" />
+      <Stack.Screen name="addresses" />
+      <Stack.Screen name="address-form" />
     </Stack>
   );
 }

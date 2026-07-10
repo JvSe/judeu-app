@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { fonts } from "@/constants/fonts";
-import { useProviders } from "@/lib/hooks";
+import { useNotifications, useProviders } from "@/lib/hooks";
 import { useCurrentLocation } from "@/lib/location";
 import { avatarColor, initialsOf, priceFromCents } from "@/lib/format";
 import { Avatar } from "@/components/ui/avatar";
@@ -20,6 +20,8 @@ export default function ClientHome() {
   const insets = useSafeAreaInsets();
   const { data: providers = [] } = useProviders();
   const myLocation = useCurrentLocation();
+  const { data: notifications } = useNotifications();
+  const hasUnread = (notifications?.unreadCount ?? 0) > 0;
 
   const markers = [
     ...providers
@@ -67,7 +69,7 @@ export default function ClientHome() {
           <Pressable onPress={() => router.push("/client/notifications" as never)}>
             <GlassSurface style={styles.bellButton}>
               <Ionicons name="notifications-outline" size={22} color="#fff" />
-              <View style={styles.bellDot} />
+              {hasUnread && <View style={styles.bellDot} />}
             </GlassSurface>
           </Pressable>
           <Pressable onPress={() => router.push("/client/profile")}>

@@ -24,9 +24,13 @@ type AuthContextValue = {
     password: string;
     phone?: string;
     role?: AppUser["role"];
+    acceptedTerms: true;
   }) => Promise<AppUser>;
   resetPassword: (input: { email: string; code: string; newPassword: string }) => Promise<AppUser>;
   signOut: () => Promise<void>;
+  // Sincroniza o usuário local depois de uma edição de perfil (RF-A6) — evita
+  // um round-trip extra a /api/auth/me quando a mutation já devolve o usuário atualizado.
+  updateUser: (user: AppUser) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -91,6 +95,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await clearTokens();
         setUser(null);
         setStatus("unauthenticated");
+      },
+      updateUser(nextUser) {
+        setUser(nextUser);
       },
     }),
     [user, status],

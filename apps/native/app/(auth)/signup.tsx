@@ -21,7 +21,7 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [accepted, setAccepted] = useState(true);
+  const [accepted, setAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,6 +64,7 @@ export default function Signup() {
         password,
         phone: phone.trim() || undefined,
         role,
+        acceptedTerms: true,
       });
       router.replace(role === "PROVIDER" ? "/provider/kyc" : "/client");
     } catch (e) {
@@ -119,8 +120,17 @@ export default function Signup() {
             {accepted && <Ionicons name="checkmark" size={12} color="#fff" />}
           </View>
           <Text style={styles.termsText}>
-            Li e aceito os <Text style={styles.termsLink}>Termos de uso</Text> e a{" "}
-            <Text style={styles.termsLink}>Política de privacidade</Text>
+            Li e aceito os{" "}
+            <Text style={styles.termsLink} onPress={() => router.push("/terms" as never)}>
+              Termos de uso
+            </Text>{" "}
+            e a{" "}
+            <Text
+              style={styles.termsLink}
+              onPress={() => router.push("/privacy-policy" as never)}
+            >
+              Política de privacidade
+            </Text>
           </Text>
         </Pressable>
 

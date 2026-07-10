@@ -55,7 +55,7 @@ export type Route = {
 
 // Decodifica a polyline do Valhalla (algoritmo padrão Google polyline, precisão 1e6).
 // Decodificar no servidor evita levar um parser de polyline pro bundle nativo.
-function decodePolyline6(encoded: string): LatLng[] {
+export function decodePolyline6(encoded: string): LatLng[] {
   const points: LatLng[] = [];
   let index = 0;
   let lat = 0;

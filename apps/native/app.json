@@ -19,7 +19,12 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.judeu.app"
+      "package": "com.judeu.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "output": "static",
@@ -61,7 +66,8 @@
         "expo-image-picker",
         {
           "photosPermission": "Usado para enviar seu documento de identidade na verificação de prestador.",
-          "cameraPermission": "Usado para fotografar seu documento de identidade na verificação de prestador."
+          "cameraPermission": "Usado para fotografar seu documento de identidade na verificação de prestador.",
+          "microphonePermission": false
         }
       ],
       [
@@ -82,6 +88,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "422fcb7a-6da6-47c4-908c-727b03b2ce12"
+      }
+    },
+    "owner": "nextmed"
   }
 }

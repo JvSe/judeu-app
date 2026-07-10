@@ -1,10 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
 import { env } from "@judeu/env/server";
 
-// Upload de arquivos privados (hoje só documento de KYC) no Supabase Storage,
-// via service role — nunca exposto ao app (que não fala com o Supabase direto).
+// Upload de arquivos no Supabase Storage, via service role — o app nunca fala
+// com o Supabase direto. Documento de KYC fica num bucket privado; foto de
+// perfil (RF-A6) num bucket público, já que é exibida pra outros usuários.
 
 const KYC_BUCKET = "kyc-documents";
+const AVATAR_BUCKET = "avatars";
 
 let client: ReturnType<typeof createClient> | null = null;
 
@@ -45,4 +47,36 @@ export async function uploadKycDocument(
 
   if (uploadError) throw new Error(`Falha no upload do documento: ${uploadError.message}`);
   return path;
+}
+
+const AVATAR_MIME_EXT: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/jpg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+
+// Recebe a foto em base64, salva no bucket público de avatares e retorna a
+// URL pública (diferente do KYC — a foto de perfil é vista por outros usuários).
+export async function uploadAvatar(
+  userId: string,
+  base64: string,
+  mimeType: string,
+): Promise<string> {
+  const ext = AVATAR_MIME_EXT[mimeType];
+  if (!ext) throw new Error("Formato de imagem não suportado");
+
+  const path = `${userId}/${Date.now()}.${ext}`;
+  const bytes = Buffer.from(base64, "base64");
+
+  const { error: uploadError } = await storageClient()
+    .storage.from(AVATAR_BUCKET)
+    .upload(path, bytes, { contentType: mimeType, upsert: true });
+
+  if (uploadError) throw new Error(`Falha no upload da foto: ${uploadError.message}`);
+
+  const {
+    data: { publicUrl },
+  } = storageClient().storage.from(AVATAR_BUCKET).getPublicUrl(path);
+  return publicUrl;
 }
