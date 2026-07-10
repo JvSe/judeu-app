@@ -2,7 +2,7 @@ import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
@@ -24,12 +24,43 @@ export default function CreateOrder() {
 
   const [when, setWhen] = useState<"agora" | "agendar">("agora");
   const [description, setDescription] = useState("");
+  const [cep, setCep] = useState("");
+  const [cepLoading, setCepLoading] = useState(false);
   const [street, setStreet] = useState("");
   const [number, setNumber] = useState("");
   const [neighborhood, setNeighborhood] = useState("");
   const [city, setCity] = useState("Palmas");
   const [uf, setUf] = useState("TO");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Autofill via ViaCEP (API pública, sem chave) — endereço final ainda é
+  // geocodificado no servidor via Nominatim ao criar o pedido (RF-C6).
+  const handleCepChange = async (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 8);
+    setCep(digits);
+    if (digits.length !== 8) return;
+    setCepLoading(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+      const data = (await res.json()) as {
+        erro?: boolean;
+        logradouro?: string;
+        bairro?: string;
+        localidade?: string;
+        uf?: string;
+      };
+      if (!data.erro) {
+        if (data.logradouro) setStreet(data.logradouro);
+        if (data.bairro) setNeighborhood(data.bairro);
+        if (data.localidade) setCity(data.localidade);
+        if (data.uf) setUf(data.uf);
+      }
+    } catch {
+      // ViaCEP indisponível — segue com preenchimento manual.
+    } finally {
+      setCepLoading(false);
+    }
+  };
 
   const createOrder = useCreateOrder();
   const priceCents = params.priceCents ? Number(params.priceCents) : 0;
@@ -51,6 +82,7 @@ export default function CreateOrder() {
         description: description.trim() || undefined,
         address: {
           label: "Casa",
+          cep: cep.trim() || undefined,
           street: street.trim(),
           number: number.trim() || undefined,
           neighborhood: neighborhood.trim() || undefined,
@@ -122,6 +154,24 @@ export default function CreateOrder() {
 
         <Text style={styles.label}>Endereço</Text>
         <View style={{ gap: 10 }}>
+          <View>
+            <TextInput
+              value={cep}
+              onChangeText={handleCepChange}
+              placeholder="CEP"
+              placeholderTextColor={theme.colors.mutedForeground}
+              keyboardType="number-pad"
+              maxLength={8}
+              style={styles.input}
+            />
+            {cepLoading && (
+              <ActivityIndicator
+                color={theme.colors.primary}
+                size="small"
+                style={styles.cepLoading}
+              />
+            )}
+          </View>
           <TextInput
             value={street}
             onChangeText={setStreet}
@@ -278,6 +328,13 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 14.5,
     fontFamily: fonts.medium,
     color: "#fff",
+  },
+  cepLoading: {
+    position: "absolute",
+    right: 15,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
   },
   whenRow: {
     flexDirection: "row",

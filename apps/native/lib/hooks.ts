@@ -43,11 +43,14 @@ export function useOrders(as: "client" | "provider" = "client") {
   return useQuery({ queryKey: ["orders", as], queryFn: () => ordersApi.list(as) });
 }
 
-export function useOrder(id: string) {
+// `poll` liga refetch curto (só em foco) — usado no acompanhamento em tempo real (RF-E3).
+export function useOrder(id: string, opts: { poll?: boolean } = {}) {
+  const isFocused = useIsFocused();
   return useQuery({
     queryKey: ["order", id],
     queryFn: () => ordersApi.get(id),
     enabled: !!id,
+    refetchInterval: opts.poll && isFocused ? 5000 : false,
   });
 }
 
@@ -70,6 +73,16 @@ export function useTransitionOrder() {
       qc.invalidateQueries({ queryKey: ["order", order.id] });
       qc.invalidateQueries({ queryKey: ["wallet"] });
     },
+  });
+}
+
+// Prestador reporta a posição atual enquanto o pedido está a caminho (RF-E3).
+export function useUpdateOrderLocation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, lat, lng }: { id: string; lat: number; lng: number }) =>
+      ordersApi.updateLocation(id, lat, lng),
+    onSuccess: (order) => qc.invalidateQueries({ queryKey: ["order", order.id] }),
   });
 }
 

@@ -11,6 +11,7 @@ import { fonts } from "@/constants/fonts";
 import { useAuth } from "@/lib/auth-context";
 import { initialsOf, moneyFromCents, orderStatusLabel, shortTime } from "@/lib/format";
 import { useMyProviderProfile, useOrders, useTransitionOrder } from "@/lib/hooks";
+import { useShareLocationWhileEnRoute } from "@/lib/location";
 import { Avatar } from "@/components/ui/avatar";
 import { Screen } from "@/components/ui/screen";
 
@@ -44,6 +45,11 @@ export default function ProviderDashboard() {
   const activeOrders = orders.filter(
     (o) => o.status === "ACCEPTED" || o.status === "EN_ROUTE" || o.status === "IN_PROGRESS",
   );
+
+  const enRouteOrder = activeOrders.find(
+    (o) => o.status === "ACCEPTED" || o.status === "EN_ROUTE",
+  );
+  useShareLocationWhileEnRoute(enRouteOrder?.id);
 
   const act = (id: string, action: OrderAction) => transition.mutate({ id, action });
 

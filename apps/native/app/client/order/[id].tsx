@@ -30,7 +30,7 @@ export default function OrderDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
-  const { data: order, isLoading } = useOrder(id);
+  const { data: order, isLoading } = useOrder(id, { poll: true });
   const transition = useTransitionOrder();
 
   if (isLoading || !order) {
@@ -91,6 +91,16 @@ export default function OrderDetail() {
             <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
           </Pressable>
         </View>
+
+        {(order.status === "ACCEPTED" || order.status === "EN_ROUTE") && (
+          <Pressable
+            style={styles.trackButton}
+            onPress={() => router.push({ pathname: "/client/tracking/[id]", params: { id: order.id } })}
+          >
+            <Ionicons name="navigate" size={17} color="#fff" />
+            <Text style={styles.trackButtonText}>Acompanhar no mapa</Text>
+          </Pressable>
+        )}
 
         {cancelled ? (
           <View style={styles.cancelledCard}>
@@ -268,6 +278,21 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: "rgba(255,255,255,0.07)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  trackButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+    backgroundColor: theme.colors.primary,
+    borderRadius: 16,
+    paddingVertical: 14,
+    marginBottom: 16,
+  },
+  trackButtonText: {
+    fontSize: 14.5,
+    fontFamily: fonts.bold,
+    color: "#fff",
   },
   cancelledCard: {
     flexDirection: "row",

@@ -1,6 +1,7 @@
 import type { OrderStatus, Prisma } from "@judeu/db";
 
 import { prisma } from "./db";
+import { geocodeAddress, routeBetween } from "./geo";
 import { creditProviderWallet, refundIfPaid } from "./payments";
 import { sendPushNotification } from "./push";
 
@@ -70,8 +71,18 @@ export type OrderDTO = {
     neighborhood: string | null;
     city: string;
     state: string;
+    lat: number;
+    lng: number;
   };
   events: { status: OrderStatus; note: string | null; createdAt: string }[];
+  tracking: {
+    providerLat: number | null;
+    providerLng: number | null;
+    updatedAt: string | null;
+    distanceKm: number | null;
+    etaMin: number | null;
+    route: { lat: number; lng: number }[] | null;
+  };
 };
 
 function toDTO(o: OrderRow): OrderDTO {
@@ -103,13 +114,44 @@ function toDTO(o: OrderRow): OrderDTO {
       neighborhood: o.address.neighborhood,
       city: o.address.city,
       state: o.address.state,
+      lat: o.address.lat,
+      lng: o.address.lng,
     },
     events: o.events.map((e) => ({
       status: e.status,
       note: e.note,
       createdAt: e.createdAt.toISOString(),
     })),
+    tracking: {
+      providerLat: o.providerLat,
+      providerLng: o.providerLng,
+      updatedAt: o.providerLocationAt?.toISOString() ?? null,
+      distanceKm: null,
+      etaMin: null,
+      route: null,
+    },
   };
+}
+
+// Preenche distância/ETA reais (Valhalla) a partir da última posição do prestador.
+// Best-effort: sem VALHALLA_URL configurada (Railway pendente) ou em caso de erro,
+// mantém tracking.distanceKm/etaMin nulos em vez de derrubar a request.
+async function withRoute(order: OrderRow, dto: OrderDTO): Promise<OrderDTO> {
+  if (order.providerLat == null || order.providerLng == null) return dto;
+  try {
+    const route = await routeBetween(
+      { lat: order.providerLat, lng: order.providerLng },
+      { lat: order.address.lat, lng: order.address.lng },
+    );
+    if (route) {
+      dto.tracking.distanceKm = route.distanceKm;
+      dto.tracking.etaMin = route.durationMin;
+      dto.tracking.route = route.points;
+    }
+  } catch {
+    // Valhalla indisponível/não configurada — segue sem ETA.
+  }
+  return dto;
 }
 
 export type CreateOrderInput = {
@@ -156,6 +198,31 @@ export async function createOrder(
   const platformFeeCents = Math.round(priceCents * PLATFORM_FEE_RATE);
   const totalCents = priceCents + platformFeeCents;
 
+  // Geocoding real via Nominatim (RF-C6) quando o app não manda lat/lng prontos.
+  // Best-effort: sem NOMINATIM_URL (Railway pendente) ou endereço não encontrado,
+  // cai no centro de Palmas em vez de falhar a criação do pedido.
+  let lat = input.address.lat;
+  let lng = input.address.lng;
+  if (lat == null || lng == null) {
+    try {
+      const query = [
+        `${input.address.street}${input.address.number ? `, ${input.address.number}` : ""}`,
+        input.address.neighborhood,
+        input.address.city,
+        input.address.state,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      const geocoded = await geocodeAddress(query);
+      if (geocoded) {
+        lat = geocoded.lat;
+        lng = geocoded.lng;
+      }
+    } catch {
+      // Nominatim indisponível/não configurada — segue com o fallback abaixo.
+    }
+  }
+
   const order = await prisma.order.create({
     data: {
       client: { connect: { id: clientId } },
@@ -179,8 +246,8 @@ export async function createOrder(
           neighborhood: input.address.neighborhood,
           city: input.address.city,
           state: input.address.state,
-          lat: input.address.lat ?? FALLBACK_LAT,
-          lng: input.address.lng ?? FALLBACK_LNG,
+          lat: lat ?? FALLBACK_LAT,
+          lng: lng ?? FALLBACK_LNG,
         },
       },
       events: { create: { status: "CREATED", note: "Pedido criado" } },
@@ -225,7 +292,34 @@ export async function getOrder(id: string, userId: string): Promise<OrderDTO | n
   const isClient = o.clientId === userId;
   const isProvider = o.provider?.userId === userId;
   if (!isClient && !isProvider) return null;
-  return toDTO(o);
+  return withRoute(o, toDTO(o));
+}
+
+// Prestador reporta sua posição atual enquanto o pedido está a caminho (RF-E3).
+export async function updateOrderLocation(
+  id: string,
+  userId: string,
+  lat: number,
+  lng: number,
+): Promise<OrderDTO | { error: string; status: number }> {
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: { provider: { select: { userId: true } } },
+  });
+  if (!order) return { error: "Pedido não encontrado", status: 404 };
+  if (order.provider?.userId !== userId) {
+    return { error: "Ação permitida apenas ao prestador do pedido", status: 403 };
+  }
+  if (order.status !== "ACCEPTED" && order.status !== "EN_ROUTE") {
+    return { error: "Pedido não está a caminho", status: 409 };
+  }
+
+  const updated = await prisma.order.update({
+    where: { id },
+    data: { providerLat: lat, providerLng: lng, providerLocationAt: new Date() },
+    include: orderInclude,
+  });
+  return withRoute(updated, toDTO(updated));
 }
 
 const ACTION_NOTES: Record<OrderAction, string> = {

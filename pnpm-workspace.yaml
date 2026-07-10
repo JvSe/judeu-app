@@ -18,3 +18,5 @@ catalog:
   "@tailwindcss/postcss": ^4.3.1
   "@types/react-dom": ^19.2.3
   tailwindcss: ^4.3.1
+minimumReleaseAgeExclude:
+  - expo-location@56.0.20

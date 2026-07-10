@@ -220,6 +220,10 @@ model Order {
   acceptedAt      DateTime?
   completedAt     DateTime?
   cancelledAt     DateTime?
+  // Última posição do prestador reportada durante EN_ROUTE/IN_PROGRESS (RF-E3).
+  providerLat        Float?
+  providerLng        Float?
+  providerLocationAt DateTime?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 

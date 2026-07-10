@@ -7,26 +7,51 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { fonts } from "@/constants/fonts";
 import { useProviders } from "@/lib/hooks";
+import { useCurrentLocation } from "@/lib/location";
 import { avatarColor, initialsOf, priceFromCents } from "@/lib/format";
 import { Avatar } from "@/components/ui/avatar";
 import { GlassSurface } from "@/components/ui/glass-surface";
-import { MapBackdrop } from "@/components/ui/map-backdrop";
 import { ProviderMarker, SelfMarker } from "@/components/ui/map-marker";
+import { RealMap } from "@/components/ui/real-map";
 import { Screen } from "@/components/ui/screen";
 
 export default function ClientHome() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const { data: providers = [] } = useProviders();
+  const myLocation = useCurrentLocation();
+
+  const markers = [
+    ...providers
+      .filter((p) => p.baseLat != null && p.baseLng != null)
+      .map((p, index) => ({
+        id: p.id,
+        lngLat: [p.baseLng as number, p.baseLat as number] as [number, number],
+        render: () => (
+          <ProviderMarker
+            initials={initialsOf(p.name)}
+            color={index === 0 ? "#FF6600" : "#3a3a70"}
+            highlighted={index === 0}
+          />
+        ),
+      })),
+    ...(myLocation
+      ? [
+          {
+            id: "self",
+            lngLat: [myLocation.lng, myLocation.lat] as [number, number],
+            render: () => <SelfMarker />,
+          },
+        ]
+      : []),
+  ];
 
   return (
     <Screen>
-      <MapBackdrop>
-        <ProviderMarker initials="CM" color="#FF6600" top={230} left={110} highlighted />
-        <ProviderMarker initials="ML" color="#3a3a70" top={300} left={300} />
-        <ProviderMarker initials="RS" color="#3a3a70" top={500} left={160} />
-        <SelfMarker top={385} left={205} />
-      </MapBackdrop>
+      <RealMap
+        markers={markers}
+        center={myLocation ? [myLocation.lng, myLocation.lat] : undefined}
+      />
 
       <View style={[styles.overlay, { paddingTop: insets.top + 12 }]} pointerEvents="box-none">
         <View style={styles.topBar}>
@@ -34,7 +59,9 @@ export default function ClientHome() {
             <Ionicons name="location" size={16} color={theme.colors.primary} />
             <View>
               <Text style={styles.locationLabel}>SUA LOCALIZAÇÃO</Text>
-              <Text style={styles.locationValue}>Rua das Palmeiras, 240</Text>
+              <Text style={styles.locationValue}>
+                {myLocation ? "Sua localização" : "Localização indisponível"}
+              </Text>
             </View>
           </GlassSurface>
           <Pressable onPress={() => router.push("/client/notifications" as never)}>

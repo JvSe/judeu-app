@@ -1,58 +1,107 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useLocalSearchParams } from "expo-router";
-import { Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Path } from "react-native-svg";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
+import type { OrderStatus } from "@/lib/api";
 import { fonts } from "@/constants/fonts";
-import { providers } from "@/lib/mock-data";
+import { initialsOf } from "@/lib/format";
+import { useOrder } from "@/lib/hooks";
 import { Avatar } from "@/components/ui/avatar";
 import { IconButton } from "@/components/ui/icon-button";
-import { MapBackdrop } from "@/components/ui/map-backdrop";
 import { ProviderMarker } from "@/components/ui/map-marker";
+import { RealMap } from "@/components/ui/real-map";
 import { Screen } from "@/components/ui/screen";
 
-const ROUTE_PATH = "M122,205 C122,300 235,300 262,375 C292,455 300,470 300,505";
+const STEPS: { status: OrderStatus; label: string }[] = [
+  { status: "ACCEPTED", label: "Aceito" },
+  { status: "EN_ROUTE", label: "A caminho" },
+  { status: "IN_PROGRESS", label: "Chegou" },
+];
+
+function statusMessage(status: OrderStatus, providerFirstName: string): string {
+  switch (status) {
+    case "ACCEPTED":
+      return `${providerFirstName} aceitou o pedido`;
+    case "EN_ROUTE":
+      return `${providerFirstName} está a caminho`;
+    case "IN_PROGRESS":
+      return `${providerFirstName} está no local`;
+    case "COMPLETED":
+      return "Serviço concluído";
+    default:
+      return "Aguardando prestador";
+  }
+}
 
 export default function Tracking() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const provider = providers.find((item) => item.id === id) ?? providers[0];
   const insets = useSafeAreaInsets();
   const { theme } = useUnistyles();
+  const { data: order, isLoading } = useOrder(id, { poll: true });
 
-  return (
-    <Screen>
-      <MapBackdrop>
-        <Svg
-          width="100%"
-          height="100%"
-          viewBox="0 0 402 874"
-          preserveAspectRatio="none"
-          style={StyleSheet.absoluteFill}
-        >
-          <Path
-            d={ROUTE_PATH}
-            fill="none"
-            stroke={theme.colors.primary}
-            strokeWidth={11}
-            strokeLinecap="round"
-            opacity={0.28}
-          />
-          <Path
-            d={ROUTE_PATH}
-            fill="none"
-            stroke={theme.colors.primary}
-            strokeWidth={5}
-            strokeLinecap="round"
-          />
-        </Svg>
-        <ProviderMarker initials={provider.initials} color={provider.color} top={205} left={122} highlighted size={48} />
+  if (isLoading || !order) {
+    return (
+      <Screen>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator color={theme.colors.primary} />
+        </View>
+      </Screen>
+    );
+  }
+
+  const providerName = order.provider?.name ?? "Prestador";
+  const providerFirstName = providerName.split(" ")[0];
+  const currentIndex = STEPS.findIndex((s) => s.status === order.status);
+  const { distanceKm, etaMin, providerLat, providerLng, route } = order.tracking;
+  const { lat: destLat, lng: destLng } = order.address;
+
+  const providerCoord: [number, number] | null =
+    providerLat != null && providerLng != null ? [providerLng, providerLat] : null;
+  const destCoord: [number, number] = [destLng, destLat];
+
+  const markers = [
+    ...(providerCoord
+      ? [
+          {
+            id: "provider",
+            lngLat: providerCoord,
+            render: () => (
+              <ProviderMarker initials={initialsOf(providerName)} color="#3a3a70" highlighted size={48} />
+            ),
+          },
+        ]
+      : []),
+    {
+      id: "destination",
+      lngLat: destCoord,
+      render: () => (
         <View style={styles.destinationPin}>
           <Ionicons name="home" size={17} color="#000052" />
         </View>
-      </MapBackdrop>
+      ),
+    },
+  ];
+
+  const bounds: [number, number, number, number] | undefined = providerCoord
+    ? [
+        Math.min(providerCoord[0], destCoord[0]),
+        Math.min(providerCoord[1], destCoord[1]),
+        Math.max(providerCoord[0], destCoord[0]),
+        Math.max(providerCoord[1], destCoord[1]),
+      ]
+    : undefined;
+
+  return (
+    <Screen>
+      <RealMap
+        markers={markers}
+        route={route}
+        center={!bounds ? destCoord : undefined}
+        bounds={bounds}
+      />
 
       <View style={[styles.topBar, { top: insets.top + 8 }]}>
         <IconButton onPress={() => router.back()}>
@@ -60,51 +109,75 @@ export default function Tracking() {
         </IconButton>
         <View style={styles.statusPill}>
           <View style={styles.statusDot} />
-          <Text style={styles.statusText}>{provider.name.split(" ")[0]} está a caminho</Text>
+          <Text style={styles.statusText}>{statusMessage(order.status, providerFirstName)}</Text>
         </View>
       </View>
 
       <View style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]}>
         <View style={styles.grabber} />
         <View style={styles.sheetHeader}>
-          <Text style={styles.etaText}>Chega em 8 min</Text>
-          <Text style={styles.distanceText}>{provider.distanceKm} km</Text>
+          <Text style={styles.etaText}>
+            {etaMin != null ? `Chega em ${etaMin} min` : "Calculando chegada..."}
+          </Text>
+          {distanceKm != null && (
+            <Text style={styles.distanceText}>{distanceKm.toFixed(1)} km</Text>
+          )}
         </View>
 
         <View style={styles.progressRow}>
-          <View style={[styles.progressDot, styles.progressDotDone]}>
-            <Ionicons name="checkmark" size={11} color="#fff" />
-          </View>
-          <View style={[styles.progressBar, styles.progressBarDone]} />
-          <View style={[styles.progressDot, styles.progressDotActive]} />
-          <View style={styles.progressBar} />
-          <View style={styles.progressDotPending} />
+          {STEPS.map((step, index) => {
+            const done = index < currentIndex;
+            const active = index === currentIndex;
+            return (
+              <View key={step.status} style={{ flexDirection: "row", flex: index === STEPS.length - 1 ? 0 : 1, alignItems: "center" }}>
+                <View
+                  style={[
+                    styles.progressDot,
+                    done && styles.progressDotDone,
+                    active && styles.progressDotActive,
+                    !done && !active && styles.progressDotPending,
+                  ]}
+                >
+                  {done && <Ionicons name="checkmark" size={11} color="#fff" />}
+                </View>
+                {index < STEPS.length - 1 && (
+                  <View style={[styles.progressBar, done && styles.progressBarDone]} />
+                )}
+              </View>
+            );
+          })}
         </View>
         <View style={styles.progressLabels}>
-          <Text style={styles.progressLabelDone}>Aceito</Text>
-          <Text style={styles.progressLabelActive}>A caminho</Text>
-          <Text style={styles.progressLabelPending}>Chegou</Text>
+          {STEPS.map((step, index) => (
+            <Text
+              key={step.status}
+              style={
+                index < currentIndex
+                  ? styles.progressLabelDone
+                  : index === currentIndex
+                    ? styles.progressLabelActive
+                    : styles.progressLabelPending
+              }
+            >
+              {step.label}
+            </Text>
+          ))}
         </View>
 
         <View style={styles.providerRow}>
-          <Avatar initials={provider.initials} color={provider.color} size={52} radius={16} />
+          <Avatar initials={initialsOf(providerName)} color="#3a3a70" size={52} radius={16} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.providerName}>{provider.name}</Text>
+            <Text style={styles.providerName}>{providerName}</Text>
             <Text style={styles.providerRole}>
-              {provider.role} · ★ {provider.rating}
+              {order.provider?.headline ?? "Serviço"} · ★ {(order.provider?.ratingAvg ?? 0).toFixed(1)}
             </Text>
           </View>
           <IconButton
             variant="solid"
             size={48}
-            onPress={() =>
-              router.push({ pathname: "/client/chat/[id]", params: { id: provider.id } })
-            }
+            onPress={() => router.push({ pathname: "/client/chat/[id]", params: { id: order.id } })}
           >
             <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
-          </IconButton>
-          <IconButton size={48}>
-            <Ionicons name="call" size={19} color="#fff" />
           </IconButton>
         </View>
       </View>
@@ -114,16 +187,12 @@ export default function Tracking() {
 
 const styles = StyleSheet.create((theme) => ({
   destinationPin: {
-    position: "absolute",
-    top: 505,
-    left: 300,
     width: 40,
     height: 40,
     borderRadius: 20,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
-    transform: [{ translateX: -20 }, { translateY: -38 }, { rotate: "45deg" }],
   },
   topBar: {
     position: "absolute",
@@ -183,7 +252,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "space-between",
   },
   etaText: {
-    fontSize: 30,
+    fontSize: 26,
     fontFamily: fonts.extraBold,
     color: theme.colors.foreground,
     letterSpacing: -0.5,
@@ -203,11 +272,11 @@ const styles = StyleSheet.create((theme) => ({
     width: 22,
     height: 22,
     borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
   },
   progressDotDone: {
     backgroundColor: theme.colors.success,
-    alignItems: "center",
-    justifyContent: "center",
   },
   progressDotActive: {
     backgroundColor: theme.colors.primary,
@@ -215,9 +284,6 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: "rgba(255,102,0,0.3)",
   },
   progressDotPending: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
     backgroundColor: "rgba(255,255,255,0.12)",
   },
   progressBar: {

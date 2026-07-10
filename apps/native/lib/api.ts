@@ -238,6 +238,8 @@ export type OrderAddress = {
   neighborhood: string | null;
   city: string;
   state: string;
+  lat: number;
+  lng: number;
 };
 
 export type Order = {
@@ -256,6 +258,14 @@ export type Order = {
   client: { id: string; name: string; phone: string | null };
   address: OrderAddress;
   events: { status: OrderStatus; note: string | null; createdAt: string }[];
+  tracking: {
+    providerLat: number | null;
+    providerLng: number | null;
+    updatedAt: string | null;
+    distanceKm: number | null;
+    etaMin: number | null;
+    route: { lat: number; lng: number }[] | null;
+  };
 };
 
 export type CreateOrderInput = {
@@ -294,6 +304,12 @@ export const ordersApi = {
     return apiFetch<{ order: Order }>(`/api/orders/${id}/transition`, {
       method: "POST",
       body: { action, note },
+    }).then((r) => r.order);
+  },
+  updateLocation(id: string, lat: number, lng: number) {
+    return apiFetch<{ order: Order }>(`/api/orders/${id}/location`, {
+      method: "POST",
+      body: { lat, lng },
     }).then((r) => r.order);
   },
 };

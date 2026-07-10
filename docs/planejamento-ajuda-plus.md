@@ -17,12 +17,13 @@
 | **Chat real cliente ↔ prestador** | RF-E1 | ✅ **Concluído** |
 | **Pagamento real (Stripe) + split interno** | RF-F1/F2/F3 | ✅ **Concluído** · Pix pendente ativação na conta |
 | **Busca por IA conversacional (on-device)** | RF-J1..J5, J7 | ✅ **Código concluído** · ⏳ verificação em device |
-| **Geo (Valhalla + Nominatim) na Railway** | RF-C5/C6, RF-E3 (base) | 📦 **Repo/instruções prontos** · deploy com você |
+| **Geo (Valhalla + Nominatim) na Railway** | RF-C5/C6, RF-E3 (base) | ✅ **Código concluído** · deploy Railway pendente (URLs a caminho) |
 | **Carteira/ganhos do prestador (saldo + extrato)** | RF-F4/F5 | ✅ **Concluído** |
 | **Onboarding profissional + KYC do prestador** | RF-B1/B2, RF-B3 (parcial) | ✅ **Concluído** · upload de documento pendente ativação do Storage |
 | **Notificações push (novo pedido, updates, mensagens)** | RF-E2 | ✅ **Código concluído** · projeto EAS pendente (`eas init`) |
 | **Painel admin (moderação de KYC)** | RF-H3 | ✅ **Concluído** |
-| Tracking | RF-E3 | ⬜ **Pendente** · depende do deploy Railway |
+| **Tracking em tempo real (posição do prestador + ETA)** | RF-E3 | ✅ **Código concluído** · ETA real depende do deploy Railway (Valhalla) |
+| **Mapa real (MapLibre + tiles OpenFreeMap)** | RF-C1/C2 | ✅ **Código concluído** · rebuild nativo (`expo prebuild` + build Xcode) validado no simulador iOS — app abre normal; render visual do mapa (por trás do login) ainda não conferida |
 
 **Legenda de prioridade:** **P0** = essencial ao MVP · **P1** = produto sério/confiável · **P2** = maturidade/escala/diferencial.
 
@@ -47,7 +48,7 @@ construído, incremento a incremento.
 - **Busca por IA (funcionalidade central):** descoberta por **IA conversacional** em vez de grid/filtros. **Decisão desta fase:** rodar o LLM **on-device** (React Native ExecuTorch) num modelo **híbrido** — a IA conversa e chama uma *tool* que busca prestadores **reais** no Supabase. Sem chave de LLM no servidor. Detalhe em [apps/native/docs/ai-search-planning.md](../apps/native/docs/ai-search-planning.md).
 - **Mapa e rotas (stack gratuita sobre OpenStreetMap):**
   - Rota **sempre** entre a **casa do cliente** (destino, geocodificada 1x no cadastro) e o **GPS atual do prestador** (origem).
-  - Render: **MapLibre RN** + tiles **MapTiler** (free tier).
+  - Render: **MapLibre RN** + tiles **OpenFreeMap** (grátis, sem chave — trocado do MapTiler free-tier planejado originalmente).
   - Geocoding: **ViaCEP** (CEP→endereço) + **Nominatim self-hosted** (endereço→coords).
   - Rotas/ETA: **Valhalla self-hosted**. Tracking: **Supabase Realtime** move o marcador e recalcula ETA.
   - Ambos (Nominatim/Valhalla) hospedados na **Railway**.
@@ -73,12 +74,12 @@ construído, incremento a incremento.
 - **RF-B5 (P2)** Portfólio (fotos) e certificações por categoria.
 
 ### RF-C · Descoberta, Busca e Geolocalização
-- **RF-C1 (P0)** Localização real do dispositivo.
-- **RF-C2 (P0)** Mapa real (MapLibre + MapTiler).
+- **RF-C1 (P0)** Localização real do dispositivo. — ✅ *(`expo-location`, foreground)*
+- **RF-C2 (P0)** Mapa real (MapLibre + tiles OpenFreeMap). — ✅ *código pronto; rebuild nativo pendente pra verificar em device*
 - **RF-C3 (P0)** Consulta de prestadores no Supabase por categoria/serviço + geo — alimenta mapa e IA. — ✅
 - **RF-C4 (P1)** Filtros/ordenação tradicionais (fallback à IA). — *fallback em uso na Explorar*
-- **RF-C5 (P1)** Distância/ETA real via Valhalla.
-- **RF-C6 (P2)** Busca por endereço/CEP (ViaCEP + Nominatim) + múltiplos endereços.
+- **RF-C5 (P1)** Distância/ETA real via Valhalla. — ✅ *código pronto (rota prestador→endereço); ETA real depende do deploy Railway*
+- **RF-C6 (P2)** Busca por endereço/CEP (ViaCEP + Nominatim) + múltiplos endereços. — ✅ *ViaCEP no cadastro do pedido; geocoding Nominatim no servidor (fallback pro centro de Palmas sem Railway); múltiplos endereços fora de escopo*
 
 ### RF-J · Busca por IA conversacional (funcionalidade central) 🌟
 - **RF-J1 (P0)** Chat com assistente em linguagem natural (caminho primário de descoberta). — ✅ (on-device)
@@ -104,7 +105,7 @@ construído, incremento a incremento.
 ### RF-E · Comunicação em tempo real
 - **RF-E1 (P0)** Chat cliente↔prestador real (persistido, entregue/lido). — ✅
 - **RF-E2 (P0)** Notificações push (novo pedido, updates, mensagens). — ✅ *código pronto; falta rodar `eas init` pra gerar o projectId*
-- **RF-E3 (P1)** Tracking em tempo real (Supabase Realtime + rota Valhalla no MapLibre).
+- **RF-E3 (P1)** Tracking em tempo real (Supabase Realtime + rota Valhalla no MapLibre). — ✅ *código pronto; REST+GPS foreground (não Supabase Realtime, não MapLibre — ver incremento); ETA real depende do deploy Railway*
 - **RF-E4 (P2)** Áudio/mascaramento de telefone.
 
 ### RF-F · Pagamentos e Financeiro
@@ -158,7 +159,7 @@ construído, incremento a incremento.
 | Tela / Rota | Estado inicial | Requisitos |
 |---|---|---|
 | **Onboarding** `app/index.tsx` | Escolha de papel | RF-A1/A2/A3; termos (RNF-4) |
-| **Home Cliente** `client/(tabs)/index.tsx` | Mapa-imagem + mock | RF-C1/C2/C3/C5, RNF-5; barra abre IA (RF-J1) |
+| **Home Cliente** `client/(tabs)/index.tsx` | Mapa-imagem + mock | RF-C1/C2 ✅, RF-C3/C5, RNF-5; barra abre IA (RF-J1) |
 | **Explorar/IA** `client/(tabs)/explore.tsx` | Grid mock | **RF-J1..J7** (assistente); RF-C4 fallback — ✅ |
 | **Pedidos (Cliente)** `client/(tabs)/orders.tsx` | Placeholder | RF-D7/D2/D8 — ✅ |
 | **Perfil Cliente** `client/(tabs)/profile.tsx` | Estático | RF-A6/A2/A7, RF-C6, RF-I1 |
@@ -167,7 +168,7 @@ construído, incremento a incremento.
 | **Tracking** `client/tracking/[id].tsx` | Animação | RF-E3, RF-D2 ✅, RF-E2 ✅ |
 | **Chat** `client/chat/[id].tsx` | Array mock | RF-E1 ✅, RF-E2 ✅, RF-E4 |
 | **Dashboard Prestador** `provider/(tabs)/index.tsx` | Mock | RF-D3 ✅, RF-B4, RF-E2 ✅ |
-| **Mapa Prestador** `provider/(tabs)/map.tsx` | Placeholder | RF-C2/C1, RF-E3 |
+| **Mapa Prestador** `provider/(tabs)/map.tsx` | Placeholder | RF-C2/C1 ✅, RF-E3 ✅ |
 | **Ganhos** `provider/(tabs)/earnings.tsx` | Placeholder | RF-F4/F5 ✅, RF-F3 |
 | **KYC/Cadastro profissional** `provider/kyc.tsx` | Mock (badges falsos) | RF-B1/B2/B3 — ✅ |
 | **Perfil Prestador** `provider/(tabs)/profile.tsx` | Estático | RF-B1/B2/B3 ✅, RF-B5, RF-A6/A2 |
@@ -441,15 +442,119 @@ Tocantins). Estrutura `apps/geo/{valhalla,nominatim}` (Docker-only). Glue no app
 **Handoff:** criar os 2 serviços na Railway (Root Directory + Volume + envs conforme README), rodar os
 smoke tests (curl `/route` e `/search`) e colar as URLs em `apps/web/.env`.
 
+### ✅ Código concluído · ⏳ ETA real pendente Railway — Endereço real + tracking em tempo real (RF-C5/C6, RF-E3)
+Migração: `Order.providerLat`/`providerLng`/`providerLocationAt` (Float?/Float?/DateTime?, `db push`
+aplicado). Sem mudar a arquitetura decidida no incremento de chat: nada de Supabase Realtime nem
+MapLibre aqui — REST + polling (mesmo padrão) e o mapa segue com o backdrop estilizado existente,
+só que agora alimentado por dados reais em vez de mock.
+
+**Backend** (`apps/web/src/lib/orders.ts` + rotas):
+- `createOrder` — quando o app não manda `lat`/`lng` prontos, geocodifica o endereço via
+  **Nominatim** (`geocodeAddress`, já existia em `lib/geo.ts` do repo `apps/geo`); best-effort — sem
+  `NOMINATIM_URL` (Railway pendente) ou endereço não encontrado, cai no centro de Palmas (mesmo
+  fallback de antes, só que agora é *fallback*, não o caminho único).
+- `POST /api/orders/[id]/location` (`updateOrderLocation`) — prestador reporta lat/lng atuais;
+  só o prestador do pedido, só em `ACCEPTED`/`EN_ROUTE` (403/409 fora disso).
+- `getOrder`/`GET /api/orders/[id]` — novo campo `tracking` no DTO (`providerLat`/`providerLng`/
+  `updatedAt`/`distanceKm`/`etaMin`); quando há posição do prestador, calcula rota real via
+  **Valhalla** (`routeBetween`) para preencher distância/ETA — best-effort, sem `VALHALLA_URL`
+  (Railway pendente) fica `null` em vez de quebrar a request.
+
+**App:**
+- `create-order.tsx` — campo de **CEP** com autofill via **ViaCEP** (API pública, direto do
+  device, sem passar pelo backend) preenchendo rua/bairro/cidade/UF.
+- `lib/location.ts` (`useShareLocationWhileEnRoute`) — prestador com um pedido `ACCEPTED`/`EN_ROUTE`
+  compartilha a posição via `expo-location` (`watchPositionAsync`, foreground only, ~8s/25m) enquanto
+  o dashboard está aberto; sem permissão ou fora de um pedido ativo, não faz nada (mesmo padrão
+  best-effort do push, RF-E2). Dependência nova `expo-location` + plugin no `app.json`.
+- `client/order/[id].tsx` — passou a fazer poll (`useOrder(id, { poll: true })`); botão **"Acompanhar
+  no mapa"** quando `ACCEPTED`/`EN_ROUTE` leva pro tracking.
+- `client/tracking/[id].tsx` — reescrita para dados reais (`useOrder` com poll de 5s): status/progresso
+  vem da máquina de estados de verdade, ETA/distância vêm de `order.tracking` ("Calculando chegada..."
+  enquanto não há posição/rota), provider/chat com o `order.id` real. O SVG de rota decorativo foi
+  mantido (RF-C2, mapa real via MapLibre, segue fora de escopo deste incremento).
+
+**Verificado E2E** via curl contra o Supabase real (seed + usuário de teste): pedido criado sem
+lat/lng → geocoding cai no fallback sem quebrar (`NOMINATIM_URL` ainda não configurada); `accept` →
+`start_route` → `POST .../location` grava a posição; guardas **403** (usuário errado), **400**
+(corpo inválido), **401** (sem token), **404** (pedido inexistente), **409** (fora de
+`ACCEPTED`/`EN_ROUTE`, testado em `IN_PROGRESS`); `GET` do pedido reflete a última posição salva com
+`distanceKm`/`etaMin` nulos (sem `VALHALLA_URL`, como esperado). Typecheck web+native limpos.
+
+**Pendências:** ETA/distância real e geocoding de endereço só funcionam de ponta a ponta depois do
+deploy da Geo na Railway (ver handoff acima); mapa real (MapLibre + MapTiler, RF-C2) e localização em
+background (hoje só enquanto o app está em foco) ficam para depois; `expo-location` exige rebuild
+nativo (`expo prebuild`) — mesma pendência de handoff dos incrementos de push/pagamento.
+
+### ✅ Código concluído · ⏳ rebuild nativo — Mapa real (MapLibre + OpenFreeMap, RF-C1/C2)
+Sem migração. Troca o backdrop ilustrativo (`MapBackdrop`) por mapa real em todas as telas que
+mostravam posição: **Home do cliente**, **Mapa do prestador** e **Tracking**. Tiles via
+**OpenFreeMap** (`tiles.openfreemap.org`, MIT, sem chave) no lugar do MapTiler free-tier planejado
+originalmente — evita depender de uma chave/conta extra para algo grátis e ilimitado.
+
+**App:**
+- `components/ui/real-map.tsx` (`RealMap`) — wrapper do `@maplibre/maplibre-react-native`: câmera
+  por `center`/`zoom` ou por `bounds` (enquadra dois pontos, ex. prestador↔cliente), marcadores via
+  `render()` (reaproveita `ProviderMarker`/`SelfMarker`, adaptados de posição absoluta `top/left`
+  para posição geográfica), rota como `GeoJSONSource`/`Layer` de linha.
+- `lib/location.ts` — `useCurrentLocation` (posição atual, uma vez, pro marcador "você está aqui")
+  e `useShareLocationWhileEnRoute` (`watchPositionAsync`, foreground, ~8s/25m, só com pedido
+  `ACCEPTED`/`EN_ROUTE`) — mesmo padrão best-effort do push (RF-E2): sem permissão, não quebra a
+  tela. Wireado no dashboard do prestador e no mapa do prestador.
+- `create-order.tsx` — campo **CEP** com autofill via ViaCEP (rua/bairro/cidade/UF), reduz digitação
+  antes do geocoding real no servidor (RF-C6, incremento anterior).
+- `client/order/[id].tsx` — botão **"Acompanhar no mapa"** quando `ACCEPTED`/`EN_ROUTE`; `useOrder`
+  passou a aceitar `{ poll: true }` (refetch 5s só em foco, via `useIsFocused`).
+- Config nativa: `@maplibre/maplibre-react-native` + `expo-location` instalados; plugins no
+  `app.json` (permissão de localização + plugin do MapLibre); `EXPO_PUBLIC_MAPTILER_KEY` removida
+  do `.env.example`/`packages/env` (não é mais necessária).
+- Backend (`apps/web/src/lib/geo.ts`) — decodificação da polyline do Valhalla (`decodePolyline6`)
+  movida pro servidor: `routeBetween` agora retorna `points: LatLng[]` prontos, evitando levar um
+  parser de polyline pro bundle nativo; `OrderDTO.tracking.route` carrega essa geometria pro
+  `RealMap` desenhar a rota real quando a Geo (Railway) estiver no ar.
+
+**Verificado:** `tsc --noEmit` limpo em `apps/native` e `apps/web`; `prisma db push` confirma que o
+schema (campos de tracking do incremento anterior) já está em sync com o Supabase; dependências
+nativas presentes em `node_modules`/`pnpm-lock.yaml`.
+
+**Pendências:** `@maplibre/maplibre-react-native` e `expo-location` alteram código nativo — precisa
+de `expo prebuild` + rebuild (mesma pendência de handoff dos incrementos de push/pagamento/tracking)
+para ver o mapa de verdade num device; até lá, a lógica de dados (posição, rota, ETA) já roda, só a
+renderização do mapa não foi validada visualmente.
+
+### ✅ Rebuild nativo iOS validado no simulador — build Xcode + boot do app
+
+`apps/native/ios` e `android/` já existiam no working tree (gerados por `expo prebuild` numa sessão
+anterior, gitignored) com Pods já instalados. Rodei `npx expo run:ios --device <iPhone 17 simulator>`:
+build do Xcode (`xcodebuild ... judeu.xcworkspace`) terminou com **0 erros**, o app foi instalado e
+aberto no simulador, subindo a tela de onboarding (**"Ajuda+ — Encontre quem resolve"**) normalmente —
+primeira confirmação real de que o prebuild com MapLibre/Stripe/push/location compila e roda. Subi
+também o backend (`apps/web`, porta 3001) e o Metro (porta 8082, porta 8081 já ocupada por outro
+projeto na máquina) em background; criei um usuário de teste (`teste.cliente@ajuda.app` /
+`teste12345`) via `/api/auth/register` para login manual. `tsc --noEmit` do native seguiu limpo.
+
+**Bloqueio:** não tenho permissão de Acessibilidade no macOS pra simular toques na tela (osascript
+recusou `keystroke`, sem `cliclick`/`idb` instalados) — não deu pra navegar sozinho até a Home/mapa
+pra confirmar visualmente o MapLibre renderizando. Você decidiu encerrar por aqui; o app segue no ar
+no simulador (Metro + backend rodando) caso queira entrar com o usuário de teste acima e conferir.
+
 ---
 
 ## 7. Próximos blocos sugeridos (P0 pendentes)
 
-Os dois itens que restam aqui dependem do deploy da Geo na Railway (handoff com você, ver seção 6) —
-sem isso não tem como avançar em código.
+1. **Deploy da Geo na Railway (handoff com você, ver seção 6)** — sem isso, o código de geocoding
+   (RF-C6) e ETA/distância (RF-C5, RF-E3) já pronto continua caindo nos fallbacks/`null`. Não dá pra
+   avançar isso sem sua conta Railway; também não deu pra sequer validar os Dockerfiles localmente
+   porque a máquina não tem Docker instalado (o README de `apps/geo` documenta esse teste local
+   opcional, com um PBF pequeno, se quiser rodar você mesmo).
+2. **Rebuild nativo** — build+boot no simulador iOS **já validado nesta sessão** (ver log acima);
+   falta rodar num **device físico** (câmera/GPS/push reais) e no **Android**, além de navegar
+   manualmente pelas telas de mapa/tracking pra conferir o MapLibre, localização, push e o
+   `PaymentSheet` do Stripe na prática.
 
-1. **Endereço + geo (RF-C6/C5)** — ViaCEP + Nominatim no cadastro; Valhalla para distância/ETA e tracking (RF-E3); depende do deploy Railway.
-2. **Tracking em tempo real (RF-E3)** — depende do deploy Railway (Valhalla) pra ter rota/ETA real no mapa; hoje `client/tracking/[id].tsx` ainda é animação.
+Com isso, o punchlist de código P0 do roadmap (seção 5) fica completo — o que resta são handoffs de
+infraestrutura/conta que só você pode fazer (Railway, EAS, Supabase Storage, Stripe Pix, device
+físico/Android).
 
 ---
 

@@ -12,7 +12,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { Avatar } from "@/components/ui/avatar";
 
-export const SelfMarker = ({ size = 22, top, left }: { size?: number; top: number; left: number }) => {
+export const SelfMarker = ({ size = 22 }: { size?: number }) => {
   const { theme } = useUnistyles();
   const pulse = useSharedValue(0);
 
@@ -29,7 +29,7 @@ export const SelfMarker = ({ size = 22, top, left }: { size?: number; top: numbe
   }));
 
   return (
-    <View style={{ position: "absolute", top, left, transform: [{ translateX: -size / 2 }, { translateY: -size / 2 }] }}>
+    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
       <Animated.View
         style={[
           {
@@ -38,8 +38,6 @@ export const SelfMarker = ({ size = 22, top, left }: { size?: number; top: numbe
             height: size,
             borderRadius: size / 2,
             backgroundColor: theme.colors.primary,
-            top: 0,
-            left: 0,
           },
           pulseStyle,
         ]}
@@ -62,15 +60,11 @@ export const ProviderMarker = ({
   initials,
   color,
   size = 46,
-  top,
-  left,
   highlighted,
 }: {
   initials: string;
   color: string;
   size?: number;
-  top: number;
-  left: number;
   highlighted?: boolean;
 }) => {
   const { theme } = useUnistyles();
@@ -79,12 +73,9 @@ export const ProviderMarker = ({
       style={[
         styles.wrap,
         {
-          top,
-          left,
           width: size,
           height: size,
           borderRadius: size / 2,
-          transform: [{ translateX: -size / 2 }, { translateY: -size / 2 }],
           borderColor: highlighted ? theme.colors.primary : "rgba(255,255,255,0.2)",
         },
       ]}
@@ -96,7 +87,6 @@ export const ProviderMarker = ({
 
 const styles = StyleSheet.create(() => ({
   wrap: {
-    position: "absolute",
     backgroundColor: "#1c1c40",
     borderWidth: 2,
     padding: 3,

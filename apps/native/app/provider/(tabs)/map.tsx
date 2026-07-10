@@ -3,42 +3,91 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Path } from "react-native-svg";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
+import type { Order } from "@/lib/api";
 import { fonts } from "@/constants/fonts";
+import { initialsOf, moneyFromCents, shortTime } from "@/lib/format";
+import { useOrders, useTransitionOrder } from "@/lib/hooks";
+import { useCurrentLocation, useShareLocationWhileEnRoute } from "@/lib/location";
 import { Avatar } from "@/components/ui/avatar";
-import { MapBackdrop } from "@/components/ui/map-backdrop";
-import { SelfMarker } from "@/components/ui/map-marker";
+import { ProviderMarker, SelfMarker } from "@/components/ui/map-marker";
+import { RealMap } from "@/components/ui/real-map";
 import { Screen } from "@/components/ui/screen";
+
+function orderTitle(order: Order): string {
+  return order.service?.name ?? order.category?.name ?? order.description ?? "Serviço";
+}
+
+function addressLine(order: Order): string {
+  const { street, number, neighborhood, city, state } = order.address;
+  return `${street}${number ? `, ${number}` : ""}${neighborhood ? ` · ${neighborhood}` : ""} · ${city}/${state}`;
+}
 
 export default function ProviderMap() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const [online, setOnline] = useState(true);
-  const [hasRequest, setHasRequest] = useState(true);
+  const { data: orders = [] } = useOrders("provider");
+  const transition = useTransitionOrder();
+  const myLocation = useCurrentLocation();
+
+  const newOrder = orders.find((o) => o.status === "CREATED");
+  const activeOrder = orders.find(
+    (o) => o.status === "ACCEPTED" || o.status === "EN_ROUTE" || o.status === "IN_PROGRESS",
+  );
+  useShareLocationWhileEnRoute(
+    activeOrder?.status === "ACCEPTED" || activeOrder?.status === "EN_ROUTE"
+      ? activeOrder.id
+      : undefined,
+  );
+
+  const act = (id: string, action: "accept" | "reject") => transition.mutate({ id, action });
+
+  const selfCoord: [number, number] | null = myLocation ? [myLocation.lng, myLocation.lat] : null;
+  const destCoord: [number, number] | null = activeOrder
+    ? [activeOrder.address.lng, activeOrder.address.lat]
+    : null;
+
+  const markers = [
+    ...(selfCoord ? [{ id: "self", lngLat: selfCoord, render: () => <SelfMarker /> }] : []),
+    ...(destCoord
+      ? [
+          {
+            id: "client",
+            lngLat: destCoord,
+            render: () => (
+              <View style={styles.clientPinBubble}>
+                <Text style={styles.clientPinText}>
+                  {activeOrder?.tracking.distanceKm != null
+                    ? `Cliente · ${activeOrder.tracking.distanceKm.toFixed(1)} km`
+                    : "Cliente"}
+                </Text>
+              </View>
+            ),
+          },
+        ]
+      : []),
+  ];
+
+  const bounds: [number, number, number, number] | undefined =
+    selfCoord && destCoord
+      ? [
+          Math.min(selfCoord[0], destCoord[0]),
+          Math.min(selfCoord[1], destCoord[1]),
+          Math.max(selfCoord[0], destCoord[0]),
+          Math.max(selfCoord[1], destCoord[1]),
+        ]
+      : undefined;
 
   return (
     <Screen>
-      <MapBackdrop>
-        <Svg width="100%" height="100%" viewBox="0 0 402 874" preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
-          <Path
-            d="M115 440 L115 260 L294 260 L294 180"
-            stroke={theme.colors.primary}
-            strokeWidth={5}
-            strokeLinecap="round"
-            strokeDasharray="1 10"
-            fill="none"
-          />
-        </Svg>
-        <SelfMarker top={440} left={115} />
-        <View style={styles.clientPin}>
-          <View style={styles.clientPinBubble}>
-            <Text style={styles.clientPinText}>Cliente · 2,4 km</Text>
-          </View>
-          <View style={styles.clientPinStem} />
-        </View>
-      </MapBackdrop>
+      <RealMap
+        markers={markers}
+        route={activeOrder?.tracking.route}
+        center={!bounds ? (selfCoord ?? undefined) : undefined}
+        bounds={bounds}
+      />
 
       <View style={[styles.topBar, { top: insets.top + 8 }]}>
         <Pressable style={styles.onlinePill} onPress={() => setOnline((v) => !v)}>
@@ -56,7 +105,7 @@ export default function ProviderMap() {
         </View>
       </View>
 
-      {hasRequest && online && (
+      {newOrder && online && (
         <View style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]}>
           <View style={styles.grabber} />
           <View style={styles.sheetHead}>
@@ -64,38 +113,37 @@ export default function ProviderMap() {
               <View style={styles.statusDot} />
               <Text style={styles.statusText}>NOVA CHAMADA</Text>
             </View>
-            <View style={styles.countdown}>
-              <Text style={styles.countdownText}>0:14 para aceitar</Text>
-            </View>
           </View>
 
           <View style={styles.requestBody}>
-            <Avatar initials="JS" color="#3a3a70" size={54} radius={16} />
+            <Avatar initials={initialsOf(newOrder.client.name)} color="#3a3a70" size={54} radius={16} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.requestTitle}>Instalação de tomada</Text>
-              <View style={styles.requestMetaRow}>
-                <View style={styles.ratingChip}>
-                  <Text style={styles.ratingText}>★ 4.9</Text>
-                </View>
-                <Text style={styles.requestMeta}>João S. · 2,4 km · ~12 min</Text>
-              </View>
+              <Text style={styles.requestTitle}>{orderTitle(newOrder)}</Text>
+              <Text style={styles.requestMeta}>
+                {newOrder.client.name} · {shortTime(newOrder.createdAt)}
+              </Text>
             </View>
-            <View style={{ alignItems: "flex-end" }}>
-              <Text style={styles.requestPrice}>R$ 80</Text>
-              <Text style={styles.requestPix}>Pix na hora</Text>
-            </View>
+            <Text style={styles.requestPrice}>{moneyFromCents(newOrder.totalCents)}</Text>
           </View>
 
           <View style={styles.addressRow}>
             <Ionicons name="location" size={16} color={theme.colors.mutedForeground} />
-            <Text style={styles.addressText}>Rua das Acácias, 214 · Vila Mariana</Text>
+            <Text style={styles.addressText}>{addressLine(newOrder)}</Text>
           </View>
 
           <View style={styles.actions}>
-            <Pressable style={styles.declineButton} onPress={() => setHasRequest(false)}>
+            <Pressable
+              style={styles.declineButton}
+              onPress={() => act(newOrder.id, "reject")}
+              disabled={transition.isPending}
+            >
               <Text style={styles.declineText}>Recusar</Text>
             </Pressable>
-            <Pressable style={styles.acceptButton} onPress={() => setHasRequest(false)}>
+            <Pressable
+              style={styles.acceptButton}
+              onPress={() => act(newOrder.id, "accept")}
+              disabled={transition.isPending}
+            >
               <Text style={styles.acceptText}>Aceitar chamada</Text>
             </Pressable>
           </View>
@@ -106,13 +154,6 @@ export default function ProviderMap() {
 }
 
 const styles = StyleSheet.create((theme) => ({
-  clientPin: {
-    position: "absolute",
-    top: 180,
-    left: 294,
-    alignItems: "center",
-    transform: [{ translateX: -55 }, { translateY: -46 }],
-  },
   clientPinBubble: {
     backgroundColor: "#fff",
     paddingHorizontal: 11,
@@ -128,13 +169,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 12.5,
     fontFamily: fonts.extraBold,
     color: "#0d0d24",
-  },
-  clientPinStem: {
-    width: 3,
-    height: 12,
-    backgroundColor: "#fff",
-    borderRadius: 2,
-    marginTop: 2,
   },
   topBar: {
     position: "absolute",
@@ -256,17 +290,6 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fonts.extraBold,
     color: theme.colors.primary,
   },
-  countdown: {
-    backgroundColor: "rgba(255,102,0,0.15)",
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 10,
-  },
-  countdownText: {
-    fontSize: 12.5,
-    fontFamily: fonts.extraBold,
-    color: "#FF9a52",
-  },
   requestBody: {
     flexDirection: "row",
     alignItems: "center",
@@ -277,37 +300,16 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fonts.extraBold,
     color: theme.colors.foreground,
   },
-  requestMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 3,
-  },
-  ratingChip: {
-    backgroundColor: "rgba(255,102,0,0.16)",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  ratingText: {
-    fontSize: 11.5,
-    fontFamily: fonts.extraBold,
-    color: "#FF9a52",
-  },
   requestMeta: {
     fontSize: 12.5,
     fontFamily: fonts.semiBold,
     color: theme.colors.mutedForeground,
+    marginTop: 3,
   },
   requestPrice: {
     fontSize: 21,
     fontFamily: fonts.extraBold,
     color: theme.colors.foreground,
-  },
-  requestPix: {
-    fontSize: 11.5,
-    fontFamily: fonts.extraBold,
-    color: theme.colors.success,
   },
   addressRow: {
     flexDirection: "row",

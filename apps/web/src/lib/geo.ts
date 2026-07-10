@@ -50,8 +50,42 @@ type ValhallaResponse = {
 export type Route = {
   distanceKm: number;
   durationMin: number;
-  shape: string | null; // polyline codificada (Google polyline6) p/ desenhar no mapa
+  points: LatLng[] | null; // geometria da rota, já decodificada, p/ desenhar no mapa
 };
+
+// Decodifica a polyline do Valhalla (algoritmo padrão Google polyline, precisão 1e6).
+// Decodificar no servidor evita levar um parser de polyline pro bundle nativo.
+function decodePolyline6(encoded: string): LatLng[] {
+  const points: LatLng[] = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+
+  while (index < encoded.length) {
+    let result = 0;
+    let shift = 0;
+    let byte: number;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+
+    result = 0;
+    shift = 0;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    lng += result & 1 ? ~(result >> 1) : result >> 1;
+
+    points.push({ lat: lat / 1e6, lng: lng / 1e6 });
+  }
+
+  return points;
+}
 
 export async function routeBetween(from: LatLng, to: LatLng): Promise<Route | null> {
   const base = requireUrl(env.VALHALLA_URL, "VALHALLA_URL");
@@ -71,9 +105,10 @@ export async function routeBetween(from: LatLng, to: LatLng): Promise<Route | nu
   const data = (await res.json()) as ValhallaResponse;
   const summary = data.trip?.summary;
   if (!summary) return null;
+  const shape = data.trip?.legs?.[0]?.shape;
   return {
     distanceKm: summary.length ?? 0,
     durationMin: Math.round((summary.time ?? 0) / 60),
-    shape: data.trip?.legs?.[0]?.shape ?? null,
+    points: shape ? decodePolyline6(shape) : null,
   };
 }
