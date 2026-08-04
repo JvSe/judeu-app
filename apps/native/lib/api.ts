@@ -248,6 +248,7 @@ export type ProviderListItem = {
   baseLat: number | null;
   baseLng: number | null;
   isAvailable: boolean;
+  allowsNegotiation: boolean;
 };
 
 export type ProviderDetail = ProviderListItem & {
@@ -278,6 +279,7 @@ export type MyProviderProfile = {
   baseLat: number | null;
   baseLng: number | null;
   isAvailable: boolean;
+  allowsNegotiation: boolean;
   hasDocument: boolean;
   categoryIds: string[];
   services: { id: string; categoryId: string; name: string; priceCents: number }[];
@@ -290,6 +292,7 @@ export type UpsertProviderProfileInput = {
   serviceRadiusKm: number;
   baseLat?: number;
   baseLng?: number;
+  allowsNegotiation?: boolean;
   categoryIds: string[];
   services: { name: string; priceCents: number; categoryId: string }[];
 };
@@ -360,7 +363,13 @@ export type Order = {
   createdAt: string;
   service: { id: string; name: string } | null;
   category: { id: string; name: string } | null;
-  provider: { id: string; name: string; headline: string | null; ratingAvg: number } | null;
+  provider: {
+    id: string;
+    name: string;
+    headline: string | null;
+    ratingAvg: number;
+    allowsNegotiation: boolean;
+  } | null;
   client: { id: string; name: string; phone: string | null };
   address: OrderAddress;
   events: { status: OrderStatus; note: string | null; createdAt: string }[];
@@ -417,6 +426,39 @@ export const ordersApi = {
       method: "POST",
       body: { lat, lng },
     }).then((r) => r.order);
+  },
+};
+
+// ---- Orçamento/negociação antes do aceite (RF-D5) ----
+export type Proposal = {
+  id: string;
+  byRole: "client" | "provider";
+  priceCents: number;
+  note: string | null;
+  status: "PENDING" | "ACCEPTED" | "REJECTED" | "SUPERSEDED";
+  createdAt: string;
+  respondedAt: string | null;
+};
+
+export type CreateProposalInput = { priceCents: number; note?: string };
+
+export const proposalsApi = {
+  list(orderId: string) {
+    return apiFetch<{ proposals: Proposal[] }>(`/api/orders/${orderId}/proposals`).then(
+      (r) => r.proposals,
+    );
+  },
+  create(orderId: string, input: CreateProposalInput) {
+    return apiFetch<{ proposal: Proposal }>(`/api/orders/${orderId}/proposals`, {
+      method: "POST",
+      body: input,
+    }).then((r) => r.proposal);
+  },
+  respond(orderId: string, proposalId: string, action: "accept" | "reject") {
+    return apiFetch<{ proposal: Proposal }>(
+      `/api/orders/${orderId}/proposals/${proposalId}/respond`,
+      { method: "POST", body: { action } },
+    ).then((r) => r.proposal);
   },
 };
 

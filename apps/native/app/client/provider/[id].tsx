@@ -34,87 +34,90 @@ export default function ProviderProfile() {
 
   return (
     <Screen>
-      <View style={[styles.hero, { paddingTop: insets.top + 8 }]}>
-        <LinearGradient colors={["#FF6600", "#d94f00"]} style={StyleSheet.absoluteFill} />
-        <View style={styles.heroTop}>
-          <IconButton onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={18} color="#fff" />
-          </IconButton>
-          <IconButton>
-            <Ionicons name="share-outline" size={18} color="#fff" />
-          </IconButton>
-        </View>
-        <LinearGradient
-          colors={["transparent", theme.colors.background]}
-          style={styles.heroFade}
-        />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Avatar
-          initials={initialsOf(provider.name)}
-          color="#1c1c40"
-          size={104}
-          radius={30}
-          fontSize={34}
-        />
-        <View style={styles.nameRow}>
-          <Text style={styles.name}>{provider.name}</Text>
-          <Ionicons name="checkmark-circle" size={20} color={theme.colors.primary} />
-        </View>
-        <Text style={styles.role}>{provider.role}</Text>
-        <View style={[styles.availabilityChip, !provider.isAvailable && styles.availabilityChipOff]}>
-          <View style={[styles.availabilityDot, !provider.isAvailable && styles.availabilityDotOff]} />
-          <Text style={[styles.availabilityText, !provider.isAvailable && styles.availabilityTextOff]}>
-            {provider.isAvailable ? "Disponível agora" : "Indisponível no momento"}
-          </Text>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.hero}>
+          <LinearGradient colors={["#FF6600", "#d94f00"]} style={StyleSheet.absoluteFill} />
+          <LinearGradient
+            colors={["transparent", theme.colors.background]}
+            style={styles.heroFade}
+          />
         </View>
 
-        <View style={styles.statsRow}>
-          <StatCard value={provider.rating.toFixed(1)} label={`★ ${provider.reviews} aval.`} />
-          <StatCard value={`${provider.yearsExperience} anos`} label="experiência" />
-          <StatCard value={`${provider.services.length}`} label="serviços" />
-        </View>
-
-        <Text style={styles.sectionTitle}>Serviços</Text>
-        <View style={{ gap: 10 }}>
-          {provider.services.map((service) => (
-            <View key={service.id} style={styles.serviceRow}>
-              <Text style={styles.serviceName}>{service.name}</Text>
-              <Text style={styles.servicePrice}>{priceFromCents(service.priceCents)}</Text>
+        <View style={styles.content}>
+            <Avatar
+              initials={initialsOf(provider.name)}
+              color="#1c1c40"
+              size={104}
+              radius={30}
+              fontSize={34}
+            />
+            <View style={styles.nameRow}>
+              <Text style={styles.name}>{provider.name}</Text>
+              <Ionicons name="checkmark-circle" size={20} color={theme.colors.primary} />
             </View>
-          ))}
-        </View>
+            <Text style={styles.role}>{provider.role}</Text>
+            <View style={[styles.availabilityChip, !provider.isAvailable && styles.availabilityChipOff]}>
+              <View style={[styles.availabilityDot, !provider.isAvailable && styles.availabilityDotOff]} />
+              <Text style={[styles.availabilityText, !provider.isAvailable && styles.availabilityTextOff]}>
+                {provider.isAvailable ? "Disponível agora" : "Indisponível no momento"}
+              </Text>
+            </View>
 
-        <Text style={styles.sectionTitle}>Avaliações</Text>
-        {reviews.length === 0 ? (
-          <Text style={styles.emptyReviews}>Ainda não há avaliações para este prestador.</Text>
-        ) : (
-          <View style={{ gap: 10 }}>
-            {reviews.map((review) => (
-              <View key={review.id} style={styles.reviewCard}>
-                <View style={styles.reviewHeader}>
-                  <Avatar initials={initialsOf(review.author.name)} color="#3a3a70" size={38} radius={12} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.reviewAuthor}>{review.author.name}</Text>
-                    <View style={styles.reviewStars}>
-                      {[1, 2, 3, 4, 5].map((v) => (
-                        <Ionicons
-                          key={v}
-                          name={v <= review.rating ? "star" : "star-outline"}
-                          size={13}
-                          color="#FF9a2e"
-                        />
-                      ))}
-                    </View>
-                  </View>
+            <View style={styles.statsRow}>
+              <StatCard value={provider.rating.toFixed(1)} label={`★ ${provider.reviews} aval.`} />
+              <StatCard value={`${provider.yearsExperience} anos`} label="experiência" />
+              <StatCard value={`${provider.services.length}`} label="serviços" />
+            </View>
+
+            <Text style={styles.sectionTitle}>Serviços</Text>
+            <View style={{ gap: 10 }}>
+              {provider.services.map((service) => (
+                <View key={service.id} style={styles.serviceRow}>
+                  <Text style={styles.serviceName}>{service.name}</Text>
+                  <Text style={styles.servicePrice}>{priceFromCents(service.priceCents)}</Text>
                 </View>
-                {review.comment && <Text style={styles.reviewComment}>{review.comment}</Text>}
+              ))}
+            </View>
+
+            <Text style={styles.sectionTitle}>Avaliações</Text>
+            {reviews.length === 0 ? (
+              <Text style={styles.emptyReviews}>Ainda não há avaliações para este prestador.</Text>
+            ) : (
+              <View style={{ gap: 10 }}>
+                {reviews.map((review) => (
+                  <View key={review.id} style={styles.reviewCard}>
+                    <View style={styles.reviewHeader}>
+                      <Avatar initials={initialsOf(review.author.name)} color="#3a3a70" size={38} radius={12} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.reviewAuthor}>{review.author.name}</Text>
+                        <View style={styles.reviewStars}>
+                          {[1, 2, 3, 4, 5].map((v) => (
+                            <Ionicons
+                              key={v}
+                              name={v <= review.rating ? "star" : "star-outline"}
+                              size={13}
+                              color="#FF9a2e"
+                            />
+                          ))}
+                        </View>
+                      </View>
+                    </View>
+                    {review.comment && <Text style={styles.reviewComment}>{review.comment}</Text>}
+                  </View>
+                ))}
               </View>
-            ))}
+            )}
           </View>
-        )}
       </ScrollView>
+
+      <View style={[styles.topBar, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
+        <IconButton onPress={() => router.back()}>
+          <Ionicons name="chevron-back" size={18} color="#fff" />
+        </IconButton>
+        <IconButton>
+          <Ionicons name="share-outline" size={18} color="#fff" />
+        </IconButton>
+      </View>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 14 }]}>
         <View>
@@ -131,6 +134,7 @@ export default function ProviderProfile() {
                 params: {
                   providerId: provider.id,
                   providerName: provider.name,
+                  allowsNegotiation: String(provider.allowsNegotiation),
                   ...(cheapest
                     ? {
                         serviceId: cheapest.id,
@@ -151,11 +155,15 @@ export default function ProviderProfile() {
 const styles = StyleSheet.create((theme) => ({
   hero: {
     height: 220,
-    paddingHorizontal: 20,
   },
-  heroTop: {
+  topBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
     flexDirection: "row",
     justifyContent: "space-between",
+    paddingHorizontal: 20,
   },
   heroFade: {
     position: "absolute",

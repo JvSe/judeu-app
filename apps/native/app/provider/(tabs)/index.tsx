@@ -182,6 +182,15 @@ export default function ProviderDashboard() {
               </View>
             )}
             {order.description && <Text style={styles.requestDesc}>{order.description}</Text>}
+            {profile?.allowsNegotiation && (
+              <Pressable
+                style={styles.proposeButton}
+                onPress={() => router.push({ pathname: "/provider/propose/[id]", params: { id: order.id } })}
+              >
+                <Ionicons name="pricetag-outline" size={14} color="#FF9a52" />
+                <Text style={styles.proposeButtonText}>Propor outro valor</Text>
+              </Pressable>
+            )}
             <View style={styles.requestActions}>
               <Pressable
                 style={styles.declineButton}
@@ -525,6 +534,19 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.primary,
     alignItems: "center",
     justifyContent: "center",
+  },
+  proposeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    marginBottom: 12,
+  },
+  proposeButtonText: {
+    fontSize: 12.5,
+    fontFamily: fonts.bold,
+    color: "#FF9a52",
   },
   requestActions: {
     flexDirection: "row",

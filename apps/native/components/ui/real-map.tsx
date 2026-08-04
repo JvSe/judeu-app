@@ -1,6 +1,7 @@
 import "@/unistyles";
 import { Camera, GeoJSONSource, Layer, Map, Marker } from "@maplibre/maplibre-react-native";
 import type { ReactElement } from "react";
+import { Pressable } from "react-native";
 import { useUnistyles } from "react-native-unistyles";
 
 import { MapBackdrop } from "@/components/ui/map-backdrop";
@@ -16,6 +17,7 @@ type MapMarkerSpec = {
   id: string;
   lngLat: [number, number];
   render: () => ReactElement;
+  onPress?: () => void;
 };
 
 type RealMapProps = {
@@ -71,7 +73,11 @@ export const RealMap = ({ markers = [], route, center, bounds, zoom = 14 }: Real
 
       {markers.map((marker) => (
         <Marker key={marker.id} id={marker.id} lngLat={marker.lngLat}>
-          {marker.render()}
+          {marker.onPress ? (
+            <Pressable onPress={marker.onPress}>{marker.render()}</Pressable>
+          ) : (
+            marker.render()
+          )}
         </Marker>
       ))}
     </Map>

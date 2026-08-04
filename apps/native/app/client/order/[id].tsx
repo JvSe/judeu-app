@@ -8,7 +8,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import type { Order, OrderStatus } from "@/lib/api";
 import { fonts } from "@/constants/fonts";
 import { initialsOf, moneyFromCents, orderStatusLabel, shortDateTime, shortTime } from "@/lib/format";
-import { useOrder, useTransitionOrder } from "@/lib/hooks";
+import { useOrder, useOrderProposals, useRespondToProposal, useTransitionOrder } from "@/lib/hooks";
 import { Avatar } from "@/components/ui/avatar";
 import { Screen } from "@/components/ui/screen";
 
@@ -32,6 +32,8 @@ export default function OrderDetail() {
   const insets = useSafeAreaInsets();
   const { data: order, isLoading } = useOrder(id, { poll: true });
   const transition = useTransitionOrder();
+  const { data: proposals = [] } = useOrderProposals(id);
+  const respondToProposal = useRespondToProposal();
 
   if (isLoading || !order) {
     return (
@@ -46,9 +48,16 @@ export default function OrderDetail() {
   const cancelled = order.status === "CANCELLED";
   const currentIndex = FLOW.findIndex((f) => f.status === order.status);
   const canCancel = order.status === "CREATED" || order.status === "ACCEPTED";
+  const canNegotiate = order.status === "CREATED" && !!order.provider?.allowsNegotiation;
+  const pendingProposal = proposals.find((p) => p.status === "PENDING");
 
   const handleCancel = () => {
     transition.mutate({ id: order.id, action: "cancel" });
+  };
+
+  const handleRespondProposal = (action: "accept" | "reject") => {
+    if (!pendingProposal) return;
+    respondToProposal.mutate({ orderId: order.id, proposalId: pendingProposal.id, action });
   };
 
   return (
@@ -177,6 +186,62 @@ export default function OrderDetail() {
             <Text style={styles.costTotalValue}>{moneyFromCents(order.totalCents)}</Text>
           </View>
         </View>
+
+        {order.status === "CREATED" && (
+          <Pressable
+            style={styles.payButton}
+            onPress={() => router.push({ pathname: "/client/payment/[id]", params: { id: order.id } })}
+          >
+            <Ionicons name="card-outline" size={17} color="#fff" />
+            <Text style={styles.payButtonText}>Ir para pagamento</Text>
+          </Pressable>
+        )}
+
+        {canNegotiate && pendingProposal?.byRole === "provider" && (
+          <View style={styles.negotiationCard}>
+            <Text style={styles.negotiationLabel}>O prestador propôs um novo valor</Text>
+            <Text style={styles.negotiationValue}>{moneyFromCents(pendingProposal.priceCents)}</Text>
+            {pendingProposal.note && (
+              <Text style={styles.negotiationNote}>“{pendingProposal.note}”</Text>
+            )}
+            <View style={styles.negotiationActions}>
+              <Pressable
+                style={styles.negotiationDecline}
+                onPress={() => handleRespondProposal("reject")}
+                disabled={respondToProposal.isPending}
+              >
+                <Text style={styles.negotiationDeclineText}>Recusar</Text>
+              </Pressable>
+              <Pressable
+                style={styles.negotiationAccept}
+                onPress={() => handleRespondProposal("accept")}
+                disabled={respondToProposal.isPending}
+              >
+                <Text style={styles.negotiationAcceptText}>
+                  Aceitar {moneyFromCents(pendingProposal.priceCents)}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {canNegotiate && pendingProposal?.byRole === "client" && (
+          <View style={styles.negotiationCard}>
+            <Text style={styles.negotiationLabel}>Sua proposta</Text>
+            <Text style={styles.negotiationValue}>{moneyFromCents(pendingProposal.priceCents)}</Text>
+            <Text style={styles.negotiationWaiting}>Aguardando resposta do prestador…</Text>
+          </View>
+        )}
+
+        {canNegotiate && !pendingProposal && (
+          <Pressable
+            style={styles.negotiateLink}
+            onPress={() => router.push({ pathname: "/client/propose/[id]", params: { id: order.id } })}
+          >
+            <Ionicons name="pricetag-outline" size={15} color="#FF9a52" />
+            <Text style={styles.negotiateLinkText}>Negociar valor</Text>
+          </Pressable>
+        )}
 
         <View style={styles.addressCard}>
           <Ionicons name="location" size={18} color={theme.colors.primary} />
@@ -449,6 +514,93 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 17,
     fontFamily: fonts.extraBold,
     color: "#fff",
+  },
+  payButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+    backgroundColor: theme.colors.primary,
+    borderRadius: 16,
+    paddingVertical: 14,
+    marginBottom: 16,
+  },
+  payButtonText: {
+    fontSize: 14.5,
+    fontFamily: fonts.bold,
+    color: "#fff",
+  },
+  negotiationCard: {
+    backgroundColor: "rgba(255,102,0,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(255,102,0,0.35)",
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 16,
+  },
+  negotiationLabel: {
+    fontSize: 12.5,
+    fontFamily: fonts.bold,
+    color: "#FF9a52",
+  },
+  negotiationValue: {
+    fontSize: 22,
+    fontFamily: fonts.extraBold,
+    color: "#fff",
+    marginTop: 4,
+  },
+  negotiationNote: {
+    fontSize: 13,
+    fontFamily: fonts.medium,
+    color: "#c9c7e4",
+    marginTop: 6,
+    lineHeight: 18,
+  },
+  negotiationWaiting: {
+    fontSize: 12.5,
+    fontFamily: fonts.semiBold,
+    color: theme.colors.mutedForeground,
+    marginTop: 6,
+  },
+  negotiationActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 14,
+  },
+  negotiationDecline: {
+    backgroundColor: "rgba(255,255,255,0.06)",
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 13,
+  },
+  negotiationDeclineText: {
+    fontSize: 13,
+    fontFamily: fonts.bold,
+    color: theme.colors.mutedForeground,
+  },
+  negotiationAccept: {
+    flex: 1,
+    backgroundColor: theme.colors.primary,
+    alignItems: "center",
+    paddingVertical: 12,
+    borderRadius: 13,
+  },
+  negotiationAcceptText: {
+    fontSize: 13,
+    fontFamily: fonts.bold,
+    color: "#fff",
+  },
+  negotiateLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    marginBottom: 16,
+  },
+  negotiateLinkText: {
+    fontSize: 13.5,
+    fontFamily: fonts.bold,
+    color: "#FF9a52",
   },
   addressCard: {
     flexDirection: "row",

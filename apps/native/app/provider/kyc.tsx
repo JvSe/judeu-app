@@ -41,6 +41,7 @@ export default function ProviderKyc() {
   const [yearsExperience, setYearsExperience] = useState("0");
   const [serviceRadiusKm, setServiceRadiusKm] = useState("10");
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [allowsNegotiation, setAllowsNegotiation] = useState(false);
   const [services, setServices] = useState<DraftService[]>([]);
   const [serviceName, setServiceName] = useState("");
   const [servicePrice, setServicePrice] = useState("");
@@ -58,6 +59,7 @@ export default function ProviderKyc() {
     setServiceRadiusKm(String(profile.serviceRadiusKm));
     setCategoryId(profile.categoryIds[0] ?? null);
     setServices(profile.services.map((s) => ({ name: s.name, priceCents: s.priceCents })));
+    setAllowsNegotiation(profile.allowsNegotiation);
   }, [profile]);
 
   const hasDocument = document !== null || !!profile?.hasDocument;
@@ -122,6 +124,7 @@ export default function ProviderKyc() {
         bio: bio.trim() || undefined,
         yearsExperience: Number(yearsExperience) || 0,
         serviceRadiusKm: Number(serviceRadiusKm) || 10,
+        allowsNegotiation,
         categoryIds: [categoryId],
         services: services.map((s) => ({ ...s, categoryId })),
       });
@@ -251,6 +254,25 @@ export default function ProviderKyc() {
             />
             <Pressable style={styles.addServiceButton} onPress={addService} hitSlop={10}>
               <Ionicons name="add" size={20} color="#fff" />
+            </Pressable>
+          </View>
+
+          <Text style={styles.label}>Negociação de orçamento</Text>
+          <View style={styles.negotiationRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.negotiationTitle}>Permitir negociar valor</Text>
+              <Text style={styles.negotiationDetail}>
+                Clientes poderão propor outro valor antes de você aceitar o pedido, e você também
+                pode contrapropor. Desligado, o pedido segue direto pro pagamento.
+              </Text>
+            </View>
+            <Pressable
+              style={[styles.toggle, allowsNegotiation ? styles.toggleOn : styles.toggleOff]}
+              onPress={() => setAllowsNegotiation((v) => !v)}
+            >
+              <View
+                style={[styles.knob, allowsNegotiation ? styles.knobOn : styles.knobOff]}
+              />
             </Pressable>
           </View>
 
@@ -451,6 +473,53 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.primary,
     alignItems: "center",
     justifyContent: "center",
+  },
+  negotiationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    backgroundColor: "rgba(28,28,58,0.85)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: 17,
+    padding: 15,
+  },
+  negotiationTitle: {
+    fontSize: 14,
+    fontFamily: fonts.bold,
+    color: "#fff",
+  },
+  negotiationDetail: {
+    fontSize: 12,
+    fontFamily: fonts.medium,
+    color: theme.colors.mutedForeground,
+    marginTop: 3,
+    lineHeight: 17,
+  },
+  toggle: {
+    width: 42,
+    height: 25,
+    borderRadius: 13,
+    justifyContent: "center",
+  },
+  toggleOn: {
+    backgroundColor: theme.colors.primary,
+  },
+  toggleOff: {
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  knob: {
+    width: 19,
+    height: 19,
+    borderRadius: 10,
+    position: "absolute",
+    backgroundColor: "#fff",
+  },
+  knobOn: {
+    right: 3,
+  },
+  knobOff: {
+    left: 3,
   },
   doneCard: {
     flexDirection: "row",

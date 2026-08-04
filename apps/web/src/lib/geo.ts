@@ -1,7 +1,9 @@
 import { env } from "@judeu/env/server";
 
-// Cliente dos serviços de geo self-hosted (Railway): Nominatim (geocoding) e
-// Valhalla (rotas). Só é usado no servidor — nunca expor essas URLs no app.
+// Cliente dos serviços de geo (projeto de demonstração): Nominatim público
+// (geocoding) e OSRM demo server (rotas). Ambos são serviços públicos
+// gratuitos, sujeitos a rate limit e sem SLA — não usar em produção real.
+// Só é usado no servidor — nunca expor essas URLs no app.
 
 export type LatLng = { lat: number; lng: number };
 
@@ -27,7 +29,9 @@ export async function geocodeAddress(
   url.searchParams.set("limit", "1");
   url.searchParams.set("q", query);
 
-  const res = await fetch(url, { headers: { "User-Agent": "AjudaMais/1.0" } });
+  // Política de uso do Nominatim público exige um User-Agent que identifique
+  // a aplicação: https://operations.osmfoundation.org/policies/nominatim/
+  const res = await fetch(url, { headers: { "User-Agent": "AjudaMais-Demo/1.0" } });
   if (!res.ok) throw new Error(`Nominatim ${res.status}`);
   const results = (await res.json()) as NominatimResult[];
   const first = results[0];
@@ -39,12 +43,9 @@ export async function geocodeAddress(
   };
 }
 
-// ---- Valhalla: rota entre dois pontos (origem = prestador, destino = casa) ----
-type ValhallaResponse = {
-  trip?: {
-    summary?: { length?: number; time?: number };
-    legs?: { shape?: string }[];
-  };
+// ---- OSRM: rota entre dois pontos (origem = prestador, destino = casa) ----
+type OsrmResponse = {
+  routes?: { distance?: number; duration?: number; geometry?: string }[];
 };
 
 export type Route = {
@@ -53,9 +54,9 @@ export type Route = {
   points: LatLng[] | null; // geometria da rota, já decodificada, p/ desenhar no mapa
 };
 
-// Decodifica a polyline do Valhalla (algoritmo padrão Google polyline, precisão 1e6).
+// Decodifica polyline (algoritmo padrão Google polyline) numa precisão dada.
 // Decodificar no servidor evita levar um parser de polyline pro bundle nativo.
-export function decodePolyline6(encoded: string): LatLng[] {
+function decodePolyline(encoded: string, precision: number): LatLng[] {
   const points: LatLng[] = [];
   let index = 0;
   let lat = 0;
@@ -81,34 +82,37 @@ export function decodePolyline6(encoded: string): LatLng[] {
     } while (byte >= 0x20);
     lng += result & 1 ? ~(result >> 1) : result >> 1;
 
-    points.push({ lat: lat / 1e6, lng: lng / 1e6 });
+    points.push({ lat: lat / precision, lng: lng / precision });
   }
 
   return points;
 }
 
+// Mantido com precisão 1e6 (era o formato do Valhalla).
+export function decodePolyline6(encoded: string): LatLng[] {
+  return decodePolyline(encoded, 1e6);
+}
+
+// OSRM codifica a geometria da rota em polyline de precisão 1e5 por padrão.
+export function decodePolyline5(encoded: string): LatLng[] {
+  return decodePolyline(encoded, 1e5);
+}
+
 export async function routeBetween(from: LatLng, to: LatLng): Promise<Route | null> {
   const base = requireUrl(env.VALHALLA_URL, "VALHALLA_URL");
-  const res = await fetch(`${base}/route`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      locations: [
-        { lat: from.lat, lon: from.lng },
-        { lat: to.lat, lon: to.lng },
-      ],
-      costing: "auto",
-      units: "kilometers",
-    }),
-  });
-  if (!res.ok) throw new Error(`Valhalla ${res.status}`);
-  const data = (await res.json()) as ValhallaResponse;
-  const summary = data.trip?.summary;
-  if (!summary) return null;
-  const shape = data.trip?.legs?.[0]?.shape;
+  const coords = `${from.lng},${from.lat};${to.lng},${to.lat}`;
+  const url = new URL(`${base}/route/v1/driving/${coords}`);
+  url.searchParams.set("overview", "full");
+  url.searchParams.set("geometries", "polyline");
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`OSRM ${res.status}`);
+  const data = (await res.json()) as OsrmResponse;
+  const route = data.routes?.[0];
+  if (!route) return null;
   return {
-    distanceKm: summary.length ?? 0,
-    durationMin: Math.round((summary.time ?? 0) / 60),
-    points: shape ? decodePolyline6(shape) : null,
+    distanceKm: (route.distance ?? 0) / 1000,
+    durationMin: Math.round((route.duration ?? 0) / 60),
+    points: route.geometry ? decodePolyline5(route.geometry) : null,
   };
 }

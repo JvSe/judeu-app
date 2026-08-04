@@ -17,6 +17,7 @@ const upsertSchema = z.object({
   serviceRadiusKm: z.number().min(1).max(100),
   baseLat: z.number().optional(),
   baseLng: z.number().optional(),
+  allowsNegotiation: z.boolean().optional(),
   categoryIds: z.array(z.string().min(1)).min(1),
   services: z
     .array(

@@ -12,6 +12,7 @@
     "check-types": "turbo run check-types",
     "test": "turbo run test",
     "dev:native": "turbo run dev -F native",
+    "dev:prebuild": "turbo run prebuild -F native",
     "dev:ios": "turbo run ios -F native",
     "dev:android": "turbo run android -F native",
     "dev:web": "turbo run dev -F web",

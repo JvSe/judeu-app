@@ -9,6 +9,7 @@ import {
   ordersApi,
   paymentsApi,
   profileApi,
+  proposalsApi,
   providerProfileApi,
   reviewsApi,
   supportApi,
@@ -17,6 +18,7 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import type {
   CreateOrderInput,
+  CreateProposalInput,
   CreateReviewInput,
   CreateSupportTicketInput,
   NotificationPreferences,
@@ -91,6 +93,50 @@ export function useUpdateOrderLocation() {
     mutationFn: ({ id, lat, lng }: { id: string; lat: number; lng: number }) =>
       ordersApi.updateLocation(id, lat, lng),
     onSuccess: (order) => qc.invalidateQueries({ queryKey: ["order", order.id] }),
+  });
+}
+
+// ---- Orçamento/negociação antes do aceite (RF-D5) ----
+// Poll curto só em foco (mesmo padrão do chat) — a outra parte pode responder a
+// qualquer momento enquanto o pedido segue CREATED.
+export function useOrderProposals(orderId: string) {
+  const isFocused = useIsFocused();
+  return useQuery({
+    queryKey: ["order-proposals", orderId],
+    queryFn: () => proposalsApi.list(orderId),
+    enabled: !!orderId,
+    refetchInterval: isFocused ? 5000 : false,
+  });
+}
+
+export function useCreateProposal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orderId, input }: { orderId: string; input: CreateProposalInput }) =>
+      proposalsApi.create(orderId, input),
+    onSuccess: (_proposal, { orderId }) => {
+      qc.invalidateQueries({ queryKey: ["order-proposals", orderId] });
+      qc.invalidateQueries({ queryKey: ["order", orderId] });
+    },
+  });
+}
+
+export function useRespondToProposal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      orderId,
+      proposalId,
+      action,
+    }: {
+      orderId: string;
+      proposalId: string;
+      action: "accept" | "reject";
+    }) => proposalsApi.respond(orderId, proposalId, action),
+    onSuccess: (_proposal, { orderId }) => {
+      qc.invalidateQueries({ queryKey: ["order-proposals", orderId] });
+      qc.invalidateQueries({ queryKey: ["order", orderId] });
+    },
   });
 }
 

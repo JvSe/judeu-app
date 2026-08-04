@@ -14,6 +14,7 @@ export type {
   NotificationType,
   SupportTicketCategory,
   SupportTicketStatus,
+  ProposalStatus,
 } from "../prisma/generated/client";
 
 export function createPrismaClient() {

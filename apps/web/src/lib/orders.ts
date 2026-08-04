@@ -62,7 +62,13 @@ export type OrderDTO = {
   createdAt: string;
   service: { id: string; name: string } | null;
   category: { id: string; name: string } | null;
-  provider: { id: string; name: string; headline: string | null; ratingAvg: number } | null;
+  provider: {
+    id: string;
+    name: string;
+    headline: string | null;
+    ratingAvg: number;
+    allowsNegotiation: boolean;
+  } | null;
   client: { id: string; name: string; phone: string | null };
   address: {
     label: string | null;
@@ -104,6 +110,7 @@ function toDTO(o: OrderRow): OrderDTO {
           name: o.provider.user.fullName,
           headline: o.provider.headline,
           ratingAvg: o.provider.ratingAvg,
+          allowsNegotiation: o.provider.allowsNegotiation,
         }
       : null,
     client: { id: o.client.id, name: o.client.fullName, phone: o.client.phone },

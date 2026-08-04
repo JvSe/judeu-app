@@ -18,6 +18,10 @@
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": []
     },
+    "prebuild": {
+      "cache": false,
+      "persistent": true
+    },
     "dev": {
       "cache": false,
       "persistent": true

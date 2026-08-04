@@ -13,6 +13,7 @@
 | **Fundação** — schema Supabase + auth email/senha + camada de dados no app | RNF-1, RF-A1..A3, RNF-2/3 | ✅ **Concluído** |
 | **Catálogo real** — categorias/prestadores do Supabase | RF-C3 | ✅ **Concluído** |
 | **Pedido + máquina de estados** — criar/aceitar/recusar/cancelar + histórico | RF-D1..D4, RF-D7 (parcial) | ✅ **Concluído** |
+| **Orçamento/negociação antes do aceite** | RF-D5 | ✅ **Concluído** |
 | **Avaliação bidirecional + reputação real** | RF-G1, RF-G2 | ✅ **Concluído** |
 | **Chat real cliente ↔ prestador** | RF-E1 | ✅ **Concluído** |
 | **Pagamento real (Stripe) + split interno** | RF-F1/F2/F3 | ✅ **Concluído** · Pix pendente ativação na conta |
@@ -102,7 +103,7 @@ construído, incremento a incremento.
 - **RF-D2 (P0)** Máquina de estados `criado → aceito → a caminho → em execução → concluído/cancelado`. — ✅
 - **RF-D3 (P0)** Aceite/recusa pelo prestador. — ✅
 - **RF-D4 (P0)** Cancelamento (cliente/prestador) com regras. — ✅
-- **RF-D5 (P1)** Orçamento/negociação antes do aceite.
+- **RF-D5 (P1)** Orçamento/negociação antes do aceite. — ✅ *opt-in por prestador (`allowsNegotiation`, desligado por padrão — comportamento igual ao de antes); quando ligado, cliente/prestador propõem um novo valor enquanto o pedido está `CREATED`; bloqueado assim que há um `Payment` associado*
 - **RF-D6 (P1)** Agendamento (data/hora futura). — ✅
 - **RF-D7 (P1)** Histórico de pedidos. — ✅ (em andamento × concluídos)
 - **RF-D8 (P2)** Recontratar/repetir pedido; favoritos.
@@ -963,6 +964,110 @@ resolução" — não implementado, exigiria mexer no fluxo de pagamento/wallet)
 automática nem SLA; um chamado só permite uma resposta do admin (não há histórico de idas e vindas);
 push da resposta do suporte usa o mesmo best-effort de sempre (Expo Push API), então depende da
 mesma pendência de `eas init`/rebuild físico já registrada no incremento de push.
+
+### ✅ Incremento — Orçamento/negociação antes do aceite (RF-D5)
+
+Primeiro item do bloco P1 "Confiança e financeiro" ainda pendente. Migração: novo model
+`OrderProposal` (`id`, `orderId`, `byRole` [`"client"`/`"provider"`, string simples — mesmo padrão
+de `TRANSITIONS.by` em `orders.ts`], `priceCents`, `note?`, `status: ProposalStatus`
+[`PENDING`/`ACCEPTED`/`REJECTED`/`SUPERSEDED`], `createdAt`, `respondedAt?`) + relação `Order.proposals`.
+Recurso paralelo ao pedido, com rota própria — mesmo padrão de `review.ts`/`chat.ts` (não embutido
+no `OrderDTO`, evita criar uma dependência circular entre `orders.ts` e o novo módulo).
+
+**Backend** (`apps/web/src/lib/proposals.ts` + rotas `apps/web/src/app/api/orders/[id]/proposals/*`):
+- `createProposal` — cliente ou prestador do pedido propõe um novo `priceCents` (+ nota opcional)
+  enquanto `status === "CREATED"`; qualquer proposta `PENDING` anterior do pedido vira `SUPERSEDED`
+  automaticamente (só uma proposta ativa por vez). **Bloqueada se o pedido já tem um `Payment`
+  associado** (mesmo `PENDING`, ex. dinheiro escolhido mas não recebido) — decisão de produto: como
+  hoje o cliente é levado para a tela de pagamento logo após criar o pedido (antes do prestador
+  sequer ver a fila), negociar depois de um pagamento em curso arriscaria dessincronizar o valor já
+  cobrado do valor do pedido; a rota retorna 409 nesse caso em vez de tentar reconciliar.
+- `respondToProposal` — a **outra parte** (nunca quem propôs, 403 caso tente) aceita ou recusa uma
+  proposta `PENDING`; aceitar recalcula `platformFeeCents`/`totalCents` com a mesma fórmula de
+  `PLATFORM_FEE_RATE` (exportada de `orders.ts`, reaproveitada via `computeAcceptedTotals`) e
+  atualiza `Order.priceCents` + grava `OrderEvent` ("Orçamento aceito: R$X"); recusar só marca a
+  proposta `REJECTED`, preço do pedido não muda.
+- `listProposals` — histórico completo do pedido (cliente e prestador enxergam).
+- `POST/GET /api/orders/:id/proposals`, `POST /api/orders/:id/proposals/:proposalId/respond` — todas
+  autenticadas, 404 genérico pra quem não é parte do pedido (mesmo padrão anti-enumeração do resto
+  do app).
+
+**App:** `proposalsApi` + hooks (`useOrderProposals` com poll de 5s só em foco, mesmo padrão do
+chat; `useCreateProposal`/`useRespondToProposal`, invalidam `["order-proposals", id]` e
+`["order", id]`). Telas novas **dedicadas** (não inline nos cards, pra caber input de valor + nota +
+histórico): `provider/propose/[id].tsx` (acessada por um botão "Propor outro valor" no card de
+"Novos pedidos" do dashboard do prestador) e `client/propose/[id].tsx` (acessada por um link
+"Negociar valor" no detalhe do pedido) — cada uma mostra o valor atual, uma eventual proposta
+`PENDING` da outra parte com Aceitar/Recusar, o formulário pra propor (`TextInput` `decimal-pad`,
+mesmo padrão de conversão pra centavos do formulário de serviço da KYC — sem máscara em tempo real,
+só `Math.round(Number(valor.replace(",", ".")) * 100)` no envio) e o histórico de propostas
+anteriores. **Detalhe do pedido do cliente** (`client/order/[id].tsx`) também ganhou uma versão
+compacta inline: se há uma proposta `PENDING` do prestador, mostra Aceitar/Recusar direto ali sem
+precisar navegar, pra cobrir o caso mais comum (prestador contrapropõe, cliente só quer aceitar ou
+recusar rápido).
+
+**Verificado E2E** via curl contra o Supabase real (seed + usuário de teste novo): ciclo completo —
+cliente propõe R$50 num pedido de R$60 → prestador aceita → `GET` do pedido reflete `priceCents:
+5000`/`platformFeeCents: 400`/`totalCents: 5400` e o evento "Orçamento aceito: R$ 50,00`; 403 cliente
+tentando responder à própria proposta; 403 terceiro não relacionado tentando ver o histórico; 409
+tentando negociar depois que o prestador já aceitou o trabalho (`transition accept`); 409 tentando
+negociar um pedido com pagamento já iniciado (`CASH` `PENDING`); recusa mantém a proposta `REJECTED`
+sem alterar o preço; duas propostas consecutivas do prestador sem resposta → a mais antiga vira
+`SUPERSEDED`, a mais nova segue `PENDING`, e o aceite subsequente aplica o valor certo (R$130 → taxa R$10,40 →
+total R$140,40); 404 pedido/proposta inexistente; 400 payload inválido (`priceCents < 100`) e ação
+inválida no `respond`. `pnpm check-types` e `pnpm test` (35 testes no web, incluindo os 5 novos de
+`proposals.test.ts`; 27 no native) limpos nos dois pacotes; tipos de rota do Expo Router
+regenerados (`propose/[id]` em `client/` e `provider/`).
+
+**Pendências:** sem UI pra visualizar o histórico completo de propostas dentro do detalhe do pedido
+do cliente (só a proposta `PENDING` aparece inline ali — o histórico completo só é visível na tela
+dedicada `client/propose/[id]`); a negociação não é possível para pedidos que já têm pagamento
+iniciado (ver ajuste abaixo, que reduz bastante o impacto disso na prática).
+
+### ✅ Ajuste — Negociação como opt-in do prestador (RF-D5)
+
+A pendência anterior ("negociação bloqueada depois do pagamento, e o app manda o cliente direto pro
+pagamento após criar o pedido") virava a feature quase morta na prática. Resolvido tornando a
+negociação **opt-in por prestador**: sem habilitar, o fluxo é **idêntico** ao de antes (cria pedido →
+vai direto pro pagamento) — só muda quando o prestador liga a opção.
+
+Migração: `ProviderProfile.allowsNegotiation` (`Boolean @default(false)`).
+
+**Backend:**
+- `provider-profile.ts`/`POST /api/providers/me` — `allowsNegotiation` agora faz parte do
+  `UpsertProviderProfileInput`/`MyProviderProfileDTO` (mesmo formulário de cadastro profissional,
+  não é um endpoint de toggle à parte como `isAvailable`).
+- `catalog.ts` — `allowsNegotiation` exposto em `ProviderListDTO`/`ProviderDetailDTO` (catálogo
+  público), pra o app decidir a navegação **antes** de criar o pedido.
+- `orders.ts` — `OrderDTO.provider.allowsNegotiation` (mesmo padrão de `headline`/`ratingAvg`), pra
+  a tela de detalhe do pedido saber se deve oferecer negociação sem precisar de outra chamada.
+- `proposals.ts` (`createProposal`) — gate novo: **409** "Este prestador não habilitou negociação de
+  orçamento" se `!order.provider.allowsNegotiation`, antes mesmo de checar status/pagamento.
+  `respondToProposal` não tem esse gate — uma proposta já criada pode sempre ser respondida, mesmo
+  que o prestador desligue a opção depois (evita deixar proposta pendente órfã).
+
+**App:**
+- `provider/kyc.tsx` — novo toggle "Permitir negociar valor" (mesmo padrão visual dos toggles de
+  preferência de notificação) na seção de cadastro profissional, salvo junto com o resto do form.
+- `client/provider/[id].tsx` → `create-order.tsx` — `allowsNegotiation` do prestador viaja como
+  parâmetro de rota; no submit, `create-order.tsx` decide o destino: **habilitado** → navega pro
+  detalhe do pedido (`client/order/[id]`, onde a negociação mora); **desligado** (padrão) → navega
+  direto pro pagamento, exatamente como antes deste ajuste.
+- `client/order/[id].tsx` — a seção de negociação (link "Negociar valor" + card de proposta
+  pendente) só aparece quando `order.provider.allowsNegotiation` é `true`; ganhou um botão **"Ir
+  para pagamento"** sempre visível enquanto `status === "CREATED"`, já que o fluxo com negociação
+  habilitada não redireciona mais automaticamente pro pagamento na criação.
+- Dashboard do prestador (`provider/(tabs)/index.tsx`) — o botão "Propor outro valor" nos cards de
+  "Novos pedidos" só aparece se o **próprio** prestador tem `allowsNegotiation` ligado (usa
+  `useMyProviderProfile()`, já carregado ali).
+
+**Verificado E2E** via curl contra o Supabase real: `GET /api/providers/:id` e `GET /api/orders/:id`
+retornam `allowsNegotiation: false` por padrão pro prestador seed; `POST /api/orders/:id/proposals`
+→ `409` "Este prestador não habilitou negociação de orçamento" nesse estado; `POST
+/api/providers/me` com `allowsNegotiation: true` liga a opção → catálogo e pedido passam a refletir
+`true` → a mesma proposta que falhava agora retorna `201`; revertido o prestador seed de volta pro
+padrão (`false`) ao final do teste, sem deixar o seed alterado. `pnpm check-types` e `pnpm test`
+limpos em `web`/`native` (nenhuma rota nova, não precisou regenerar tipos do Expo Router).
 
 ---
 

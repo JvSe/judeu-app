@@ -18,6 +18,7 @@ export type MyProviderProfileDTO = {
   baseLat: number | null;
   baseLng: number | null;
   isAvailable: boolean;
+  allowsNegotiation: boolean;
   hasDocument: boolean;
   categoryIds: string[];
   services: { id: string; categoryId: string; name: string; priceCents: number }[];
@@ -30,6 +31,7 @@ export type UpsertProviderProfileInput = {
   serviceRadiusKm: number;
   baseLat?: number;
   baseLng?: number;
+  allowsNegotiation?: boolean;
   categoryIds: string[];
   services: { name: string; priceCents: number; categoryId: string }[];
 };
@@ -43,6 +45,7 @@ function toDTO(p: {
   baseLat: number | null;
   baseLng: number | null;
   isAvailable: boolean;
+  allowsNegotiation: boolean;
   documentUrl: string | null;
   categories: { categoryId: string }[];
   services: { id: string; categoryId: string; name: string; priceCents: number }[];
@@ -56,6 +59,7 @@ function toDTO(p: {
     baseLat: p.baseLat,
     baseLng: p.baseLng,
     isAvailable: p.isAvailable,
+    allowsNegotiation: p.allowsNegotiation,
     hasDocument: !!p.documentUrl,
     categoryIds: p.categories.map((c) => c.categoryId),
     services: p.services,
@@ -91,6 +95,7 @@ export async function upsertMyProviderProfile(
         serviceRadiusKm: input.serviceRadiusKm,
         baseLat: input.baseLat,
         baseLng: input.baseLng,
+        allowsNegotiation: input.allowsNegotiation ?? false,
       },
       create: {
         userId,
@@ -100,6 +105,7 @@ export async function upsertMyProviderProfile(
         serviceRadiusKm: input.serviceRadiusKm,
         baseLat: input.baseLat,
         baseLng: input.baseLng,
+        allowsNegotiation: input.allowsNegotiation ?? false,
       },
     });
 

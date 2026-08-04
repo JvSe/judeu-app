@@ -16,12 +16,16 @@ enum Role {
   CLIENT
   PROVIDER
   BOTH
+
+  @@map("role")
 }
 
 enum ProviderStatus {
   PENDING
   APPROVED
   BLOCKED
+
+  @@map("providerstatus")
 }
 
 enum OrderStatus {
@@ -31,12 +35,16 @@ enum OrderStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
+
+  @@map("orderstatus")
 }
 
 enum PaymentMethod {
   PIX
   CARD
   CASH
+
+  @@map("paymentmethod")
 }
 
 enum PaymentStatus {
@@ -44,23 +52,40 @@ enum PaymentStatus {
   PAID
   REFUNDED
   FAILED
+
+  @@map("paymentstatus")
 }
 
 enum WalletTxType {
   CREDIT
   DEBIT
+
+  @@map("wallettxtype")
 }
 
 enum AiRole {
   USER
   ASSISTANT
   TOOL
+
+  @@map("airole")
 }
 
 enum NotificationType {
   ORDER
   MESSAGE
   SUPPORT
+
+  @@map("notificationtype")
+}
+
+enum ProposalStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  SUPERSEDED
+
+  @@map("proposalstatus")
 }
 
 // ---------------------------------------------------------------------------
@@ -104,6 +129,7 @@ model User {
   supportTickets      SupportTicket[]
 
   @@index([role])
+  @@map("user")
 }
 
 // Sessão persistida: refresh tokens rotacionáveis (hash guardado, nunca o token puro)
@@ -118,6 +144,7 @@ model RefreshToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@map("refreshtoken")
 }
 
 // Recuperação de senha (RF-A4): código de 6 dígitos com TTL curto, hash guardado
@@ -133,6 +160,7 @@ model PasswordResetToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@map("passwordresettoken")
 }
 
 // Centro de notificações in-app (RF-I1): espelha cada push disparado pelo domínio
@@ -151,6 +179,7 @@ model Notification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+  @@map("notification")
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +194,13 @@ model ProviderProfile {
   yearsExperience Int            @default(0)
   status          ProviderStatus @default(PENDING)
   isAvailable     Boolean        @default(false)
+  // Perfil de pessoa jurídica (empresa) em vez de profissional autônomo.
+  isCompany       Boolean        @default(false)
+  // Empresa (isCompany=true) que está com vagas abertas pra contratar funcionários.
+  hiringEmployees Boolean        @default(false)
+  // Permite ao cliente propor/receber um orçamento diferente antes do aceite (RF-D5).
+  // Desligado por padrão: o fluxo segue direto pra tela de pagamento após criar o pedido.
+  allowsNegotiation Boolean      @default(false)
   ratingAvg       Float          @default(0)
   ratingCount     Int            @default(0)
   documentUrl     String? // documento de verificação (KYC) no Supabase Storage
@@ -181,6 +217,7 @@ model ProviderProfile {
   ordersAsProvider Order[]           @relation("ProviderOrders")
 
   @@index([status, isAvailable])
+  @@map("providerprofile")
 }
 
 model Category {
@@ -193,6 +230,8 @@ model Category {
   services   Service[]
   providers  ProviderCategory[]
   orders     Order[]
+
+  @@map("category")
 }
 
 // join m2m explícito prestador <-> categoria
@@ -205,6 +244,7 @@ model ProviderCategory {
 
   @@id([providerId, categoryId])
   @@index([categoryId])
+  @@map("providercategory")
 }
 
 model Service {
@@ -221,6 +261,7 @@ model Service {
 
   @@index([providerId])
   @@index([categoryId])
+  @@map("service")
 }
 
 // ---------------------------------------------------------------------------
@@ -247,6 +288,7 @@ model Address {
   orders Order[]
 
   @@index([userId])
+  @@map("address")
 }
 
 // ---------------------------------------------------------------------------
@@ -288,10 +330,12 @@ model Order {
   payment  Payment?
   reviews  Review[]
   supportTickets SupportTicket[]
+  proposals OrderProposal[]
 
   @@index([clientId])
   @@index([providerId])
   @@index([status])
+  @@map("order")
 }
 
 // auditoria da máquina de estados do pedido
@@ -305,6 +349,27 @@ model OrderEvent {
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
+  @@map("orderevent")
+}
+
+// Orçamento/negociação antes do aceite (RF-D5): enquanto o pedido está CREATED,
+// cliente ou prestador podem propor um novo priceCents; a outra parte aceita
+// (atualiza o preço do pedido) ou recusa. Só uma proposta PENDING por vez —
+// uma nova proposta marca a anterior como SUPERSEDED.
+model OrderProposal {
+  id          String         @id @default(uuid())
+  orderId     String
+  byRole      String // "client" | "provider" — quem propôs
+  priceCents  Int
+  note        String?
+  status      ProposalStatus @default(PENDING)
+  createdAt   DateTime       @default(now())
+  respondedAt DateTime?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("orderproposal")
 }
 
 // ---------------------------------------------------------------------------
@@ -323,6 +388,7 @@ model Message {
   sender User  @relation(fields: [senderId], references: [id])
 
   @@index([orderId])
+  @@map("message")
 }
 
 // ---------------------------------------------------------------------------
@@ -344,6 +410,7 @@ model Review {
 
   @@unique([orderId, authorId]) // um review por autor por pedido
   @@index([targetId])
+  @@map("review")
 }
 
 // ---------------------------------------------------------------------------
@@ -361,6 +428,8 @@ model Payment {
   updatedAt   DateTime      @updatedAt
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("payment")
 }
 
 model Wallet {
@@ -371,6 +440,8 @@ model Wallet {
 
   user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions WalletTransaction[]
+
+  @@map("wallet")
 }
 
 model WalletTransaction {
@@ -385,6 +456,7 @@ model WalletTransaction {
   wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
   @@index([walletId])
+  @@map("wallettransaction")
 }
 
 // ---------------------------------------------------------------------------
@@ -402,6 +474,7 @@ model AiConversation {
   messages AiMessage[]
 
   @@index([userId])
+  @@map("aiconversation")
 }
 
 model AiMessage {
@@ -414,6 +487,7 @@ model AiMessage {
   conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId])
+  @@map("aimessage")
 }
 
 // ---------------------------------------------------------------------------
@@ -428,12 +502,16 @@ enum SupportTicketCategory {
   ACCOUNT
   DISPUTE
   OTHER
+
+  @@map("supportticketcategory")
 }
 
 enum SupportTicketStatus {
   OPEN
   IN_PROGRESS
   RESOLVED
+
+  @@map("supportticketstatus")
 }
 
 model SupportTicket {
@@ -454,4 +532,5 @@ model SupportTicket {
 
   @@index([userId])
   @@index([status])
+  @@map("supportticket")
 }

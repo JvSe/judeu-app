@@ -1,6 +1,7 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
+import { useMemo } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -8,6 +9,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { fonts } from "@/constants/fonts";
 import { useNotifications, useProviders } from "@/lib/hooks";
 import { useCurrentLocation } from "@/lib/location";
+import { distanceKm, distributeNearby } from "@/lib/nearby";
 import { avatarColor, initialsOf, priceFromCents } from "@/lib/format";
 import { Avatar } from "@/components/ui/avatar";
 import { GlassSurface } from "@/components/ui/glass-surface";
@@ -23,20 +25,48 @@ export default function ClientHome() {
   const { data: notifications } = useNotifications();
   const hasUnread = (notifications?.unreadCount ?? 0) > 0;
 
+  // Posições reais dos prestadores são mockadas (baseLat/baseLng fixos no
+  // seed) — reposiciona num raio de 1km ao redor do usuário pra demo fazer
+  // sentido em qualquer cidade.
+  const nearbyPositions = useMemo(() => {
+    if (!myLocation || providers.length === 0) return null;
+    return distributeNearby(
+      myLocation,
+      providers.map((p) => p.id),
+      1,
+    );
+  }, [myLocation, providers]);
+
+  // Ordena pela distância mockada (mais perto primeiro) pra "Perto de você"
+  // refletir o mesmo raio de 1km usado no mapa.
+  const nearbyProviders = useMemo(() => {
+    if (!myLocation || !nearbyPositions) return providers;
+    return [...providers].sort((a, b) => {
+      const posA = nearbyPositions.get(a.id);
+      const posB = nearbyPositions.get(b.id);
+      if (!posA || !posB) return 0;
+      return distanceKm(myLocation, posA) - distanceKm(myLocation, posB);
+    });
+  }, [providers, myLocation, nearbyPositions]);
+
   const markers = [
     ...providers
-      .filter((p) => p.baseLat != null && p.baseLng != null)
-      .map((p, index) => ({
-        id: p.id,
-        lngLat: [p.baseLng as number, p.baseLat as number] as [number, number],
-        render: () => (
-          <ProviderMarker
-            initials={initialsOf(p.name)}
-            color={index === 0 ? "#FF6600" : "#3a3a70"}
-            highlighted={index === 0}
-          />
-        ),
-      })),
+      .filter((p) => nearbyPositions?.has(p.id) ?? (p.baseLat != null && p.baseLng != null))
+      .map((p, index) => {
+        const position = nearbyPositions?.get(p.id) ?? { lat: p.baseLat as number, lng: p.baseLng as number };
+        return {
+          id: p.id,
+          lngLat: [position.lng, position.lat] as [number, number],
+          render: () => (
+            <ProviderMarker
+              initials={initialsOf(p.name)}
+              color={index === 0 ? "#FF6600" : "#3a3a70"}
+              highlighted={index === 0}
+            />
+          ),
+          onPress: () => router.push({ pathname: "/client/provider/[id]", params: { id: p.id } }),
+        };
+      }),
     ...(myLocation
       ? [
           {
@@ -96,33 +126,38 @@ export default function ClientHome() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.cardsRow}
         >
-          {providers.slice(0, 2).map((provider, index) => (
-            <Pressable
-              key={provider.id}
-              style={({ pressed }) => [styles.providerCard, { opacity: pressed ? 0.9 : 1 }]}
-              onPress={() => router.push({ pathname: "/client/provider/[id]", params: { id: provider.id } })}
-            >
-              <View style={styles.providerHeader}>
-                <Avatar initials={initialsOf(provider.name)} color={avatarColor(index)} size={46} radius={14} />
-                <View>
-                  <Text style={styles.providerName}>{provider.name}</Text>
-                  <Text style={styles.providerRole}>{provider.role}</Text>
+          {nearbyProviders.slice(0, 2).map((provider, index) => {
+            const position = nearbyPositions?.get(provider.id);
+            const distanceLabel =
+              myLocation && position ? `${distanceKm(myLocation, position).toFixed(1)} km` : `${provider.reviews} avaliações`;
+            return (
+              <Pressable
+                key={provider.id}
+                style={({ pressed }) => [styles.providerCard, { opacity: pressed ? 0.9 : 1 }]}
+                onPress={() => router.push({ pathname: "/client/provider/[id]", params: { id: provider.id } })}
+              >
+                <View style={styles.providerHeader}>
+                  <Avatar initials={initialsOf(provider.name)} color={avatarColor(index)} size={46} radius={14} />
+                  <View>
+                    <Text style={styles.providerName}>{provider.name}</Text>
+                    <Text style={styles.providerRole}>{provider.role}</Text>
+                  </View>
                 </View>
-              </View>
-              <View style={styles.providerMeta}>
-                <View style={styles.ratingChip}>
-                  <Text style={styles.ratingText}>★ {provider.rating}</Text>
+                <View style={styles.providerMeta}>
+                  <View style={styles.ratingChip}>
+                    <Text style={styles.ratingText}>★ {provider.rating}</Text>
+                  </View>
+                  <Text style={styles.distanceText}>{distanceLabel}</Text>
                 </View>
-                <Text style={styles.distanceText}>{provider.reviews} avaliações</Text>
-              </View>
-              <View style={styles.providerFooter}>
-                <Text style={styles.providerPrice}>{priceFromCents(provider.priceFromCents)}</Text>
-                <View style={styles.viewButton}>
-                  <Text style={styles.viewButtonText}>Ver</Text>
+                <View style={styles.providerFooter}>
+                  <Text style={styles.providerPrice}>{priceFromCents(provider.priceFromCents)}</Text>
+                  <View style={styles.viewButton}>
+                    <Text style={styles.viewButtonText}>Ver</Text>
+                  </View>
                 </View>
-              </View>
-            </Pressable>
-          ))}
+              </Pressable>
+            );
+          })}
         </ScrollView>
       </View>
     </Screen>

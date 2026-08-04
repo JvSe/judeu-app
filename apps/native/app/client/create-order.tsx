@@ -57,6 +57,7 @@ export default function CreateOrder() {
     serviceId?: string;
     serviceName?: string;
     priceCents?: string;
+    allowsNegotiation?: string;
   }>();
 
   const [when, setWhen] = useState<"agora" | "agendar">("agora");
@@ -126,7 +127,13 @@ export default function CreateOrder() {
           state: uf.trim(),
         },
       });
-      router.replace({ pathname: "/client/payment/[id]", params: { id: order.id } });
+      if (params.allowsNegotiation === "true") {
+        // Prestador habilitou negociação (RF-D5) — vai pro detalhe do pedido em vez de
+        // pular direto pro pagamento, pra dar espaço a propor/receber um valor diferente.
+        router.replace({ pathname: "/client/order/[id]", params: { id: order.id } });
+      } else {
+        router.replace({ pathname: "/client/payment/[id]", params: { id: order.id } });
+      }
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : "Não foi possível criar o pedido.");
     }

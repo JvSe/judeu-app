@@ -22,6 +22,7 @@ export type ProviderListDTO = {
   baseLat: number | null;
   baseLng: number | null;
   isAvailable: boolean;
+  allowsNegotiation: boolean;
 };
 
 export type ProviderDetailDTO = ProviderListDTO & {
@@ -69,6 +70,7 @@ export async function listProviders(categoryId?: string): Promise<ProviderListDT
     baseLat: p.baseLat,
     baseLng: p.baseLng,
     isAvailable: p.isAvailable,
+    allowsNegotiation: p.allowsNegotiation,
   }));
 }
 
@@ -89,6 +91,7 @@ export async function getProvider(id: string): Promise<ProviderDetailDTO | null>
     baseLat: p.baseLat,
     baseLng: p.baseLng,
     isAvailable: p.isAvailable,
+    allowsNegotiation: p.allowsNegotiation,
     bio: p.bio,
     services: p.services.map((s) => ({ id: s.id, name: s.name, priceCents: s.priceCents })),
   };
