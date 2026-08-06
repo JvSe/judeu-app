@@ -32,7 +32,12 @@ export default function ProviderProfileTab() {
   return (
     <Screen>
       <View style={styles.container}>
-        <Avatar initials={initialsOf(user?.fullName ?? "?")} size={88} fontSize={30} />
+        <Avatar
+          initials={initialsOf(user?.fullName ?? "?")}
+          imageUri={user?.avatarUrl}
+          size={88}
+          fontSize={30}
+        />
         <Text style={styles.name}>{user?.fullName ?? "Prestador"}</Text>
         <Text style={styles.subtitle}>{profile?.headline ?? "Complete seu cadastro profissional"}</Text>
 
@@ -52,6 +57,15 @@ export default function ProviderProfileTab() {
           <Text style={styles.editLabel}>
             {profile ? "Editar cadastro profissional" : "Completar cadastro"}
           </Text>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [styles.menuRow, { opacity: pressed ? 0.7 : 1 }]}
+          onPress={() => router.push("/provider/edit-profile")}
+        >
+          <Ionicons name="person-outline" size={19} color={theme.colors.primary} />
+          <Text style={styles.menuLabel}>Editar perfil</Text>
+          <Ionicons name="chevron-forward" size={16} color={theme.colors.mutedForeground} />
         </Pressable>
 
         <Pressable

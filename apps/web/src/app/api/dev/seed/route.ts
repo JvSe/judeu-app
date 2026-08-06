@@ -1,11 +1,51 @@
 import { hashPassword } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import type { LatLng } from "@/lib/geo";
 import { error, handleOptions, json } from "@/lib/http";
 
 export const runtime = "nodejs";
 
-// Seed de desenvolvimento: popula categorias + prestadores de exemplo em Palmas/TO.
-// Idempotente. Bloqueado em produção.
+// Seed de desenvolvimento: popula categorias + prestadores de exemplo, todos
+// posicionados perto de SEED_CENTER. Idempotente. Bloqueado em produção.
+
+const SEED_CENTER: LatLng = { lat: -10.23172, lng: -48.324216 };
+
+const EARTH_RADIUS_KM = 6371;
+const GOLDEN_ANGLE_RAD = Math.PI * (3 - Math.sqrt(5));
+// Nunca posiciona um prestador em cima do centro.
+const MIN_DISTANCE_KM = 0.3;
+const SPREAD_RADIUS_KM = 1;
+
+function destinationPoint(origin: LatLng, distanceKm: number, bearingRad: number): LatLng {
+  const angularDistance = distanceKm / EARTH_RADIUS_KM;
+  const lat1 = (origin.lat * Math.PI) / 180;
+  const lng1 = (origin.lng * Math.PI) / 180;
+
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(angularDistance) +
+      Math.cos(lat1) * Math.sin(angularDistance) * Math.cos(bearingRad),
+  );
+  const lng2 =
+    lng1 +
+    Math.atan2(
+      Math.sin(bearingRad) * Math.sin(angularDistance) * Math.cos(lat1),
+      Math.cos(angularDistance) - Math.sin(lat1) * Math.sin(lat2),
+    );
+
+  return { lat: (lat2 * 180) / Math.PI, lng: (lng2 * 180) / Math.PI };
+}
+
+// Distribui `count` pontos ao redor de `center` num raio de SPREAD_RADIUS_KM,
+// nunca mais perto que MIN_DISTANCE_KM. Layout em espiral áurea (sunflower):
+// densidade uniforme do mínimo até a borda, sem dois pontos se sobrepondo.
+function distributeAround(center: LatLng, count: number): LatLng[] {
+  return Array.from({ length: count }, (_, index) => {
+    const spreadFraction = count > 1 ? Math.sqrt(index / (count - 1)) : 1;
+    const distance = MIN_DISTANCE_KM + spreadFraction * (SPREAD_RADIUS_KM - MIN_DISTANCE_KM);
+    const bearingRad = index * GOLDEN_ANGLE_RAD;
+    return destinationPoint(center, distance, bearingRad);
+  });
+}
 
 const CATEGORIES = [
   { slug: "reparos", name: "Reparos", icon: "flash" },
@@ -22,8 +62,6 @@ const PROVIDERS = [
     rating: 4.9,
     reviews: 328,
     years: 8,
-    lat: -10.1849,
-    lng: -48.3336,
     category: "reparos",
     services: [
       { name: "Instalação de tomada", priceCents: 8000 },
@@ -38,8 +76,6 @@ const PROVIDERS = [
     rating: 4.8,
     reviews: 214,
     years: 5,
-    lat: -10.1725,
-    lng: -48.3301,
     category: "limpeza",
     services: [
       { name: "Limpeza padrão", priceCents: 12000 },
@@ -53,8 +89,6 @@ const PROVIDERS = [
     rating: 4.7,
     reviews: 156,
     years: 6,
-    lat: -10.1968,
-    lng: -48.3389,
     category: "reparos",
     services: [{ name: "Reparo de vazamento", priceCents: 9000 }],
   },
@@ -78,8 +112,10 @@ export async function POST() {
   }
 
   const passwordHash = await hashPassword("provider-demo-1234");
+  const positions = distributeAround(SEED_CENTER, PROVIDERS.length);
 
-  for (const p of PROVIDERS) {
+  for (const [index, p] of PROVIDERS.entries()) {
+    const { lat, lng } = positions[index];
     const category = await prisma.category.findUnique({ where: { slug: p.category } });
     if (!category) continue;
 
@@ -98,8 +134,8 @@ export async function POST() {
         isAvailable: true,
         ratingAvg: p.rating,
         ratingCount: p.reviews,
-        baseLat: p.lat,
-        baseLng: p.lng,
+        baseLat: lat,
+        baseLng: lng,
       },
       create: {
         userId: user.id,
@@ -109,8 +145,8 @@ export async function POST() {
         isAvailable: true,
         ratingAvg: p.rating,
         ratingCount: p.reviews,
-        baseLat: p.lat,
-        baseLng: p.lng,
+        baseLat: lat,
+        baseLng: lng,
       },
     });
 

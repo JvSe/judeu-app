@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -43,9 +44,18 @@ export default function ProviderChat() {
   }
 
   const send = () => {
-    if (!draft.trim()) return;
-    sendMessage.mutate({ orderId: order.id, body: draft.trim() });
+    const body = draft.trim();
+    if (!body) return;
     setDraft("");
+    sendMessage.mutate(
+      { orderId: order.id, body },
+      {
+        onError: (err) => {
+          setDraft(body);
+          Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível enviar a mensagem.");
+        },
+      },
+    );
   };
 
   return (
@@ -100,8 +110,16 @@ export default function ProviderChat() {
             style={styles.input}
             onSubmitEditing={send}
           />
-          <Pressable style={styles.sendButton} onPress={send}>
-            <Ionicons name="send" size={18} color="#fff" />
+          <Pressable
+            style={[styles.sendButton, sendMessage.isPending && { opacity: 0.6 }]}
+            onPress={send}
+            disabled={sendMessage.isPending}
+          >
+            {sendMessage.isPending ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="send" size={18} color="#fff" />
+            )}
           </Pressable>
         </View>
       </KeyboardAvoidingView>

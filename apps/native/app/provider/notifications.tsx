@@ -18,6 +18,7 @@ import {
 } from "@/lib/hooks";
 import { pathForNotification } from "@/lib/notifications";
 import { Screen } from "@/components/ui/screen";
+import SpinButton from "@/components/ui/spin-button";
 
 type Filter = "all" | "ORDER" | "MESSAGE";
 const filters: { key: Filter; label: string }[] = [
@@ -78,13 +79,20 @@ export default function ProviderNotifications() {
             </Pressable>
             <Text style={styles.heading}>Notificações</Text>
           </View>
-          <Pressable
-            onPress={() => markAllRead.mutate()}
+          <SpinButton
+            controlled
+            isActive={markAllRead.isPending}
             disabled={markAllRead.isPending || !(data?.unreadCount ?? 0)}
-            hitSlop={10}
-          >
-            <Text style={styles.markRead}>Marcar lidas</Text>
-          </Pressable>
+            idleText="Marcar lidas"
+            activeText="Marcando..."
+            onPress={() => markAllRead.mutate()}
+            colors={{
+              idle: { background: "transparent", text: theme.colors.primary },
+              active: { background: "transparent", text: theme.colors.primary },
+            }}
+            buttonStyle={{ paddingHorizontal: 0, paddingVertical: 0, borderRadius: 0, fontSize: 13 }}
+            spinnerConfig={{ color: theme.colors.primary, containerBackground: "transparent" }}
+          />
         </View>
         <View style={styles.filters}>
           {filters.map((f) => (
@@ -192,11 +200,6 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fonts.extraBold,
     color: theme.colors.foreground,
     letterSpacing: -0.6,
-  },
-  markRead: {
-    fontSize: 13,
-    fontFamily: fonts.bold,
-    color: theme.colors.primary,
   },
   filters: {
     flexDirection: "row",

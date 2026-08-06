@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "using-reacticx": {
+      "source": "rit3zh/reacticx",
+      "sourceType": "github",
+      "skillPath": "skills/using-reacticx/SKILL.md",
+      "computedHash": "5573d1e70ea69c04a6bd666682ef77ad6954e87105e7b534f7abc24585690709"
+    }
+  }
+}

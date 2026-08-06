@@ -1,6 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { useLLM, type ToolCall } from "react-native-executorch";
+import { useLLM, type Message } from "react-native-executorch";
 
 import { fonts } from "@/constants/fonts";
 import { catalogApi, type Category, type ProviderListItem } from "@/lib/api";
@@ -23,13 +23,26 @@ import {
   AI_MODEL,
   buildSearchTool,
   buildSystemPrompt,
+  parseToolCallArgs,
   resolveCategoryId,
-  SEARCH_TOOL_NAME,
+  sanitizeReply,
   type SearchArgs,
 } from "@/lib/assistant";
 import { Avatar } from "@/components/ui/avatar";
 
 type DisplayMessage = { role: "user" | "assistant"; content: string };
+
+// Resultado da busca, retido até a resposta do modelo ficar pronta.
+type SearchOutcome = {
+  summary: string;
+  label: string | null;
+  providers: ProviderListItem[];
+};
+
+// Quantas mensagens da conversa acompanham cada geração. `generate` não aplica
+// a janela deslizante que o `sendMessage` da lib usa, então limitamos aqui para
+// a conversa não estourar o contexto do modelo.
+const CONTEXT_MESSAGES = 12;
 
 export function AiAssistant() {
   const { theme } = useUnistyles();
@@ -42,85 +55,147 @@ export function AiAssistant() {
   const [providers, setProviders] = useState<ProviderListItem[]>([]);
   const [searchLabel, setSearchLabel] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  // Cobre o turno inteiro. `llm.isGenerating` volta a false durante a busca na
+  // rede, entre as duas gerações, e destravaria o input no meio do fluxo.
+  const [busy, setBusy] = useState(false);
+  // Transcrição própria: `generate` não mexe no messageHistory da lib, e é ele
+  // que nos deixa fazer o segundo turno com o resultado da busca.
+  const [messages, setMessages] = useState<DisplayMessage[]>([]);
 
   const scrollRef = useRef<ScrollView>(null);
-  const configuredRef = useRef(false);
   const categoriesRef = useRef<Category[]>(categories);
   categoriesRef.current = categories;
 
-  // Executa a busca REAL no catálogo do Supabase e atualiza os cards.
-  // Retorna também um resumo textual (usado como resultado da tool p/ o modelo).
-  const searchByCategoryId = useCallback(
-    async (categoryId: string, label: string): Promise<ProviderListItem[]> => {
-      setSearching(true);
-      setSearchLabel(label);
-      try {
-        const list = await catalogApi.providers(categoryId);
-        setProviders(list);
-        return list;
-      } catch {
-        setProviders([]);
-        return [];
-      } finally {
-        setSearching(false);
-      }
-    },
-    [],
-  );
+  // Busca crua no catálogo REAL do Supabase. Não toca na tela — quem chama
+  // decide a hora de publicar, para os cards não aparecerem antes da resposta.
+  const fetchProviders = useCallback(async (categoryId: string): Promise<ProviderListItem[]> => {
+    try {
+      return await catalogApi.providers(categoryId);
+    } catch {
+      return [];
+    }
+  }, []);
 
-  // Callback do function calling: o modelo pede a busca, nós devolvemos dados reais.
-  const executeToolCallback = useCallback(
-    async (call: ToolCall): Promise<string | null> => {
-      if (call.toolName !== SEARCH_TOOL_NAME) return null;
-      const args = (call.arguments ?? {}) as SearchArgs;
+  // Executa a busca e descreve o desfecho em uma frase factual. O `summary`
+  // alimenta o segundo turno do modelo e vira o texto exibido se a geração
+  // falhar; `label`/`providers` só vão para a tela depois da mensagem pronta.
+  const runSearch = useCallback(
+    async (args: SearchArgs): Promise<SearchOutcome> => {
       const cats = categoriesRef.current;
       const categoryId = resolveCategoryId(cats, args.categoria ?? "");
       if (!categoryId) {
-        return "Não encontrei essa categoria. Categorias válidas: " + cats.map((c) => c.slug).join(", ");
+        return {
+          summary: `O Ajuda+ ainda não atende esse tipo de serviço. As categorias disponíveis são: ${cats
+            .map((c) => c.name)
+            .join(", ")}.`,
+          label: null,
+          providers: [],
+        };
       }
       const label = cats.find((c) => c.id === categoryId)?.name ?? args.categoria;
-      const list = await searchByCategoryId(categoryId, label);
-      if (list.length === 0) return `Nenhum prestador de ${label} disponível no momento.`;
+      const list = await fetchProviders(categoryId);
+      if (list.length === 0) {
+        return {
+          summary: `Nenhum prestador de ${label} está disponível no momento.`,
+          label: null,
+          providers: [],
+        };
+      }
       const top = list
         .slice(0, 5)
         .map((p) => `${p.name} (nota ${p.rating.toFixed(1)}, a partir de ${priceFromCents(p.priceFromCents)})`)
         .join("; ");
-      return `Encontrei ${list.length} prestador(es) de ${label}: ${top}. Os cards já foram mostrados ao usuário.`;
+      return {
+        summary: `${list.length} prestador(es) de ${label} encontrados: ${top}.`,
+        label,
+        providers: list,
+      };
     },
-    [searchByCategoryId],
+    [fetchProviders],
   );
 
-  // Configura chat + tools uma única vez, quando o modelo carrega e as categorias chegam.
-  useEffect(() => {
-    if (!llm.isReady || configuredRef.current || categories.length === 0) return;
-    llm.configure({
-      chatConfig: { systemPrompt: buildSystemPrompt(categories) },
-      toolsConfig: {
-        tools: [buildSearchTool(categories)],
-        executeToolCallback,
-        displayToolCalls: false,
-      },
-    });
-    configuredRef.current = true;
-  }, [llm, llm.isReady, categories, executeToolCallback]);
+  // Contexto de cada geração: system prompt com as categorias reais + a conversa.
+  const buildContext = useCallback(
+    (history: DisplayMessage[]): Message[] => [
+      { role: "system", content: buildSystemPrompt(categoriesRef.current) },
+      ...history.slice(-CONTEXT_MESSAGES),
+    ],
+    [],
+  );
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
-    if (!text || llm.isGenerating) return;
+    if (!text || busy) return;
     setInput("");
-    try {
-      await llm.sendMessage(text);
-    } catch {
-      // erro de geração é refletido por llm.error abaixo
-    }
-  }, [input, llm]);
+    setSendError(null);
+    setBusy(true);
 
-  // Fallback determinístico: toca numa categoria e busca direto, sem depender do modelo.
+    const withUser: DisplayMessage[] = [...messages, { role: "user", content: text }];
+    setMessages(withUser);
+
+    try {
+      // 1º turno: o modelo conversa ou pede a busca.
+      const raw = await llm.generate(buildContext(withUser), [
+        buildSearchTool(categoriesRef.current),
+      ]);
+      const args = parseToolCallArgs(raw);
+
+      if (!args) {
+        const reply = sanitizeReply(raw);
+        setMessages([
+          ...withUser,
+          {
+            role: "assistant",
+            content: reply || "Não entendi bem. Pode descrever o serviço que você precisa?",
+          },
+        ]);
+        return;
+      }
+
+      // Uma busca nova começou: os cards da anterior saem de cena agora, e não
+      // no meio da resposta.
+      setProviders([]);
+      setSearchLabel(null);
+
+      // 2º turno: devolvemos o resultado real do catálogo e deixamos o modelo
+      // redigir a resposta. Sem tools aqui, para ele não buscar de novo.
+      const outcome = await runSearch(args);
+      const followUp = await llm.generate([
+        ...buildContext(withUser),
+        {
+          role: "user",
+          content:
+            `Resultado da busca no catálogo do Ajuda+: ${outcome.summary}\n\n` +
+            "Responda ao usuário em uma ou duas frases curtas, baseado apenas nesse resultado. " +
+            "Se nada foi encontrado, diga isso com clareza. Não invente prestadores, notas ou preços.",
+        },
+      ]);
+      // Mensagem e cards no mesmo commit: os prestadores nunca aparecem antes.
+      setMessages([
+        ...withUser,
+        { role: "assistant", content: sanitizeReply(followUp) || outcome.summary },
+      ]);
+      setSearchLabel(outcome.label);
+      setProviders(outcome.providers);
+    } catch {
+      // llm.error só cobre falha de carga do modelo, não de geração.
+      setSendError("Não consegui responder agora. Tente reformular a mensagem.");
+    } finally {
+      setBusy(false);
+    }
+  }, [input, busy, llm, messages, buildContext, runSearch]);
+
+  // Fallback determinístico: toca numa categoria e busca direto, sem depender do
+  // modelo. Aqui não há mensagem para esperar, então publica assim que chega.
   const handleCategoryChip = useCallback(
-    (category: Category) => {
-      void searchByCategoryId(category.id, category.name);
+    async (category: Category) => {
+      setSearching(true);
+      setSearchLabel(category.name);
+      setProviders(await fetchProviders(category.id));
+      setSearching(false);
     },
-    [searchByCategoryId],
+    [fetchProviders],
   );
 
   // --- Estado 1: carregando o modelo (download pode ser de centenas de MB) ---
@@ -152,14 +227,10 @@ export function AiAssistant() {
     );
   }
 
-  const history = llm.messageHistory.filter(
-    (m): m is DisplayMessage => m.role === "user" || m.role === "assistant",
-  );
-  // Bolha viva com o texto em streaming enquanto o assistente ainda não foi anexado ao histórico.
-  const streaming =
-    llm.isGenerating && llm.response && history[history.length - 1]?.role !== "assistant"
-      ? llm.response
-      : null;
+  // Bolha viva enquanto gera. Some sozinha quando a mensagem entra na transcrição.
+  // No 1º turno o texto costuma ser só a tool call, que sanitizeReply zera.
+  const streamingText = llm.isGenerating ? sanitizeReply(llm.response) : "";
+  const streaming = streamingText.length > 0 ? streamingText : null;
 
   return (
     <KeyboardAvoidingView
@@ -174,15 +245,15 @@ export function AiAssistant() {
         keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
       >
-        {history.length === 0 && !streaming ? (
+        {messages.length === 0 && !streaming ? (
           <View style={styles.intro}>
             <View style={styles.introIcon}>
               <Ionicons name="sparkles" size={22} color={theme.colors.primary} />
             </View>
             <Text style={styles.introTitle}>Como posso ajudar?</Text>
             <Text style={styles.introSub}>
-              Descreva o que você precisa — ex.: “tem um vazamento na pia da cozinha” — que eu encontro
-              os prestadores certos aqui em Palmas.
+              Me conta em poucas palavras o que está acontecendo. Eu entendo o problema, sugiro a
+              melhor solução e chamo os profissionais mais bem avaliados perto de você.
             </Text>
             <View style={styles.chipsRow}>
               {categories.map((c) => (
@@ -194,7 +265,7 @@ export function AiAssistant() {
           </View>
         ) : null}
 
-        {history.map((m, i) => (
+        {messages.map((m, i) => (
           <View
             key={i}
             style={[styles.bubble, m.role === "user" ? styles.userBubble : styles.assistantBubble]}
@@ -209,12 +280,14 @@ export function AiAssistant() {
           </View>
         ) : null}
 
-        {llm.isGenerating && !streaming ? (
+        {busy && !streaming ? (
           <View style={styles.typingRow}>
             <ActivityIndicator size="small" color={theme.colors.mutedForeground} />
             <Text style={styles.typingText}>Pensando…</Text>
           </View>
         ) : null}
+
+        {sendError ? <Text style={styles.errorText}>{sendError}</Text> : null}
 
         {(searching || providers.length > 0) && (
           <View style={styles.results}>
@@ -257,15 +330,15 @@ export function AiAssistant() {
           onChangeText={setInput}
           placeholder="Descreva o serviço que você precisa…"
           placeholderTextColor={theme.colors.mutedForeground}
-          editable={!llm.isGenerating}
+          editable={!busy}
           onSubmitEditing={handleSend}
           returnKeyType="send"
           multiline
         />
         <Pressable
-          style={[styles.sendBtn, (llm.isGenerating || !input.trim()) && styles.sendBtnDisabled]}
+          style={[styles.sendBtn, (busy || !input.trim()) && styles.sendBtnDisabled]}
           onPress={handleSend}
-          disabled={llm.isGenerating || !input.trim()}
+          disabled={busy || !input.trim()}
         >
           <Ionicons name="arrow-up" size={20} color="#fff" />
         </Pressable>

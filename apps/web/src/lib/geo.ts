@@ -98,21 +98,56 @@ export function decodePolyline5(encoded: string): LatLng[] {
   return decodePolyline(encoded, 1e5);
 }
 
-export async function routeBetween(from: LatLng, to: LatLng): Promise<Route | null> {
-  const base = requireUrl(env.VALHALLA_URL, "VALHALLA_URL");
+// Distância em linha reta (haversine), em km — usado para detectar chegada do
+// prestador sem depender do Valhalla/OSRM, que roda best-effort (RF-E3).
+export function haversineKm(a: LatLng, b: LatLng): number {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// Fallback quando OSRM/Valhalla indisponível — linha reta + ETA aproximado (~30 km/h urbano).
+export function straightLineRoute(from: LatLng, to: LatLng): Route {
+  const distanceKm = haversineKm(from, to);
+  const durationMin = Math.max(1, Math.round((distanceKm / 30) * 60));
+  return {
+    distanceKm,
+    durationMin,
+    points: [from, to],
+  };
+}
+
+const DEFAULT_OSRM_BASE = "https://router.project-osrm.org";
+
+function routingBaseUrl(): string {
+  const configured = env.VALHALLA_URL?.replace(/\/$/, "");
+  return configured || DEFAULT_OSRM_BASE;
+}
+
+export async function routeBetween(from: LatLng, to: LatLng): Promise<Route> {
+  const base = routingBaseUrl();
   const coords = `${from.lng},${from.lat};${to.lng},${to.lat}`;
   const url = new URL(`${base}/route/v1/driving/${coords}`);
   url.searchParams.set("overview", "full");
   url.searchParams.set("geometries", "polyline");
 
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`OSRM ${res.status}`);
-  const data = (await res.json()) as OsrmResponse;
-  const route = data.routes?.[0];
-  if (!route) return null;
-  return {
-    distanceKm: (route.distance ?? 0) / 1000,
-    durationMin: Math.round((route.duration ?? 0) / 60),
-    points: route.geometry ? decodePolyline5(route.geometry) : null,
-  };
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
+    if (!res.ok) throw new Error(`OSRM ${res.status}`);
+    const data = (await res.json()) as OsrmResponse & { code?: string };
+    if (data.code && data.code !== "Ok") throw new Error(`OSRM ${data.code}`);
+    const route = data.routes?.[0];
+    if (!route?.geometry) throw new Error("OSRM empty route");
+    return {
+      distanceKm: (route.distance ?? 0) / 1000,
+      durationMin: Math.max(1, Math.round((route.duration ?? 0) / 60)),
+      points: decodePolyline5(route.geometry),
+    };
+  } catch {
+    return straightLineRoute(from, to);
+  }
 }

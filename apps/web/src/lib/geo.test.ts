@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decodePolyline6 } from "./geo";
+import { decodePolyline6, haversineKm, straightLineRoute } from "./geo";
 
 describe("decodePolyline6", () => {
   it("decodifica string vazia como lista vazia", () => {
@@ -36,5 +36,16 @@ describe("decodePolyline6", () => {
     // O 2º e 3º pontos se movem pra sudoeste em relação ao anterior.
     expect(points[1].lng).toBeLessThan(points[0].lng);
     expect(points[2].lng).toBeLessThan(points[1].lng);
+  });
+});
+
+describe("straightLineRoute", () => {
+  it("retorna dois pontos e ETA mínimo de 1 min", () => {
+    const from = { lat: -10.1841, lng: -48.3336 };
+    const to = { lat: -10.19, lng: -48.34 };
+    const route = straightLineRoute(from, to);
+    expect(route.points).toEqual([from, to]);
+    expect(route.distanceKm).toBeCloseTo(haversineKm(from, to), 5);
+    expect(route.durationMin).toBeGreaterThanOrEqual(1);
   });
 });

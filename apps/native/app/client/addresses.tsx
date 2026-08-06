@@ -1,6 +1,7 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
+import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -9,6 +10,7 @@ import { fonts } from "@/constants/fonts";
 import type { SavedAddress } from "@/lib/api";
 import { useAddresses, useDeleteAddress, useSetDefaultAddress } from "@/lib/hooks";
 import { Screen } from "@/components/ui/screen";
+import SpinButton from "@/components/ui/spin-button";
 
 export default function Addresses() {
   const { theme } = useUnistyles();
@@ -16,6 +18,20 @@ export default function Addresses() {
   const { data: addresses, isLoading } = useAddresses();
   const setDefault = useSetDefaultAddress();
   const removeAddress = useDeleteAddress();
+  const [pendingDefaultId, setPendingDefaultId] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+
+  const handleSetDefault = (address: SavedAddress) => {
+    setPendingDefaultId(address.id);
+    setDefault.mutate(address.id, {
+      onError: (err) => {
+        const message =
+          err instanceof Error ? err.message : "Não foi possível definir o endereço como padrão.";
+        Alert.alert("Ops", message);
+      },
+      onSettled: () => setPendingDefaultId(null),
+    });
+  };
 
   const confirmDelete = (address: SavedAddress) => {
     Alert.alert(
@@ -26,7 +42,17 @@ export default function Addresses() {
         {
           text: "Excluir",
           style: "destructive",
-          onPress: () => removeAddress.mutate(address.id),
+          onPress: () => {
+            setPendingDeleteId(address.id);
+            removeAddress.mutate(address.id, {
+              onError: (err) => {
+                const message =
+                  err instanceof Error ? err.message : "Não foi possível excluir o endereço agora.";
+                Alert.alert("Ops", message);
+              },
+              onSettled: () => setPendingDeleteId(null),
+            });
+          },
         },
       ],
     );
@@ -76,20 +102,36 @@ export default function Addresses() {
               </Pressable>
               <View style={styles.cardActions}>
                 {!address.isDefault && (
-                  <Pressable
-                    style={styles.actionButton}
-                    disabled={setDefault.isPending}
-                    onPress={() => setDefault.mutate(address.id)}
-                  >
-                    <Text style={styles.actionText}>Tornar padrão</Text>
-                  </Pressable>
+                  <View style={{ flex: 1 }}>
+                    <SpinButton
+                      controlled
+                      isActive={setDefault.isPending && pendingDefaultId === address.id}
+                      disabled={setDefault.isPending}
+                      idleText="Tornar padrão"
+                      activeText="Definindo..."
+                      onPress={() => handleSetDefault(address)}
+                      colors={{
+                        idle: { background: "transparent", text: theme.colors.primary },
+                        active: { background: "transparent", text: theme.colors.primary },
+                      }}
+                      buttonStyle={{ paddingHorizontal: 0, paddingVertical: 12, borderRadius: 0, fontSize: 12.5 }}
+                      spinnerConfig={{ color: theme.colors.primary, containerBackground: "transparent" }}
+                    />
+                  </View>
                 )}
                 <Pressable
-                  style={styles.actionButton}
+                  style={[
+                    styles.actionButton,
+                    removeAddress.isPending && pendingDeleteId === address.id && { opacity: 0.6 },
+                  ]}
                   disabled={removeAddress.isPending}
                   onPress={() => confirmDelete(address)}
                 >
-                  <Ionicons name="trash-outline" size={16} color="#ff6b6b" />
+                  {removeAddress.isPending && pendingDeleteId === address.id ? (
+                    <ActivityIndicator size="small" color="#ff6b6b" />
+                  ) : (
+                    <Ionicons name="trash-outline" size={16} color="#ff6b6b" />
+                  )}
                 </Pressable>
               </View>
             </View>
@@ -192,11 +234,6 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 12,
-  },
-  actionText: {
-    fontSize: 12.5,
-    fontFamily: fonts.bold,
-    color: theme.colors.primary,
   },
   addButton: {
     flexDirection: "row",

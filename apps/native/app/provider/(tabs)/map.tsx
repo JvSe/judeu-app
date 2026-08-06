@@ -1,7 +1,7 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Alert, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
@@ -9,11 +9,12 @@ import type { Order } from "@/lib/api";
 import { fonts } from "@/constants/fonts";
 import { initialsOf, moneyFromCents, shortTime } from "@/lib/format";
 import { useOrders, useTransitionOrder } from "@/lib/hooks";
-import { useCurrentLocation, useShareLocationWhileEnRoute } from "@/lib/location";
+import { useCurrentLocation, useShareLocationWhileEnRoute, useWatchCurrentLocation } from "@/lib/location";
 import { Avatar } from "@/components/ui/avatar";
 import { ProviderMarker, SelfMarker } from "@/components/ui/map-marker";
 import { RealMap } from "@/components/ui/real-map";
 import { Screen } from "@/components/ui/screen";
+import SpinButton from "@/components/ui/spin-button";
 
 function orderTitle(order: Order): string {
   return order.service?.name ?? order.category?.name ?? order.description ?? "Serviço";
@@ -28,9 +29,10 @@ export default function ProviderMap() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const [online, setOnline] = useState(true);
-  const { data: orders = [] } = useOrders("provider");
+  const { data: orders = [] } = useOrders("provider", { poll: true });
   const transition = useTransitionOrder();
-  const myLocation = useCurrentLocation();
+  const [respondAction, setRespondAction] = useState<"accept" | "reject" | null>(null);
+  const myLocation = useWatchCurrentLocation();
 
   const newOrder = orders.find((o) => o.status === "CREATED");
   const activeOrder = orders.find(
@@ -42,7 +44,17 @@ export default function ProviderMap() {
       : undefined,
   );
 
-  const act = (id: string, action: "accept" | "reject") => transition.mutate({ id, action });
+  const act = (id: string, action: "accept" | "reject") => {
+    setRespondAction(action);
+    transition.mutate(
+      { id, action },
+      {
+        onError: (err) =>
+          Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível completar a ação."),
+        onSettled: () => setRespondAction(null),
+      },
+    );
+  };
 
   const selfCoord: [number, number] | null = myLocation ? [myLocation.lng, myLocation.lat] : null;
   const destCoord: [number, number] | null = activeOrder
@@ -132,20 +144,38 @@ export default function ProviderMap() {
           </View>
 
           <View style={styles.actions}>
-            <Pressable
-              style={styles.declineButton}
-              onPress={() => act(newOrder.id, "reject")}
-              disabled={transition.isPending}
-            >
-              <Text style={styles.declineText}>Recusar</Text>
-            </Pressable>
-            <Pressable
-              style={styles.acceptButton}
-              onPress={() => act(newOrder.id, "accept")}
-              disabled={transition.isPending}
-            >
-              <Text style={styles.acceptText}>Aceitar chamada</Text>
-            </Pressable>
+            <View style={{ width: 110 }}>
+              <SpinButton
+                controlled
+                isActive={respondAction === "reject" && transition.isPending}
+                disabled={transition.isPending}
+                idleText="Recusar"
+                activeText="Recusando..."
+                onPress={() => act(newOrder.id, "reject")}
+                colors={{
+                  idle: { background: "rgba(255,255,255,0.07)", text: "#c9c7e4" },
+                  active: { background: "rgba(255,255,255,0.07)", text: "#c9c7e4" },
+                }}
+                buttonStyle={{ paddingHorizontal: 0, paddingVertical: 16, borderRadius: 15, fontSize: 15 }}
+                spinnerConfig={{ color: "#c9c7e4", containerBackground: "rgba(255,255,255,0.07)" }}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <SpinButton
+                controlled
+                isActive={respondAction === "accept" && transition.isPending}
+                disabled={transition.isPending}
+                idleText="Aceitar chamada"
+                activeText="Aceitando..."
+                onPress={() => act(newOrder.id, "accept")}
+                colors={{
+                  idle: { background: theme.colors.primary, text: "#fff" },
+                  active: { background: theme.colors.primary, text: "#fff" },
+                }}
+                buttonStyle={{ paddingHorizontal: 20, paddingVertical: 16, borderRadius: 15, fontSize: 16, fontWeight: "800" }}
+                spinnerConfig={{ color: "#fff", containerBackground: theme.colors.primary }}
+              />
+            </View>
           </View>
         </View>
       )}
@@ -330,34 +360,5 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     gap: 11,
     marginTop: 15,
-  },
-  declineButton: {
-    width: 110,
-    backgroundColor: "rgba(255,255,255,0.07)",
-    alignItems: "center",
-    paddingVertical: 16,
-    borderRadius: 15,
-  },
-  declineText: {
-    fontSize: 15,
-    fontFamily: fonts.bold,
-    color: "#c9c7e4",
-  },
-  acceptButton: {
-    flex: 1,
-    backgroundColor: theme.colors.primary,
-    alignItems: "center",
-    paddingVertical: 16,
-    borderRadius: 15,
-    shadowColor: theme.colors.primary,
-    shadowOpacity: 0.42,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 6,
-  },
-  acceptText: {
-    fontSize: 16,
-    fontFamily: fonts.extraBold,
-    color: "#fff",
   },
 }));

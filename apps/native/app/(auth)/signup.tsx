@@ -1,78 +1,101 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useForm } from "react-hook-form";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet } from "react-native-unistyles";
+import { z } from "zod";
 
-import { fonts } from "@/constants/fonts";
 import { Screen } from "@/components/ui/screen";
+import { FormCheckbox } from "@/components/form/checkbox";
+import { FormErrorText } from "@/components/form/error-text";
+import { FormTextField } from "@/components/form/text-field";
+import { fonts } from "@/constants/fonts";
 import { useAuth } from "@/lib/auth-context";
+import { formatPhone } from "@/lib/formatters/format-phone.helper";
+
+const signupSchema = z.object({
+  fullName: z.string().trim().min(2, "Informe seu nome completo"),
+  email: z.string().trim().transform((v) => v.toLowerCase()),
+  phone: z.string(),
+  password: z.string().min(8, "A senha precisa de ao menos 8 caracteres"),
+  accepted: z.boolean().refine((v) => v === true, "Aceite os termos para continuar"),
+});
+
+type SignupForm = z.infer<typeof signupSchema>;
+
+const unformatPhone = (value: string) => value.replace(/\D/g, "");
+
+const fields: {
+  name: "fullName" | "email" | "phone";
+  label: string;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  placeholder: string;
+  keyboardType?: "email-address" | "phone-pad";
+  autoComplete?: "name" | "email" | "tel";
+  formatValue?: (raw: string) => string;
+  parseValue?: (input: string) => string;
+}[] = [
+  {
+    name: "fullName",
+    label: "Nome completo",
+    icon: "person-outline",
+    placeholder: "Seu nome",
+    autoComplete: "name",
+  },
+  {
+    name: "email",
+    label: "E-mail",
+    icon: "mail-outline",
+    placeholder: "seu@email.com",
+    keyboardType: "email-address",
+    autoComplete: "email",
+  },
+  {
+    name: "phone",
+    label: "Celular",
+    icon: "phone-portrait-outline",
+    placeholder: "(11) 90000-0000",
+    keyboardType: "phone-pad",
+    autoComplete: "tel",
+    formatValue: formatPhone,
+    parseValue: unformatPhone,
+  },
+];
 
 export default function Signup() {
-  const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const { signUp } = useAuth();
   const { intent } = useLocalSearchParams<{ intent?: string }>();
   const role = intent === "work" ? "PROVIDER" : "CLIENT";
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [password, setPassword] = useState("");
-  const [accepted, setAccepted] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { control, handleSubmit, formState } = useForm<SignupForm>({
+    resolver: zodResolver(signupSchema),
+    mode: "onBlur",
+    reValidateMode: "onChange",
+    defaultValues: { fullName: "", email: "", phone: "", password: "", accepted: false },
+  });
 
-  const fields: {
-    label: string;
-    icon: React.ComponentProps<typeof Ionicons>["name"];
-    value: string;
-    onChangeText: (t: string) => void;
-    placeholder: string;
-    password?: boolean;
-    keyboardType?: "email-address" | "phone-pad";
-    autoComplete?: "name" | "email" | "tel" | "password-new";
-  }[] = [
-    { label: "Nome completo", icon: "person-outline", value: fullName, onChangeText: setFullName, placeholder: "Seu nome", autoComplete: "name" },
-    { label: "E-mail", icon: "mail-outline", value: email, onChangeText: setEmail, placeholder: "seu@email.com", keyboardType: "email-address", autoComplete: "email" },
-    { label: "Celular", icon: "phone-portrait-outline", value: phone, onChangeText: setPhone, placeholder: "(11) 90000-0000", keyboardType: "phone-pad", autoComplete: "tel" },
-    { label: "Senha", icon: "lock-closed-outline", value: password, onChangeText: setPassword, placeholder: "Mínimo 8 caracteres", password: true, autoComplete: "password-new" },
-  ];
-
-  async function handleSignup() {
-    if (loading) return;
-    if (!accepted) {
-      setError("Aceite os termos para continuar");
-      return;
-    }
-    if (fullName.trim().length < 2) {
-      setError("Informe seu nome completo");
-      return;
-    }
-    if (password.length < 8) {
-      setError("A senha precisa de ao menos 8 caracteres");
-      return;
-    }
-    setError(null);
-    setLoading(true);
+  const onValid = handleSubmit(async (data) => {
+    setSubmitError(null);
     try {
       await signUp({
-        fullName: fullName.trim(),
-        email: email.trim().toLowerCase(),
-        password,
-        phone: phone.trim() || undefined,
+        fullName: data.fullName,
+        email: data.email,
+        password: data.password,
+        phone: data.phone || undefined,
         role,
         acceptedTerms: true,
       });
       router.replace(role === "PROVIDER" ? "/provider/kyc" : "/client");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Não foi possível criar a conta");
-    } finally {
-      setLoading(false);
+      setSubmitError(e instanceof Error ? e.message : "Não foi possível criar a conta");
     }
-  }
+  });
 
   return (
     <Screen>
@@ -93,57 +116,59 @@ export default function Signup() {
           Leva menos de 1 minuto. Depois você escolhe se quer contratar ou trabalhar.
         </Text>
 
-        {fields.map((field) => (
-          <View key={field.label} style={styles.fieldBlock}>
-            <Text style={styles.label}>{field.label}</Text>
-            <View style={styles.field}>
-              <Ionicons name={field.icon} size={18} color={theme.colors.mutedForeground} />
-              <TextInput
-                style={[styles.fieldValue, field.password && styles.password]}
-                value={field.value}
-                onChangeText={field.onChangeText}
-                placeholder={field.placeholder}
-                placeholderTextColor={theme.colors.mutedForeground}
-                secureTextEntry={field.password}
-                keyboardType={field.keyboardType}
-                autoCapitalize={field.keyboardType === "email-address" ? "none" : "words"}
-                autoComplete={field.autoComplete}
-                autoCorrect={false}
-                editable={!loading}
-              />
-            </View>
-          </View>
+        {fields.map((f) => (
+          <FormTextField
+            key={f.name}
+            control={control}
+            name={f.name}
+            label={f.label}
+            icon={f.icon}
+            placeholder={f.placeholder}
+            keyboardType={f.keyboardType}
+            autoCapitalize={f.keyboardType === "email-address" ? "none" : "words"}
+            autoComplete={f.autoComplete}
+            formatValue={f.formatValue}
+            parseValue={f.parseValue}
+            editable={!formState.isSubmitting}
+          />
         ))}
 
-        <Pressable style={styles.termsRow} onPress={() => setAccepted((v) => !v)}>
-          <View style={[styles.checkbox, !accepted && styles.checkboxOff]}>
-            {accepted && <Ionicons name="checkmark" size={12} color="#fff" />}
-          </View>
+        <FormTextField
+          control={control}
+          name="password"
+          label="Senha"
+          icon="lock-closed-outline"
+          placeholder="Mínimo 8 caracteres"
+          secureTextEntry
+          editable={!formState.isSubmitting}
+        />
+
+        <FormCheckbox control={control} name="accepted" containerStyle={styles.termsSpacing}>
           <Text style={styles.termsText}>
             Li e aceito os{" "}
             <Text style={styles.termsLink} onPress={() => router.push("/terms" as never)}>
               Termos de uso
             </Text>{" "}
             e a{" "}
-            <Text
-              style={styles.termsLink}
-              onPress={() => router.push("/privacy-policy" as never)}
-            >
+            <Text style={styles.termsLink} onPress={() => router.push("/privacy-policy" as never)}>
               Política de privacidade
             </Text>
           </Text>
-        </Pressable>
+        </FormCheckbox>
 
-        {error && <Text style={styles.error}>{error}</Text>}
+        {submitError && <FormErrorText style={styles.submitError}>{submitError}</FormErrorText>}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         <Pressable
-          style={({ pressed }) => [styles.submit, { opacity: pressed || loading ? 0.9 : 1 }]}
-          onPress={handleSignup}
-          disabled={loading}
+          style={({ pressed }) => [
+            styles.submit,
+            { opacity: pressed || formState.isSubmitting ? 0.9 : 1 },
+          ]}
+          onPress={onValid}
+          disabled={formState.isSubmitting}
         >
-          {loading ? (
+          {formState.isSubmitting ? (
             <ActivityIndicator color="#fff" />
           ) : (
             <>
@@ -189,65 +214,10 @@ const styles = StyleSheet.create((theme) => ({
     lineHeight: 21,
     marginBottom: 20,
   },
-  fieldBlock: {
-    marginBottom: 15,
-  },
-  label: {
-    fontSize: 12.5,
-    fontFamily: fonts.bold,
-    color: theme.colors.mutedForeground,
-    marginBottom: 8,
-  },
-  field: {
-    height: 54,
-    backgroundColor: "rgba(28,28,58,0.85)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    borderRadius: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-  },
-  fieldValue: {
-    flex: 1,
-    fontSize: 15.5,
-    fontFamily: fonts.semiBold,
-    color: "#fff",
-  },
-  password: {
-    fontSize: 17,
-    letterSpacing: 3,
-  },
-  strength: {
-    fontSize: 12,
-    fontFamily: fonts.bold,
-    color: theme.colors.success,
-  },
-  termsRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 11,
+  termsSpacing: {
     marginTop: 6,
   },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 7,
-    backgroundColor: theme.colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 1,
-  },
-  checkboxOff: {
-    backgroundColor: "transparent",
-    borderWidth: 1.5,
-    borderColor: theme.colors.border,
-  },
-  error: {
-    fontSize: 13.5,
-    fontFamily: fonts.semiBold,
-    color: theme.colors.destructive,
+  submitError: {
     marginTop: 14,
   },
   termsText: {

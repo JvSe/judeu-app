@@ -8,18 +8,21 @@ export const PrimaryButton = ({
   label,
   onPress,
   variant = "solid",
+  disabled = false,
 }: {
   label: string;
   onPress?: () => void;
   variant?: "solid" | "ghost";
+  disabled?: boolean;
 }) => {
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       style={({ pressed }) => [
         styles.button,
         variant === "ghost" && styles.ghost,
-        { opacity: pressed ? 0.85 : 1 },
+        { opacity: disabled ? 0.6 : pressed ? 0.85 : 1 },
       ]}
     >
       <Text style={[styles.label, variant === "ghost" && styles.ghostLabel]}>{label}</Text>

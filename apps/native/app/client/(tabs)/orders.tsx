@@ -22,7 +22,7 @@ export default function Orders() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<"andamento" | "concluidos">("andamento");
-  const { data: orders = [], isLoading } = useOrders("client");
+  const { data: orders = [], isLoading } = useOrders("client", { poll: true });
 
   const activeOrders = orders.filter((o) => isOrderActive(o.status));
   const completedOrders = orders.filter((o) => !isOrderActive(o.status));
@@ -61,6 +61,12 @@ export default function Orders() {
             )}
             {activeOrders.map((order) => {
               const enRoute = order.status === "EN_ROUTE" || order.status === "IN_PROGRESS";
+              const canTrackOnMap =
+                order.status === "EN_ROUTE" ||
+                order.status === "IN_PROGRESS" ||
+                (order.status === "ACCEPTED" &&
+                  order.tracking.providerLat != null &&
+                  order.tracking.providerLng != null);
               return (
                 <View
                   key={order.id}
@@ -108,13 +114,31 @@ export default function Orders() {
                     <Pressable
                       style={styles.primaryAction}
                       onPress={() =>
-                        router.push({ pathname: "/client/order/[id]", params: { id: order.id } })
+                        router.push(
+                          canTrackOnMap
+                            ? { pathname: "/client/tracking/[id]", params: { id: order.id } }
+                            : { pathname: "/client/order/[id]", params: { id: order.id } },
+                        )
                       }
                     >
                       <Text style={styles.primaryActionText}>
-                        {enRoute ? "Acompanhar" : "Ver detalhes"}
+                        {canTrackOnMap
+                          ? order.status === "IN_PROGRESS"
+                            ? "Prestador no local"
+                            : "Acompanhar no mapa"
+                          : "Ver detalhes"}
                       </Text>
                     </Pressable>
+                    {canTrackOnMap && (
+                      <Pressable
+                        style={styles.secondaryAction}
+                        onPress={() =>
+                          router.push({ pathname: "/client/order/[id]", params: { id: order.id } })
+                        }
+                      >
+                        <Text style={styles.secondaryActionText}>Detalhes</Text>
+                      </Pressable>
+                    )}
                     <Pressable
                       style={styles.iconAction}
                       onPress={() =>
@@ -122,6 +146,13 @@ export default function Orders() {
                       }
                     >
                       <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
+                      {order.unreadMessages > 0 && (
+                        <View style={styles.chatBadge}>
+                          <Text style={styles.chatBadgeText}>
+                            {order.unreadMessages > 9 ? "9+" : order.unreadMessages}
+                          </Text>
+                        </View>
+                      )}
                     </Pressable>
                   </View>
                 </View>
@@ -304,6 +335,19 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fonts.bold,
     color: "#fff",
   },
+  secondaryAction: {
+    paddingHorizontal: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  secondaryActionText: {
+    fontSize: 13,
+    fontFamily: fonts.bold,
+    color: theme.colors.mutedForeground,
+  },
   ghostAction: {
     backgroundColor: "rgba(255,255,255,0.07)",
   },
@@ -316,6 +360,25 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
+  },
+  chatBadge: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.destructive,
+    borderWidth: 1.5,
+    borderColor: "#1c1c3a",
+  },
+  chatBadgeText: {
+    fontSize: 10,
+    fontFamily: fonts.extraBold,
+    color: theme.colors.destructiveForeground,
   },
   sectionTitle: {
     fontSize: 16,

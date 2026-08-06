@@ -62,7 +62,9 @@ export function buildSystemPrompt(categories: Category[]): string {
     "Faça no máximo uma ou duas perguntas curtas para entender o serviço e a urgência quando faltar contexto.",
     "Assim que identificar o tipo de serviço, chame a ferramenta buscar_prestadores com a categoria adequada.",
     "NUNCA invente prestadores, nomes, notas ou preços — use SEMPRE a ferramenta para trazer dados reais.",
-    "Depois de receber os resultados da ferramenta, apresente-os em uma frase curta e ofereça ajuda para ver o perfil ou contratar.",
+    "Use SOMENTE as categorias da lista abaixo. Elas são tudo o que o Ajuda+ atende hoje.",
+    "Se o que o usuário precisa não corresponder a nenhuma delas, NÃO chame a ferramenta: diga com franqueza que o Ajuda+ ainda não atende esse tipo de serviço e cite as categorias que existem.",
+    "Não force um pedido dentro de uma categoria parecida só para conseguir buscar.",
     "",
     "Categorias disponíveis (use o identificador antes dos dois-pontos como valor de 'categoria'):",
     lista,
@@ -103,6 +105,43 @@ export function buildSearchTool(categories: Category[]): object {
       },
     },
   };
+}
+
+// Limpa o texto cru do modelo antes de mostrar na bolha do chat.
+// Precisamos de `displayToolCalls: true` para que a lib anexe a resposta do
+// assistente ao messageHistory (com false ela é descartada), mas isso também
+// faz a tool call cair no histórico — então tiramos ela aqui, junto com os
+// blocos de raciocínio do Qwen3.
+export function sanitizeReply(raw: string): string {
+  const closed = raw.lastIndexOf("</think>");
+  const withoutThinking =
+    closed >= 0 ? raw.slice(closed + "</think>".length) : raw.includes("<think>") ? "" : raw;
+  return withoutThinking
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "")
+    // tool call ainda chegando token a token, sem tag de fechamento
+    .replace(/<tool_call>[\s\S]*$/, "")
+    .replace(/\[\s*\{[\s\S]*"name"[\s\S]*\}\s*\]/g, "")
+    .trim();
+}
+
+// O Qwen3 emite a tool call como <tool_call>{"name":…}</tool_call>. O
+// parseToolCall da lib só reconhece o formato array ([{…}]) do Hammer, então
+// não enxerga essa chamada e o executeToolCallback nunca dispara. Parseamos os
+// dois formatos aqui para ter um caminho único de execução.
+export function parseToolCallArgs(raw: string): SearchArgs | null {
+  type Call = { name?: string; arguments?: SearchArgs };
+  const json =
+    raw.match(/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/)?.[1] ??
+    raw.match(/\[\s*\{[\s\S]*?\}\s*\]/)?.[0];
+  if (!json) return null;
+  try {
+    const parsed = JSON.parse(json) as Call | Call[];
+    const call = Array.isArray(parsed) ? parsed[0] : parsed;
+    if (call?.name !== SEARCH_TOOL_NAME || !call.arguments) return null;
+    return call.arguments;
+  } catch {
+    return null;
+  }
 }
 
 // Resolve o slug que o modelo escolheu para o id de categoria real do backend.

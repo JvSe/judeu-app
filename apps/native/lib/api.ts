@@ -198,6 +198,9 @@ export type SavedAddressInput = {
   neighborhood?: string;
   city: string;
   state: string;
+  /** Usado no servidor só se o geocoding do endereço falhar. */
+  lat?: number;
+  lng?: number;
   isDefault?: boolean;
 };
 
@@ -240,6 +243,7 @@ export type Category = {
 export type ProviderListItem = {
   id: string;
   name: string;
+  companyName: string | null;
   role: string | null;
   rating: number;
   reviews: number;
@@ -256,9 +260,17 @@ export type ProviderDetail = ProviderListItem & {
   services: { id: string; name: string; priceCents: number }[];
 };
 
+export type SearchResults = {
+  categories: Category[];
+  providers: ProviderListItem[];
+};
+
 export const catalogApi = {
   categories() {
     return apiFetch<{ categories: Category[] }>("/api/categories").then((r) => r.categories);
+  },
+  search(query: string) {
+    return apiFetch<SearchResults>(`/api/search?q=${encodeURIComponent(query)}`);
   },
   providers(categoryId?: string) {
     const qs = categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : "";
@@ -280,6 +292,9 @@ export type MyProviderProfile = {
   baseLng: number | null;
   isAvailable: boolean;
   allowsNegotiation: boolean;
+  isCompany: boolean;
+  companyName: string | null;
+  responsibleName: string | null;
   hasDocument: boolean;
   categoryIds: string[];
   services: { id: string; categoryId: string; name: string; priceCents: number }[];
@@ -293,6 +308,9 @@ export type UpsertProviderProfileInput = {
   baseLat?: number;
   baseLng?: number;
   allowsNegotiation?: boolean;
+  isCompany?: boolean;
+  companyName?: string;
+  responsibleName?: string;
   categoryIds: string[];
   services: { name: string; priceCents: number; categoryId: string }[];
 };
@@ -361,11 +379,13 @@ export type Order = {
   totalCents: number;
   cancelReason: string | null;
   createdAt: string;
+  unreadMessages: number;
   service: { id: string; name: string } | null;
   category: { id: string; name: string } | null;
   provider: {
     id: string;
     name: string;
+    companyName: string | null;
     headline: string | null;
     ratingAvg: number;
     allowsNegotiation: boolean;
@@ -380,6 +400,7 @@ export type Order = {
     distanceKm: number | null;
     etaMin: number | null;
     route: { lat: number; lng: number }[] | null;
+    arrived: boolean;
   };
 };
 
@@ -389,18 +410,7 @@ export type CreateOrderInput = {
   categoryId?: string;
   description?: string;
   scheduledAt?: string;
-  address: {
-    label?: string;
-    cep?: string;
-    street: string;
-    number?: string;
-    complement?: string;
-    neighborhood?: string;
-    city: string;
-    state: string;
-    lat?: number;
-    lng?: number;
-  };
+  addressId: string;
 };
 
 export const ordersApi = {

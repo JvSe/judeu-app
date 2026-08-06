@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "judeu",
+    "name": "Judeu",
     "slug": "judeu",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -94,7 +94,6 @@
       "eas": {
         "projectId": "422fcb7a-6da6-47c4-908c-727b03b2ce12"
       }
-    },
-    "owner": "nextmed"
+    }
   }
 }

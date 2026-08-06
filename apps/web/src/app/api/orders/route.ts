@@ -16,18 +16,7 @@ const createSchema = z.object({
   categoryId: z.string().min(1).optional(),
   description: z.string().max(1000).optional(),
   scheduledAt: z.string().datetime().optional(),
-  address: z.object({
-    label: z.string().max(60).optional(),
-    cep: z.string().max(12).optional(),
-    street: z.string().min(1).max(160),
-    number: z.string().max(20).optional(),
-    complement: z.string().max(80).optional(),
-    neighborhood: z.string().max(120).optional(),
-    city: z.string().min(1).max(120),
-    state: z.string().min(1).max(60),
-    lat: z.number().optional(),
-    lng: z.number().optional(),
-  }),
+  addressId: z.string().min(1),
 });
 
 // GET /api/orders?as=client|provider — lista os pedidos do usuário no papel escolhido.

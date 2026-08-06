@@ -40,6 +40,16 @@ export function useProviders(categoryId?: string) {
   });
 }
 
+// Busca do catálogo (aba Buscar). Termos com menos de 2 caracteres não vão à rede.
+export function useCatalogSearch(query: string) {
+  const q = query.trim();
+  return useQuery({
+    queryKey: ["catalog-search", q],
+    queryFn: () => catalogApi.search(q),
+    enabled: q.length >= 2,
+  });
+}
+
 export function useProvider(id: string) {
   return useQuery({
     queryKey: ["provider", id],
@@ -49,8 +59,14 @@ export function useProvider(id: string) {
 }
 
 // ---- Pedidos ----
-export function useOrders(as: "client" | "provider" = "client") {
-  return useQuery({ queryKey: ["orders", as], queryFn: () => ordersApi.list(as) });
+// `poll` liga refetch curto (só em foco) — usado onde o badge de chat não lido precisa se atualizar sozinho.
+export function useOrders(as: "client" | "provider" = "client", opts: { poll?: boolean } = {}) {
+  const isFocused = useIsFocused();
+  return useQuery({
+    queryKey: ["orders", as],
+    queryFn: () => ordersApi.list(as),
+    refetchInterval: opts.poll && isFocused ? 8000 : false,
+  });
 }
 
 // `poll` liga refetch curto (só em foco) — usado no acompanhamento em tempo real (RF-E3).
@@ -92,7 +108,10 @@ export function useUpdateOrderLocation() {
   return useMutation({
     mutationFn: ({ id, lat, lng }: { id: string; lat: number; lng: number }) =>
       ordersApi.updateLocation(id, lat, lng),
-    onSuccess: (order) => qc.invalidateQueries({ queryKey: ["order", order.id] }),
+    onSuccess: (order) => {
+      qc.setQueryData(["order", order.id], order);
+      qc.invalidateQueries({ queryKey: ["orders"] });
+    },
   });
 }
 

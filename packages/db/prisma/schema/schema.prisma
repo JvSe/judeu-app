@@ -196,6 +196,12 @@ model ProviderProfile {
   isAvailable     Boolean        @default(false)
   // Perfil de pessoa jurídica (empresa) em vez de profissional autônomo.
   isCompany       Boolean        @default(false)
+  // Razão social/nome fantasia (isCompany=true) — exibido como dado secundário; o nome
+  // principal mostrado ao cliente passa a ser responsibleName nesse caso.
+  companyName     String?
+  // Nome do responsável pela empresa (isCompany=true) — usado como nome de referência
+  // do prestador no lugar do nome da empresa.
+  responsibleName String?
   // Empresa (isCompany=true) que está com vagas abertas pra contratar funcionários.
   hiringEmployees Boolean        @default(false)
   // Permite ao cliente propor/receber um orçamento diferente antes do aceite (RF-D5).

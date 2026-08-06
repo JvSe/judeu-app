@@ -1,39 +1,50 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { router } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useForm } from "react-hook-form";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { z } from "zod";
 
 import { fonts } from "@/constants/fonts";
+import { FormErrorText } from "@/components/form/error-text";
+import { FormTextField } from "@/components/form/text-field";
 import { Screen } from "@/components/ui/screen";
 import { useAuth } from "@/lib/auth-context";
+
+const loginSchema = z.object({
+  email: z.string().trim().transform((v) => v.toLowerCase()),
+  password: z.string(),
+});
+
+type LoginForm = z.infer<typeof loginSchema>;
 
 export default function Login() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const { signIn } = useAuth();
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  async function handleLogin() {
-    if (loading) return;
-    setError(null);
-    setLoading(true);
+  const { control, handleSubmit, formState } = useForm<LoginForm>({
+    resolver: zodResolver(loginSchema),
+    mode: "onBlur",
+    reValidateMode: "onChange",
+    defaultValues: { email: "", password: "" },
+  });
+
+  const onValid = handleSubmit(async (data) => {
+    setSubmitError(null);
     try {
-      const user = await signIn({ email: email.trim().toLowerCase(), password });
+      const user = await signIn(data);
       router.replace(user.role === "PROVIDER" ? "/provider" : "/client");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Não foi possível entrar");
-    } finally {
-      setLoading(false);
+      setSubmitError(e instanceof Error ? e.message : "Não foi possível entrar");
     }
-  }
+  });
 
   return (
     <Screen>
@@ -49,58 +60,56 @@ export default function Login() {
         <Text style={styles.title}>Bem-vindo{"\n"}de volta</Text>
         <Text style={styles.subtitle}>Entre para continuar contratando ou trabalhando.</Text>
 
-        <Text style={styles.label}>E-mail</Text>
-        <View style={styles.field}>
-          <Ionicons name="mail-outline" size={19} color={theme.colors.mutedForeground} />
-          <TextInput
-            style={styles.fieldValue}
-            value={email}
-            onChangeText={setEmail}
-            placeholder="seu@email.com"
-            placeholderTextColor={theme.colors.mutedForeground}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoComplete="email"
-            autoCorrect={false}
-            editable={!loading}
-          />
-        </View>
+        <FormTextField
+          control={control}
+          name="email"
+          label="E-mail"
+          icon="mail-outline"
+          placeholder="seu@email.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoComplete="email"
+          editable={!formState.isSubmitting}
+          containerStyle={styles.fieldSpacing}
+        />
 
-        <Text style={styles.label}>Senha</Text>
-        <View style={styles.field}>
-          <Ionicons name="lock-closed-outline" size={19} color={theme.colors.mutedForeground} />
-          <TextInput
-            style={[styles.fieldValue, styles.password]}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="••••••••"
-            placeholderTextColor={theme.colors.mutedForeground}
-            secureTextEntry={!showPassword}
-            autoCapitalize="none"
-            autoComplete="password"
-            editable={!loading}
-          />
-          <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={10}>
-            <Ionicons
-              name={showPassword ? "eye-off-outline" : "eye-outline"}
-              size={20}
-              color={theme.colors.mutedForeground}
-            />
-          </Pressable>
-        </View>
+        <FormTextField
+          control={control}
+          name="password"
+          label="Senha"
+          icon="lock-closed-outline"
+          placeholder="••••••••"
+          secureTextEntry={!showPassword}
+          autoCapitalize="none"
+          autoComplete="password"
+          editable={!formState.isSubmitting}
+          containerStyle={styles.fieldSpacing}
+          rightAccessory={
+            <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={10}>
+              <Ionicons
+                name={showPassword ? "eye-off-outline" : "eye-outline"}
+                size={20}
+                color={theme.colors.mutedForeground}
+              />
+            </Pressable>
+          }
+        />
 
         <Pressable onPress={() => router.push("/(auth)/forgot-password" as never)}>
           <Text style={styles.forgot}>Esqueci minha senha</Text>
         </Pressable>
 
-        {error && <Text style={styles.error}>{error}</Text>}
+        {submitError && <FormErrorText style={styles.submitError}>{submitError}</FormErrorText>}
 
         <Pressable
-          style={({ pressed }) => [styles.submit, { opacity: pressed || loading ? 0.9 : 1 }]}
-          onPress={handleLogin}
-          disabled={loading}
+          style={({ pressed }) => [
+            styles.submit,
+            { opacity: pressed || formState.isSubmitting ? 0.9 : 1 },
+          ]}
+          onPress={onValid}
+          disabled={formState.isSubmitting}
         >
-          {loading ? (
+          {formState.isSubmitting ? (
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.submitText}>Entrar</Text>
@@ -185,33 +194,9 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: 9,
     lineHeight: 22,
   },
-  label: {
-    fontSize: 12.5,
-    fontFamily: fonts.bold,
-    color: theme.colors.mutedForeground,
+  fieldSpacing: {
     marginTop: 26,
-    marginBottom: 8,
-  },
-  field: {
-    height: 56,
-    backgroundColor: "rgba(28,28,58,0.85)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    borderRadius: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-  },
-  fieldValue: {
-    flex: 1,
-    fontSize: 15.5,
-    fontFamily: fonts.semiBold,
-    color: "#fff",
-  },
-  password: {
-    fontSize: 18,
-    letterSpacing: 3,
+    marginBottom: 0,
   },
   forgot: {
     textAlign: "right",
@@ -221,10 +206,8 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: 12,
     marginBottom: 26,
   },
-  error: {
-    fontSize: 13.5,
-    fontFamily: fonts.semiBold,
-    color: theme.colors.destructive,
+  submitError: {
+    marginTop: 0,
     marginBottom: 14,
   },
   submit: {

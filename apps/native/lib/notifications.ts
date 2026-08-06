@@ -20,7 +20,9 @@ export function pathForNotification(data: NotificationData): string | null {
     return data.role === "provider" ? `/provider/chat/${data.orderId}` : `/client/chat/${data.orderId}`;
   }
   if (data.type === "order") {
-    return data.role === "provider" ? "/provider" : `/client/order/${data.orderId}`;
+    return data.role === "provider"
+      ? `/provider/delivery/${data.orderId}`
+      : `/client/tracking/${data.orderId}`;
   }
   return null;
 }

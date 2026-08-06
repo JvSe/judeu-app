@@ -1,23 +1,34 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { router } from "expo-router";
-import { useMemo } from "react";
+import { router, useNavigation } from "expo-router";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
-import { fonts } from "@/constants/fonts";
-import { useNotifications, useProviders } from "@/lib/hooks";
-import { useCurrentLocation } from "@/lib/location";
-import { distanceKm, distributeNearby } from "@/lib/nearby";
-import { avatarColor, initialsOf, priceFromCents } from "@/lib/format";
+import { ProviderSheet } from "@/components/provider-sheet";
 import { Avatar } from "@/components/ui/avatar";
 import { GlassSurface } from "@/components/ui/glass-surface";
 import { ProviderMarker, SelfMarker } from "@/components/ui/map-marker";
 import { RealMap } from "@/components/ui/real-map";
 import { Screen } from "@/components/ui/screen";
+import type { BottomSheetMethods } from "@/components/ui/templates/bottom-sheet/types";
+import { fonts } from "@/constants/fonts";
+import type { ProviderListItem } from "@/lib/api";
+import { avatarColor, initialsOf, priceFromCents } from "@/lib/format";
+import { useNotifications, useProviders } from "@/lib/hooks";
+import { useCurrentLocation } from "@/lib/location";
+import { distanceKm } from "@/lib/nearby";
+
+import { clientFloatingTabBarStyle } from "./_layout";
+
+function providerPosition(provider: ProviderListItem) {
+  if (provider.baseLat == null || provider.baseLng == null) return null;
+  return { lat: provider.baseLat, lng: provider.baseLng };
+}
 
 export default function ClientHome() {
+  const navigation = useNavigation();
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const { data: providers = [] } = useProviders();
@@ -25,48 +36,84 @@ export default function ClientHome() {
   const { data: notifications } = useNotifications();
   const hasUnread = (notifications?.unreadCount ?? 0) > 0;
 
-  // Posições reais dos prestadores são mockadas (baseLat/baseLng fixos no
-  // seed) — reposiciona num raio de 1km ao redor do usuário pra demo fazer
-  // sentido em qualquer cidade.
-  const nearbyPositions = useMemo(() => {
-    if (!myLocation || providers.length === 0) return null;
-    return distributeNearby(
-      myLocation,
-      providers.map((p) => p.id),
-      1,
-    );
-  }, [myLocation, providers]);
+  const providerSheetRef = useRef<BottomSheetMethods>(null);
+  const tabBarRestoreTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
+    null,
+  );
+  const [tabBarHiddenForSheet, setTabBarHiddenForSheet] = useState(false);
 
-  // Ordena pela distância mockada (mais perto primeiro) pra "Perto de você"
-  // refletir o mesmo raio de 1km usado no mapa.
+  const clearTabBarRestoreTimeout = () => {
+    if (tabBarRestoreTimeoutRef.current) {
+      clearTimeout(tabBarRestoreTimeoutRef.current);
+      tabBarRestoreTimeoutRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    navigation.setOptions({
+      tabBarStyle: tabBarHiddenForSheet
+        ? { display: "none" }
+        : clientFloatingTabBarStyle,
+    });
+    return () => {
+      navigation.setOptions({ tabBarStyle: clientFloatingTabBarStyle });
+      clearTabBarRestoreTimeout();
+    };
+  }, [navigation, tabBarHiddenForSheet]);
+
+  const openProviderSheet = (providerId: string, snapIndex: number) => {
+    clearTabBarRestoreTimeout();
+    setSelectedProviderId(providerId);
+    setTabBarHiddenForSheet(true);
+    providerSheetRef.current?.snapToIndex(snapIndex);
+  };
+
+  const handleProviderSheetCloseStart = () => {
+    clearTabBarRestoreTimeout();
+    tabBarRestoreTimeoutRef.current = setTimeout(() => {
+      setTabBarHiddenForSheet(false);
+      tabBarRestoreTimeoutRef.current = null;
+    }, 150);
+  };
+
+  const handleProviderSheetClose = () => {
+    clearTabBarRestoreTimeout();
+    setTabBarHiddenForSheet(false);
+    setSelectedProviderId(null);
+  };
+
+  // Ordena pela distância real até a localização base do prestador (mais
+  // perto primeiro).
   const nearbyProviders = useMemo(() => {
-    if (!myLocation || !nearbyPositions) return providers;
+    if (!myLocation) return providers;
     return [...providers].sort((a, b) => {
-      const posA = nearbyPositions.get(a.id);
-      const posB = nearbyPositions.get(b.id);
+      const posA = providerPosition(a);
+      const posB = providerPosition(b);
       if (!posA || !posB) return 0;
       return distanceKm(myLocation, posA) - distanceKm(myLocation, posB);
     });
-  }, [providers, myLocation, nearbyPositions]);
+  }, [providers, myLocation]);
 
   const markers = [
     ...providers
-      .filter((p) => nearbyPositions?.has(p.id) ?? (p.baseLat != null && p.baseLng != null))
-      .map((p, index) => {
-        const position = nearbyPositions?.get(p.id) ?? { lat: p.baseLat as number, lng: p.baseLng as number };
-        return {
-          id: p.id,
-          lngLat: [position.lng, position.lat] as [number, number],
-          render: () => (
-            <ProviderMarker
-              initials={initialsOf(p.name)}
-              color={index === 0 ? "#FF6600" : "#3a3a70"}
-              highlighted={index === 0}
-            />
-          ),
-          onPress: () => router.push({ pathname: "/client/provider/[id]", params: { id: p.id } }),
-        };
-      }),
+      .filter((p) => p.baseLat != null && p.baseLng != null)
+      .map((p, index) => ({
+        id: p.id,
+        lngLat: [p.baseLng as number, p.baseLat as number] as [number, number],
+        render: () => (
+          <ProviderMarker
+            initials={initialsOf(p.name)}
+            color={index === 0 ? "#FF6600" : "#3a3a70"}
+            highlighted={index === 0}
+          />
+        ),
+        onPress: () => {
+          openProviderSheet(p.id, 0);
+        },
+      })),
     ...(myLocation
       ? [
           {
@@ -85,7 +132,10 @@ export default function ClientHome() {
         center={myLocation ? [myLocation.lng, myLocation.lat] : undefined}
       />
 
-      <View style={[styles.overlay, { paddingTop: insets.top + 12 }]} pointerEvents="box-none">
+      <View
+        style={[styles.overlay, { paddingTop: insets.top + 12 }]}
+        pointerEvents="box-none"
+      >
         <View style={styles.topBar}>
           <GlassSurface style={styles.locationPill}>
             <Ionicons name="location" size={16} color={theme.colors.primary} />
@@ -96,20 +146,22 @@ export default function ClientHome() {
               </Text>
             </View>
           </GlassSurface>
-          <Pressable onPress={() => router.push("/client/notifications" as never)}>
+          <Pressable
+            onPress={() => router.push("/client/notifications" as never)}
+          >
             <GlassSurface style={styles.bellButton}>
               <Ionicons name="notifications-outline" size={22} color="#fff" />
               {hasUnread && <View style={styles.bellDot} />}
             </GlassSurface>
           </Pressable>
-          <Pressable onPress={() => router.push("/client/profile")}>
-            <Avatar initials="VC" size={50} radius={16} />
-          </Pressable>
         </View>
 
         <Pressable
-          style={({ pressed }) => [styles.searchBar, { opacity: pressed ? 0.9 : 1 }]}
-          onPress={() => router.push("/client/ai/offer" as never)}
+          style={({ pressed }) => [
+            styles.searchBar,
+            { opacity: pressed ? 0.9 : 1 },
+          ]}
+          onPress={() => router.push("/client/ai/chat" as never)}
         >
           <Ionicons name="search" size={22} color="#fff" />
           <Text style={styles.searchText}>Do que você precisa hoje?</Text>
@@ -127,20 +179,35 @@ export default function ClientHome() {
           contentContainerStyle={styles.cardsRow}
         >
           {nearbyProviders.slice(0, 2).map((provider, index) => {
-            const position = nearbyPositions?.get(provider.id);
+            const position = providerPosition(provider);
             const distanceLabel =
-              myLocation && position ? `${distanceKm(myLocation, position).toFixed(1)} km` : `${provider.reviews} avaliações`;
+              myLocation && position
+                ? `${distanceKm(myLocation, position).toFixed(1)} km`
+                : `${provider.reviews} avaliações`;
             return (
               <Pressable
                 key={provider.id}
-                style={({ pressed }) => [styles.providerCard, { opacity: pressed ? 0.9 : 1 }]}
-                onPress={() => router.push({ pathname: "/client/provider/[id]", params: { id: provider.id } })}
+                style={({ pressed }) => [
+                  styles.providerCard,
+                  { opacity: pressed ? 0.9 : 1 },
+                ]}
+                onPress={() => openProviderSheet(provider.id, 0)}
               >
                 <View style={styles.providerHeader}>
-                  <Avatar initials={initialsOf(provider.name)} color={avatarColor(index)} size={46} radius={14} />
-                  <View>
-                    <Text style={styles.providerName}>{provider.name}</Text>
-                    <Text style={styles.providerRole}>{provider.role}</Text>
+                  <Avatar
+                    initials={initialsOf(provider.name)}
+                    color={avatarColor(index)}
+                    size={46}
+                    radius={14}
+                  />
+                  <View style={styles.providerInfo}>
+                    <Text style={styles.providerName} numberOfLines={1}>
+                      {provider.name}
+                    </Text>
+                    <Text style={styles.providerRole} numberOfLines={1}>
+                      {provider.companyName ? `${provider.companyName} · ` : ""}
+                      {provider.role}
+                    </Text>
                   </View>
                 </View>
                 <View style={styles.providerMeta}>
@@ -150,7 +217,9 @@ export default function ClientHome() {
                   <Text style={styles.distanceText}>{distanceLabel}</Text>
                 </View>
                 <View style={styles.providerFooter}>
-                  <Text style={styles.providerPrice}>{priceFromCents(provider.priceFromCents)}</Text>
+                  <Text style={styles.providerPrice}>
+                    {priceFromCents(provider.priceFromCents)}
+                  </Text>
                   <View style={styles.viewButton}>
                     <Text style={styles.viewButtonText}>Ver</Text>
                   </View>
@@ -160,6 +229,13 @@ export default function ClientHome() {
           })}
         </ScrollView>
       </View>
+
+      <ProviderSheet
+        ref={providerSheetRef}
+        providerId={selectedProviderId}
+        onCloseStart={handleProviderSheetCloseStart}
+        onClose={handleProviderSheetClose}
+      />
     </Screen>
   );
 }
@@ -241,13 +317,13 @@ const styles = StyleSheet.create((theme) => ({
     left: 0,
     right: 0,
     bottom: 108,
-    paddingHorizontal: 16,
   },
   nearbyHeader: {
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",
     marginBottom: 12,
+    paddingHorizontal: 16,
   },
   nearbyTitle: {
     fontSize: 20,
@@ -261,6 +337,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   cardsRow: {
     gap: 12,
+    paddingHorizontal: 16,
   },
   providerCard: {
     width: 220,
@@ -274,6 +351,10 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: 11,
+  },
+  providerInfo: {
+    flex: 1,
+    flexShrink: 1,
   },
   providerName: {
     fontSize: 15,

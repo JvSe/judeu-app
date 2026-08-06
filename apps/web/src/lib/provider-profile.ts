@@ -19,6 +19,9 @@ export type MyProviderProfileDTO = {
   baseLng: number | null;
   isAvailable: boolean;
   allowsNegotiation: boolean;
+  isCompany: boolean;
+  companyName: string | null;
+  responsibleName: string | null;
   hasDocument: boolean;
   categoryIds: string[];
   services: { id: string; categoryId: string; name: string; priceCents: number }[];
@@ -32,6 +35,9 @@ export type UpsertProviderProfileInput = {
   baseLat?: number;
   baseLng?: number;
   allowsNegotiation?: boolean;
+  isCompany?: boolean;
+  companyName?: string;
+  responsibleName?: string;
   categoryIds: string[];
   services: { name: string; priceCents: number; categoryId: string }[];
 };
@@ -46,6 +52,9 @@ function toDTO(p: {
   baseLng: number | null;
   isAvailable: boolean;
   allowsNegotiation: boolean;
+  isCompany: boolean;
+  companyName: string | null;
+  responsibleName: string | null;
   documentUrl: string | null;
   categories: { categoryId: string }[];
   services: { id: string; categoryId: string; name: string; priceCents: number }[];
@@ -60,6 +69,9 @@ function toDTO(p: {
     baseLng: p.baseLng,
     isAvailable: p.isAvailable,
     allowsNegotiation: p.allowsNegotiation,
+    isCompany: p.isCompany,
+    companyName: p.companyName,
+    responsibleName: p.responsibleName,
     hasDocument: !!p.documentUrl,
     categoryIds: p.categories.map((c) => c.categoryId),
     services: p.services,
@@ -96,6 +108,9 @@ export async function upsertMyProviderProfile(
         baseLat: input.baseLat,
         baseLng: input.baseLng,
         allowsNegotiation: input.allowsNegotiation ?? false,
+        isCompany: input.isCompany ?? false,
+        companyName: input.isCompany ? input.companyName : null,
+        responsibleName: input.isCompany ? input.responsibleName : null,
       },
       create: {
         userId,
@@ -106,6 +121,9 @@ export async function upsertMyProviderProfile(
         baseLat: input.baseLat,
         baseLng: input.baseLng,
         allowsNegotiation: input.allowsNegotiation ?? false,
+        isCompany: input.isCompany ?? false,
+        companyName: input.isCompany ? input.companyName : null,
+        responsibleName: input.isCompany ? input.responsibleName : null,
       },
     });
 
@@ -178,6 +196,9 @@ export type AdminProviderDTO = {
   status: "PENDING" | "APPROVED" | "BLOCKED";
   headline: string | null;
   yearsExperience: number;
+  isCompany: boolean;
+  companyName: string | null;
+  responsibleName: string | null;
   hasDocument: boolean;
   categoryNames: string[];
   serviceCount: number;
@@ -201,6 +222,9 @@ export async function listAllProviderProfiles(): Promise<AdminProviderDTO[]> {
     status: p.status,
     headline: p.headline,
     yearsExperience: p.yearsExperience,
+    isCompany: p.isCompany,
+    companyName: p.companyName,
+    responsibleName: p.responsibleName,
     hasDocument: !!p.documentUrl,
     categoryNames: p.categories.map((c) => c.category.name),
     serviceCount: p._count.services,

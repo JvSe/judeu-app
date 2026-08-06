@@ -1,6 +1,7 @@
 import type { Prisma } from "@judeu/db";
 
 import { prisma } from "./db";
+import { notifyUser } from "./notifications";
 import { stripe } from "./stripe";
 
 // ---------------------------------------------------------------------------
@@ -165,6 +166,7 @@ export async function getPayment(
     const intent = await stripe.paymentIntents.retrieve(payment.gatewayRef);
     if (intent.status === "succeeded") {
       payment = await prisma.payment.update({ where: { orderId }, data: { status: "PAID" } });
+      await notifyProviderIfNeeded(orderId);
     } else if (intent.status === "canceled") {
       payment = await prisma.payment.update({ where: { orderId }, data: { status: "FAILED" } });
     }
@@ -172,10 +174,31 @@ export async function getPayment(
   return { payment: toDTO(payment) };
 }
 
+// Prestadores com negociação ligada já são avisados na criação do pedido (pra
+// poder propor outro valor antes do pagamento); os demais só agora, quando o
+// pedido passa a existir pra eles nas listagens (ver HIDE_UNPAID_CREATED em orders.ts).
+async function notifyProviderIfNeeded(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      provider: { select: { userId: true, allowsNegotiation: true } },
+      service: { select: { name: true } },
+      category: { select: { name: true } },
+    },
+  });
+  if (!order?.provider || order.provider.allowsNegotiation) return;
+  void notifyUser(order.provider.userId, "ORDER", {
+    title: order.scheduledAt ? "Novo pedido agendado" : "Novo pedido",
+    body: order.service?.name ?? order.category?.name ?? "Você recebeu um novo pedido",
+    data: { type: "order", orderId: order.id, role: "provider" },
+  });
+}
+
 export async function markPaidByGatewayRef(gatewayRef: string) {
   const payment = await prisma.payment.findFirst({ where: { gatewayRef } });
-  if (!payment) return;
+  if (!payment || payment.status === "PAID") return;
   await prisma.payment.update({ where: { id: payment.id }, data: { status: "PAID" } });
+  await notifyProviderIfNeeded(payment.orderId);
 }
 
 export async function markFailedByGatewayRef(gatewayRef: string) {

@@ -55,6 +55,7 @@ export default function ProviderProfile() {
               <Text style={styles.name}>{provider.name}</Text>
               <Ionicons name="checkmark-circle" size={20} color={theme.colors.primary} />
             </View>
+            {provider.companyName && <Text style={styles.company}>{provider.companyName}</Text>}
             <Text style={styles.role}>{provider.role}</Text>
             <View style={[styles.availabilityChip, !provider.isAvailable && styles.availabilityChipOff]}>
               <View style={[styles.availabilityDot, !provider.isAvailable && styles.availabilityDotOff]} />
@@ -189,6 +190,12 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fonts.extraBold,
     color: theme.colors.foreground,
     letterSpacing: -0.5,
+  },
+  company: {
+    fontSize: 13.5,
+    fontFamily: fonts.bold,
+    color: theme.colors.primary,
+    marginTop: 4,
   },
   role: {
     fontSize: 15,

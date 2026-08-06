@@ -20,15 +20,15 @@ describe("pathForNotification", () => {
     );
   });
 
-  it("pedido + role cliente -> detalhe do pedido", () => {
+  it("pedido + role cliente -> mapa de tracking", () => {
     expect(pathForNotification({ type: "order", orderId: "abc", role: "client" })).toBe(
-      "/client/order/abc",
+      "/client/tracking/abc",
     );
   });
 
-  it("pedido + role prestador -> dashboard do prestador (sem tela de detalhe dedicada)", () => {
+  it("pedido + role prestador -> mapa de entrega", () => {
     expect(pathForNotification({ type: "order", orderId: "abc", role: "provider" })).toBe(
-      "/provider",
+      "/provider/delivery/abc",
     );
   });
 

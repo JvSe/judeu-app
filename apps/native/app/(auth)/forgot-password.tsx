@@ -1,41 +1,51 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { router } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useForm } from "react-hook-form";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { z } from "zod";
 
 import { fonts } from "@/constants/fonts";
 import { authApi, ApiError } from "@/lib/api";
+import { FormErrorText } from "@/components/form/error-text";
+import { FormTextField } from "@/components/form/text-field";
 import { Screen } from "@/components/ui/screen";
+
+const forgotPasswordSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .min(1, "Informe seu e-mail.")
+    .transform((v) => v.toLowerCase()),
+});
+
+type ForgotPasswordForm = z.infer<typeof forgotPasswordSchema>;
 
 export default function ForgotPassword() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { control, handleSubmit, formState } = useForm<ForgotPasswordForm>({
+    resolver: zodResolver(forgotPasswordSchema),
+    mode: "onBlur",
+    reValidateMode: "onChange",
+    defaultValues: { email: "" },
+  });
 
-  async function handleSubmit() {
-    if (loading) return;
-    const trimmed = email.trim().toLowerCase();
-    if (!trimmed) {
-      setError("Informe seu e-mail.");
-      return;
-    }
-    setError(null);
-    setLoading(true);
+  const onValid = handleSubmit(async (data) => {
+    setSubmitError(null);
     try {
-      await authApi.forgotPassword(trimmed);
-      router.push({ pathname: "/(auth)/reset-password", params: { email: trimmed } });
+      await authApi.forgotPassword(data.email);
+      router.push({ pathname: "/(auth)/reset-password", params: { email: data.email } });
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Não foi possível enviar o código.");
-    } finally {
-      setLoading(false);
+      setSubmitError(e instanceof ApiError ? e.message : "Não foi possível enviar o código.");
     }
-  }
+  });
 
   return (
     <Screen>
@@ -61,34 +71,33 @@ export default function ForgotPassword() {
           criar uma senha nova.
         </Text>
 
-        <Text style={styles.label}>E-mail</Text>
-        <View style={styles.field}>
-          <Ionicons name="mail-outline" size={19} color={theme.colors.mutedForeground} />
-          <TextInput
-            style={styles.fieldValue}
-            value={email}
-            onChangeText={setEmail}
-            placeholder="seu@email.com"
-            placeholderTextColor={theme.colors.mutedForeground}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoComplete="email"
-            autoCorrect={false}
-            editable={!loading}
-            onSubmitEditing={handleSubmit}
-          />
-        </View>
+        <FormTextField
+          control={control}
+          name="email"
+          label="E-mail"
+          icon="mail-outline"
+          placeholder="seu@email.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoComplete="email"
+          editable={!formState.isSubmitting}
+          onSubmitEditing={onValid}
+          containerStyle={styles.fieldSpacing}
+        />
 
-        {error && <Text style={styles.error}>{error}</Text>}
+        {submitError && <FormErrorText style={styles.submitError}>{submitError}</FormErrorText>}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 24 }]}>
         <Pressable
-          style={({ pressed }) => [styles.submit, { opacity: pressed || loading ? 0.9 : 1 }]}
-          onPress={handleSubmit}
-          disabled={loading}
+          style={({ pressed }) => [
+            styles.submit,
+            { opacity: pressed || formState.isSubmitting ? 0.9 : 1 },
+          ]}
+          onPress={onValid}
+          disabled={formState.isSubmitting}
         >
-          {loading ? (
+          {formState.isSubmitting ? (
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.submitText}>Enviar código</Text>
@@ -143,34 +152,10 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: 9,
     lineHeight: 22,
   },
-  label: {
-    fontSize: 12.5,
-    fontFamily: fonts.bold,
-    color: theme.colors.mutedForeground,
+  fieldSpacing: {
     marginTop: 30,
-    marginBottom: 8,
   },
-  field: {
-    height: 56,
-    backgroundColor: "rgba(28,28,58,0.85)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    borderRadius: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-  },
-  fieldValue: {
-    flex: 1,
-    fontSize: 15.5,
-    fontFamily: fonts.semiBold,
-    color: "#fff",
-  },
-  error: {
-    fontSize: 13.5,
-    fontFamily: fonts.semiBold,
-    color: theme.colors.destructive,
+  submitError: {
     marginTop: 16,
   },
   footer: {

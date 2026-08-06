@@ -74,10 +74,9 @@ export async function listAddresses(userId: string): Promise<AddressDTO[]> {
   return rows.map(toDTO);
 }
 
-// Geocodifica igual ao cadastro de pedido (best-effort via Nominatim, fallback
-// pro centro de Palmas sem NOMINATIM_URL configurada — RF-C6).
+// Geocodifica o endereço digitado; se falhar, usa coordenadas do app (GPS) quando
+// enviadas; só então cai no centro de Palmas (RF-C6).
 async function resolveLatLng(input: AddressInput): Promise<{ lat: number; lng: number }> {
-  if (input.lat != null && input.lng != null) return { lat: input.lat, lng: input.lng };
   try {
     const query = [
       `${input.street}${input.number ? `, ${input.number}` : ""}`,
@@ -92,6 +91,7 @@ async function resolveLatLng(input: AddressInput): Promise<{ lat: number; lng: n
   } catch {
     // Nominatim indisponível/não configurada — segue com o fallback abaixo.
   }
+  if (input.lat != null && input.lng != null) return { lat: input.lat, lng: input.lng };
   return { lat: FALLBACK_LAT, lng: FALLBACK_LNG };
 }
 
@@ -179,7 +179,15 @@ export async function deleteAddress(
     return { error: "Endereço não encontrado", status: 404 };
   }
 
-  await prisma.address.delete({ where: { id } });
+  try {
+    await prisma.address.delete({ where: { id } });
+  } catch (err) {
+    // P2003 = foreign key: existem pedidos apontando pra esse endereço.
+    if (err && typeof err === "object" && "code" in err && err.code === "P2003") {
+      return { error: "Não é possível excluir: endereço vinculado a um pedido", status: 409 };
+    }
+    throw err;
+  }
 
   // Se apagou o endereço padrão e ainda sobrou algum, promove o mais recente.
   if (existing.isDefault) {

@@ -3,9 +3,15 @@ import { Tabs } from "expo-router";
 import { useUnistyles } from "react-native-unistyles";
 
 import { TabBarIcon } from "@/components/tabbar-icon";
+import { isOrderActive } from "@/lib/format";
+import { useOrders } from "@/lib/hooks";
 
 export default function ProviderTabLayout() {
   const { theme } = useUnistyles();
+  const { data: orders = [] } = useOrders("provider", { poll: true });
+  const unreadMessages = orders
+    .filter((o) => isOrderActive(o.status))
+    .reduce((sum, o) => sum + o.unreadMessages, 0);
 
   return (
     <Tabs
@@ -15,8 +21,8 @@ export default function ProviderTabLayout() {
         tabBarInactiveTintColor: theme.colors.mutedForeground,
         tabBarStyle: {
           position: "absolute",
-          left: 16,
-          right: 16,
+          start: 16,
+          end: 16,
           bottom: 26,
           height: 64,
           borderRadius: 22,
@@ -39,6 +45,12 @@ export default function ProviderTabLayout() {
         options={{
           title: "Painel",
           tabBarIcon: ({ color }) => <TabBarIcon name="grid" color={color} />,
+          tabBarBadge: unreadMessages > 0 ? unreadMessages : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: theme.colors.destructive,
+            color: theme.colors.destructiveForeground,
+            fontSize: 10,
+          },
         }}
       />
       <Tabs.Screen

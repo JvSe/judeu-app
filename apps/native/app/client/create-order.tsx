@@ -1,29 +1,22 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useEffect, useState } from "react";
+import { useController, useForm } from "react-hook-form";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { z } from "zod";
 
 import { fonts } from "@/constants/fonts";
-import { useCepAutofill } from "@/lib/cep";
 import { moneyFromCents } from "@/lib/format";
-import { useCreateOrder } from "@/lib/hooks";
+import { formatBirthday } from "@/lib/formatters/format-birthday.helper";
+import { formatTime } from "@/lib/formatters/format-time.helper";
+import { useAddresses, useCreateOrder } from "@/lib/hooks";
+import { FormErrorText } from "@/components/form/error-text";
+import { FormInput } from "@/components/form/input";
 import { Screen } from "@/components/ui/screen";
-
-function maskDate(value: string): string {
-  const digits = value.replace(/\D/g, "").slice(0, 8);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-}
-
-function maskTime(value: string): string {
-  const digits = value.replace(/\D/g, "").slice(0, 4);
-  if (digits.length <= 2) return digits;
-  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
-}
 
 // Combina "DD/MM/AAAA" + "HH:MM" num Date local; null se incompleto/inválido.
 function parseScheduledAt(date: string, time: string): Date | null {
@@ -32,13 +25,7 @@ function parseScheduledAt(date: string, time: string): Date | null {
   if (!dateMatch || !timeMatch) return null;
   const [, dd, mm, yyyy] = dateMatch;
   const [, hh, min] = timeMatch;
-  const parsed = new Date(
-    Number(yyyy),
-    Number(mm) - 1,
-    Number(dd),
-    Number(hh),
-    Number(min),
-  );
+  const parsed = new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(min));
   const valid =
     parsed.getFullYear() === Number(yyyy) &&
     parsed.getMonth() === Number(mm) - 1 &&
@@ -47,6 +34,33 @@ function parseScheduledAt(date: string, time: string): Date | null {
     parsed.getMinutes() === Number(min);
   return valid ? parsed : null;
 }
+
+const createOrderSchema = z
+  .object({
+    when: z.enum(["agora", "agendar"]),
+    scheduleDate: z.string(),
+    scheduleTime: z.string(),
+    description: z.string(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.when !== "agendar") return;
+    const parsed = parseScheduledAt(val.scheduleDate, val.scheduleTime);
+    if (!parsed) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["scheduleDate"],
+        message: "Informe uma data e hora válidas para o agendamento.",
+      });
+    } else if (parsed.getTime() <= Date.now()) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["scheduleTime"],
+        message: "Escolha uma data e hora no futuro.",
+      });
+    }
+  });
+
+type CreateOrderForm = z.infer<typeof createOrderSchema>;
 
 export default function CreateOrder() {
   const { theme } = useUnistyles();
@@ -59,73 +73,60 @@ export default function CreateOrder() {
     priceCents?: string;
     allowsNegotiation?: string;
   }>();
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
 
-  const [when, setWhen] = useState<"agora" | "agendar">("agora");
-  const [scheduleDate, setScheduleDate] = useState(""); // DD/MM/AAAA
-  const [scheduleTime, setScheduleTime] = useState(""); // HH:MM
-  const [description, setDescription] = useState("");
-  const [cep, setCep] = useState("");
-  const [street, setStreet] = useState("");
-  const [number, setNumber] = useState("");
-  const [neighborhood, setNeighborhood] = useState("");
-  const [city, setCity] = useState("Palmas");
-  const [uf, setUf] = useState("TO");
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const { data: addresses, isLoading: addressesLoading } = useAddresses();
 
-  const { loading: cepLoading, handleCepChange: resolveCep } = useCepAutofill((resolved) => {
-    if (resolved.street) setStreet(resolved.street);
-    if (resolved.neighborhood) setNeighborhood(resolved.neighborhood);
-    if (resolved.city) setCity(resolved.city);
-    if (resolved.state) setUf(resolved.state);
+  // Seleciona o endereço padrão automaticamente quando a lista chega (ou se o
+  // endereço selecionado deixou de existir, ex.: acabou de ser removido).
+  useEffect(() => {
+    if (!addresses?.length) return;
+    setSelectedAddressId((current) => {
+      if (current && addresses.some((a) => a.id === current)) return current;
+      return addresses.find((a) => a.isDefault)?.id ?? addresses[0].id;
+    });
+  }, [addresses]);
+
+  const { control, handleSubmit } = useForm<CreateOrderForm>({
+    resolver: zodResolver(createOrderSchema),
+    mode: "onBlur",
+    reValidateMode: "onChange",
+    defaultValues: {
+      when: "agora",
+      scheduleDate: "",
+      scheduleTime: "",
+      description: "",
+    },
   });
-
-  const handleCepChange = (value: string) => {
-    const digits = value.replace(/\D/g, "").slice(0, 8);
-    setCep(digits);
-    void resolveCep(digits);
-  };
+  const { field: whenField } = useController({ control, name: "when" });
 
   const createOrder = useCreateOrder();
   const priceCents = params.priceCents ? Number(params.priceCents) : 0;
 
-  const handleSubmit = async () => {
-    setErrorMsg(null);
+  const onValid = handleSubmit(async (data) => {
+    setSubmitError(null);
     if (!params.providerId) {
-      setErrorMsg("Prestador não informado.");
+      setSubmitError("Prestador não informado.");
       return;
     }
-    if (!street.trim() || !city.trim() || !uf.trim()) {
-      setErrorMsg("Preencha o endereço (rua, cidade e estado).");
+    const selectedAddress = addresses?.find((a) => a.id === selectedAddressId);
+    if (!selectedAddress) {
+      setSubmitError("Selecione um endereço para continuar.");
       return;
     }
     let scheduledAt: string | undefined;
-    if (when === "agendar") {
-      const parsed = parseScheduledAt(scheduleDate, scheduleTime);
-      if (!parsed) {
-        setErrorMsg("Informe uma data e hora válidas para o agendamento.");
-        return;
-      }
-      if (parsed.getTime() <= Date.now()) {
-        setErrorMsg("Escolha uma data e hora no futuro.");
-        return;
-      }
-      scheduledAt = parsed.toISOString();
+    if (data.when === "agendar") {
+      const parsed = parseScheduledAt(data.scheduleDate, data.scheduleTime);
+      if (parsed) scheduledAt = parsed.toISOString();
     }
     try {
       const order = await createOrder.mutateAsync({
         providerId: params.providerId,
         serviceId: params.serviceId,
-        description: description.trim() || undefined,
+        description: data.description.trim() || undefined,
         scheduledAt,
-        address: {
-          label: "Casa",
-          cep: cep.trim() || undefined,
-          street: street.trim(),
-          number: number.trim() || undefined,
-          neighborhood: neighborhood.trim() || undefined,
-          city: city.trim(),
-          state: uf.trim(),
-        },
+        addressId: selectedAddress.id,
       });
       if (params.allowsNegotiation === "true") {
         // Prestador habilitou negociação (RF-D5) — vai pro detalhe do pedido em vez de
@@ -135,9 +136,9 @@ export default function CreateOrder() {
         router.replace({ pathname: "/client/payment/[id]", params: { id: order.id } });
       }
     } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : "Não foi possível criar o pedido.");
+      setSubmitError(e instanceof Error ? e.message : "Não foi possível criar o pedido.");
     }
-  };
+  });
 
   return (
     <Screen>
@@ -166,123 +167,104 @@ export default function CreateOrder() {
         </View>
 
         <Text style={styles.label}>Descreva o problema</Text>
-        <View style={styles.textArea}>
-          <TextInput
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Ex.: preciso instalar 2 tomadas novas na cozinha."
-            placeholderTextColor={theme.colors.mutedForeground}
-            multiline
-            style={styles.textAreaInput}
-          />
-        </View>
+        <FormInput
+          control={control}
+          name="description"
+          placeholder="Ex.: preciso instalar 2 tomadas novas na cozinha."
+          multiline
+          containerStyle={styles.textAreaSpacing}
+        />
 
         <Text style={styles.label}>Quando?</Text>
         <View style={styles.whenRow}>
           <Pressable
-            style={[styles.whenButton, when === "agora" && styles.whenButtonActive]}
-            onPress={() => setWhen("agora")}
+            style={[styles.whenButton, whenField.value === "agora" && styles.whenButtonActive]}
+            onPress={() => whenField.onChange("agora")}
           >
-            <Text style={[styles.whenText, when === "agora" && styles.whenTextActive]}>Agora</Text>
+            <Text style={[styles.whenText, whenField.value === "agora" && styles.whenTextActive]}>
+              Agora
+            </Text>
           </Pressable>
           <Pressable
-            style={[styles.whenButton, when === "agendar" && styles.whenButtonActive]}
-            onPress={() => setWhen("agendar")}
+            style={[styles.whenButton, whenField.value === "agendar" && styles.whenButtonActive]}
+            onPress={() => whenField.onChange("agendar")}
           >
-            <Text style={[styles.whenText, when === "agendar" && styles.whenTextActive]}>
+            <Text style={[styles.whenText, whenField.value === "agendar" && styles.whenTextActive]}>
               Agendar
             </Text>
           </Pressable>
         </View>
 
-        {when === "agendar" && (
-          <View style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
-            <TextInput
-              value={scheduleDate}
-              onChangeText={(v) => setScheduleDate(maskDate(v))}
+        {whenField.value === "agendar" && (
+          <View style={styles.scheduleRow}>
+            <FormInput
+              control={control}
+              name="scheduleDate"
               placeholder="DD/MM/AAAA"
-              placeholderTextColor={theme.colors.mutedForeground}
               keyboardType="number-pad"
               maxLength={10}
-              style={[styles.input, { flex: 3 }]}
+              parseValue={formatBirthday}
+              containerStyle={{ flex: 3 }}
             />
-            <TextInput
-              value={scheduleTime}
-              onChangeText={(v) => setScheduleTime(maskTime(v))}
+            <FormInput
+              control={control}
+              name="scheduleTime"
               placeholder="HH:MM"
-              placeholderTextColor={theme.colors.mutedForeground}
               keyboardType="number-pad"
               maxLength={5}
-              style={[styles.input, { flex: 2 }]}
+              parseValue={formatTime}
+              containerStyle={{ flex: 2 }}
             />
           </View>
         )}
 
         <Text style={styles.label}>Endereço</Text>
-        <View style={{ gap: 10 }}>
-          <View>
-            <TextInput
-              value={cep}
-              onChangeText={handleCepChange}
-              placeholder="CEP"
-              placeholderTextColor={theme.colors.mutedForeground}
-              keyboardType="number-pad"
-              maxLength={8}
-              style={styles.input}
-            />
-            {cepLoading && (
-              <ActivityIndicator
-                color={theme.colors.primary}
-                size="small"
-                style={styles.cepLoading}
-              />
-            )}
+        {addressesLoading ? (
+          <ActivityIndicator color={theme.colors.primary} style={styles.addressLoading} />
+        ) : addresses && addresses.length > 0 ? (
+          <View style={{ gap: 10 }}>
+            {addresses.map((address) => {
+              const selected = address.id === selectedAddressId;
+              return (
+                <Pressable
+                  key={address.id}
+                  style={[styles.addressCard, selected && styles.addressCardActive]}
+                  onPress={() => setSelectedAddressId(address.id)}
+                >
+                  <View style={[styles.addressRadio, selected && styles.addressRadioActive]}>
+                    {selected && <View style={styles.addressRadioDot} />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.addressTitleRow}>
+                      <Text style={styles.addressLabel}>{address.label || "Endereço"}</Text>
+                      {address.isDefault && (
+                        <View style={styles.defaultBadge}>
+                          <Text style={styles.defaultBadgeText}>Padrão</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.addressDetail} numberOfLines={2}>
+                      {address.street}
+                      {address.number ? `, ${address.number}` : ""} — {address.city}/{address.state}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
           </View>
-          <TextInput
-            value={street}
-            onChangeText={setStreet}
-            placeholder="Rua / Avenida"
-            placeholderTextColor={theme.colors.mutedForeground}
-            style={styles.input}
-          />
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            <TextInput
-              value={number}
-              onChangeText={setNumber}
-              placeholder="Número"
-              placeholderTextColor={theme.colors.mutedForeground}
-              keyboardType="numbers-and-punctuation"
-              style={[styles.input, { flex: 1 }]}
-            />
-            <TextInput
-              value={neighborhood}
-              onChangeText={setNeighborhood}
-              placeholder="Bairro"
-              placeholderTextColor={theme.colors.mutedForeground}
-              style={[styles.input, { flex: 2 }]}
-            />
-          </View>
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            <TextInput
-              value={city}
-              onChangeText={setCity}
-              placeholder="Cidade"
-              placeholderTextColor={theme.colors.mutedForeground}
-              style={[styles.input, { flex: 2 }]}
-            />
-            <TextInput
-              value={uf}
-              onChangeText={setUf}
-              placeholder="UF"
-              placeholderTextColor={theme.colors.mutedForeground}
-              autoCapitalize="characters"
-              maxLength={2}
-              style={[styles.input, { flex: 1 }]}
-            />
-          </View>
-        </View>
+        ) : (
+          <Text style={styles.addressEmpty}>Você ainda não tem endereços cadastrados.</Text>
+        )}
 
-        {errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
+        <Pressable
+          style={styles.addAddressButton}
+          onPress={() => router.push("/client/address-form" as never)}
+        >
+          <Ionicons name="add" size={18} color={theme.colors.primary} />
+          <Text style={styles.addAddressButtonText}>Adicionar novo endereço</Text>
+        </Pressable>
+
+        {submitError && <FormErrorText style={styles.submitError}>{submitError}</FormErrorText>}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
@@ -297,7 +279,7 @@ export default function CreateOrder() {
             styles.submit,
             { opacity: pressed || createOrder.isPending ? 0.9 : 1 },
           ]}
-          onPress={handleSubmit}
+          onPress={onValid}
           disabled={createOrder.isPending}
         >
           <Text style={styles.submitText}>
@@ -368,39 +350,92 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fonts.extraBold,
     color: theme.colors.primary,
   },
-  textArea: {
-    backgroundColor: "rgba(28,28,58,0.85)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    borderRadius: 17,
-    padding: 15,
+  textAreaSpacing: {
     marginBottom: 12,
   },
-  textAreaInput: {
-    fontSize: 14.5,
-    fontFamily: fonts.medium,
-    color: "#fff",
-    lineHeight: 22,
-    minHeight: 66,
-    textAlignVertical: "top",
+  addressLoading: {
+    marginVertical: 10,
   },
-  input: {
-    backgroundColor: "rgba(28,28,58,0.85)",
+  addressCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 13,
+    backgroundColor: "rgba(28,28,58,0.6)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    borderRadius: 14,
-    paddingHorizontal: 15,
-    paddingVertical: 13,
+    borderColor: theme.colors.border,
+    borderRadius: 16,
+    padding: 14,
+  },
+  addressCardActive: {
+    borderColor: theme.colors.primary,
+    backgroundColor: "rgba(28,28,58,0.85)",
+  },
+  addressRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addressRadioActive: {
+    borderColor: theme.colors.primary,
+  },
+  addressRadioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: theme.colors.primary,
+  },
+  addressTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  addressLabel: {
     fontSize: 14.5,
-    fontFamily: fonts.medium,
+    fontFamily: fonts.bold,
     color: "#fff",
   },
-  cepLoading: {
-    position: "absolute",
-    right: 15,
-    top: 0,
-    bottom: 0,
+  defaultBadge: {
+    backgroundColor: "rgba(255,102,0,0.16)",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  defaultBadgeText: {
+    fontSize: 10.5,
+    fontFamily: fonts.bold,
+    color: theme.colors.primary,
+  },
+  addressDetail: {
+    fontSize: 12.5,
+    fontFamily: fonts.medium,
+    color: theme.colors.mutedForeground,
+    marginTop: 3,
+  },
+  addressEmpty: {
+    fontSize: 13,
+    fontFamily: fonts.medium,
+    color: theme.colors.mutedForeground,
+  },
+  addAddressButton: {
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    borderStyle: "dashed",
+    borderRadius: 16,
+    paddingVertical: 14,
+    marginTop: 10,
+  },
+  addAddressButtonText: {
+    fontSize: 14,
+    fontFamily: fonts.bold,
+    color: theme.colors.primary,
   },
   whenRow: {
     flexDirection: "row",
@@ -429,11 +464,13 @@ const styles = StyleSheet.create((theme) => ({
     color: "#fff",
     fontFamily: fonts.bold,
   },
-  errorText: {
+  scheduleRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 20,
+  },
+  submitError: {
     marginTop: 14,
-    fontSize: 13.5,
-    fontFamily: fonts.semiBold,
-    color: theme.colors.destructive,
   },
   footer: {
     position: "absolute",

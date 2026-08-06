@@ -1,7 +1,8 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useLocalSearchParams } from "expo-router";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
@@ -11,6 +12,7 @@ import { initialsOf, moneyFromCents, orderStatusLabel, shortDateTime, shortTime 
 import { useOrder, useOrderProposals, useRespondToProposal, useTransitionOrder } from "@/lib/hooks";
 import { Avatar } from "@/components/ui/avatar";
 import { Screen } from "@/components/ui/screen";
+import SpinButton from "@/components/ui/spin-button";
 
 // Fluxo canônico do pedido (caminho feliz).
 const FLOW: { status: OrderStatus; title: string }[] = [
@@ -34,6 +36,7 @@ export default function OrderDetail() {
   const transition = useTransitionOrder();
   const { data: proposals = [] } = useOrderProposals(id);
   const respondToProposal = useRespondToProposal();
+  const [respondAction, setRespondAction] = useState<"accept" | "reject" | null>(null);
 
   if (isLoading || !order) {
     return (
@@ -52,12 +55,26 @@ export default function OrderDetail() {
   const pendingProposal = proposals.find((p) => p.status === "PENDING");
 
   const handleCancel = () => {
-    transition.mutate({ id: order.id, action: "cancel" });
+    transition.mutate(
+      { id: order.id, action: "cancel" },
+      {
+        onError: (err) =>
+          Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível cancelar o pedido."),
+      },
+    );
   };
 
   const handleRespondProposal = (action: "accept" | "reject") => {
     if (!pendingProposal) return;
-    respondToProposal.mutate({ orderId: order.id, proposalId: pendingProposal.id, action });
+    setRespondAction(action);
+    respondToProposal.mutate(
+      { orderId: order.id, proposalId: pendingProposal.id, action },
+      {
+        onError: (err) =>
+          Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível responder à proposta."),
+        onSettled: () => setRespondAction(null),
+      },
+    );
   };
 
   return (
@@ -115,6 +132,16 @@ export default function OrderDetail() {
           >
             <Ionicons name="navigate" size={17} color="#fff" />
             <Text style={styles.trackButtonText}>Acompanhar no mapa</Text>
+          </Pressable>
+        )}
+
+        {order.status === "IN_PROGRESS" && (
+          <Pressable
+            style={styles.trackButtonLocal}
+            onPress={() => router.push({ pathname: "/client/tracking/[id]", params: { id: order.id } })}
+          >
+            <Ionicons name="location" size={17} color={theme.colors.success} />
+            <Text style={styles.trackButtonLocalText}>Prestador no local — ver no mapa</Text>
           </Pressable>
         )}
 
@@ -205,22 +232,36 @@ export default function OrderDetail() {
               <Text style={styles.negotiationNote}>“{pendingProposal.note}”</Text>
             )}
             <View style={styles.negotiationActions}>
-              <Pressable
-                style={styles.negotiationDecline}
+              <SpinButton
+                controlled
+                isActive={respondAction === "reject" && respondToProposal.isPending}
+                disabled={respondToProposal.isPending}
+                idleText="Recusar"
+                activeText="Recusando..."
                 onPress={() => handleRespondProposal("reject")}
-                disabled={respondToProposal.isPending}
-              >
-                <Text style={styles.negotiationDeclineText}>Recusar</Text>
-              </Pressable>
-              <Pressable
-                style={styles.negotiationAccept}
-                onPress={() => handleRespondProposal("accept")}
-                disabled={respondToProposal.isPending}
-              >
-                <Text style={styles.negotiationAcceptText}>
-                  Aceitar {moneyFromCents(pendingProposal.priceCents)}
-                </Text>
-              </Pressable>
+                colors={{
+                  idle: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
+                  active: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
+                }}
+                buttonStyle={{ paddingHorizontal: 18, paddingVertical: 12, borderRadius: 13, fontSize: 13 }}
+                spinnerConfig={{ color: theme.colors.mutedForeground, containerBackground: "rgba(255,255,255,0.06)" }}
+              />
+              <View style={{ flex: 1 }}>
+                <SpinButton
+                  controlled
+                  isActive={respondAction === "accept" && respondToProposal.isPending}
+                  disabled={respondToProposal.isPending}
+                  idleText={`Aceitar ${moneyFromCents(pendingProposal.priceCents)}`}
+                  activeText="Aceitando..."
+                  onPress={() => handleRespondProposal("accept")}
+                  colors={{
+                    idle: { background: theme.colors.primary, text: "#fff" },
+                    active: { background: theme.colors.primary, text: "#fff" },
+                  }}
+                  buttonStyle={{ paddingHorizontal: 18, paddingVertical: 12, borderRadius: 13, fontSize: 13 }}
+                  spinnerConfig={{ color: "#fff", containerBackground: theme.colors.primary }}
+                />
+              </View>
             </View>
           </View>
         )}
@@ -387,6 +428,23 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 14.5,
     fontFamily: fonts.bold,
     color: "#fff",
+  },
+  trackButtonLocal: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+    backgroundColor: "rgba(49,208,127,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(49,208,127,0.35)",
+    borderRadius: 16,
+    paddingVertical: 14,
+    marginBottom: 16,
+  },
+  trackButtonLocalText: {
+    fontSize: 14.5,
+    fontFamily: fonts.bold,
+    color: theme.colors.success,
   },
   cancelledCard: {
     flexDirection: "row",
@@ -566,29 +624,6 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     gap: 10,
     marginTop: 14,
-  },
-  negotiationDecline: {
-    backgroundColor: "rgba(255,255,255,0.06)",
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 13,
-  },
-  negotiationDeclineText: {
-    fontSize: 13,
-    fontFamily: fonts.bold,
-    color: theme.colors.mutedForeground,
-  },
-  negotiationAccept: {
-    flex: 1,
-    backgroundColor: theme.colors.primary,
-    alignItems: "center",
-    paddingVertical: 12,
-    borderRadius: 13,
-  },
-  negotiationAcceptText: {
-    fontSize: 13,
-    fontFamily: fonts.bold,
-    color: "#fff",
   },
   negotiateLink: {
     flexDirection: "row",

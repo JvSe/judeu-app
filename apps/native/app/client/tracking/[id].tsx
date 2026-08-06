@@ -9,9 +9,10 @@ import type { OrderStatus } from "@/lib/api";
 import { fonts } from "@/constants/fonts";
 import { initialsOf } from "@/lib/format";
 import { useOrder } from "@/lib/hooks";
+import { useCurrentLocation } from "@/lib/location";
 import { Avatar } from "@/components/ui/avatar";
 import { IconButton } from "@/components/ui/icon-button";
-import { ProviderMarker } from "@/components/ui/map-marker";
+import { ProviderMarker, SelfMarker } from "@/components/ui/map-marker";
 import { RealMap } from "@/components/ui/real-map";
 import { Screen } from "@/components/ui/screen";
 
@@ -41,6 +42,7 @@ export default function Tracking() {
   const insets = useSafeAreaInsets();
   const { theme } = useUnistyles();
   const { data: order, isLoading } = useOrder(id, { poll: true });
+  const myLocation = useCurrentLocation();
 
   if (isLoading || !order) {
     return (
@@ -61,8 +63,20 @@ export default function Tracking() {
   const providerCoord: [number, number] | null =
     providerLat != null && providerLng != null ? [providerLng, providerLat] : null;
   const destCoord: [number, number] = [destLng, destLat];
+  const selfCoord: [number, number] | null = myLocation
+    ? [myLocation.lng, myLocation.lat]
+    : null;
 
   const markers = [
+    ...(selfCoord
+      ? [
+          {
+            id: "self",
+            lngLat: selfCoord,
+            render: () => <SelfMarker />,
+          },
+        ]
+      : []),
     ...(providerCoord
       ? [
           {
@@ -85,14 +99,16 @@ export default function Tracking() {
     },
   ];
 
-  const bounds: [number, number, number, number] | undefined = providerCoord
-    ? [
-        Math.min(providerCoord[0], destCoord[0]),
-        Math.min(providerCoord[1], destCoord[1]),
-        Math.max(providerCoord[0], destCoord[0]),
-        Math.max(providerCoord[1], destCoord[1]),
-      ]
-    : undefined;
+  const mapCoords = [destCoord, ...(providerCoord ? [providerCoord] : []), ...(selfCoord ? [selfCoord] : [])];
+  const bounds: [number, number, number, number] | undefined =
+    mapCoords.length > 1
+      ? [
+          Math.min(...mapCoords.map((c) => c[0])),
+          Math.min(...mapCoords.map((c) => c[1])),
+          Math.max(...mapCoords.map((c) => c[0])),
+          Math.max(...mapCoords.map((c) => c[1])),
+        ]
+      : undefined;
 
   return (
     <Screen>

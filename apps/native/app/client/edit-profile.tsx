@@ -1,18 +1,33 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { zodResolver } from "@hookform/resolvers/zod";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useForm, useWatch } from "react-hook-form";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { z } from "zod";
 
 import { fonts } from "@/constants/fonts";
 import { useAuth } from "@/lib/auth-context";
 import { initialsOf } from "@/lib/format";
+import { formatPhone } from "@/lib/formatters/format-phone.helper";
 import { useUpdateProfile, useUploadAvatar } from "@/lib/hooks";
 import { Avatar } from "@/components/ui/avatar";
+import { FormErrorText } from "@/components/form/error-text";
+import { FormTextField } from "@/components/form/text-field";
 import { Screen } from "@/components/ui/screen";
+
+const editProfileSchema = z.object({
+  fullName: z.string().trim().min(2, "Informe seu nome completo."),
+  phone: z.string(),
+});
+
+type EditProfileForm = z.infer<typeof editProfileSchema>;
+
+const unformatPhone = (value: string) => value.replace(/\D/g, "");
 
 export default function EditProfile() {
   const { theme } = useUnistyles();
@@ -20,15 +35,23 @@ export default function EditProfile() {
   const { user } = useAuth();
   const updateProfile = useUpdateProfile();
   const uploadAvatar = useUploadAvatar();
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const [fullName, setFullName] = useState(user?.fullName ?? "");
-  const [phone, setPhone] = useState(user?.phone ?? "");
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const { control, handleSubmit } = useForm<EditProfileForm>({
+    resolver: zodResolver(editProfileSchema),
+    mode: "onBlur",
+    reValidateMode: "onChange",
+    defaultValues: {
+      fullName: user?.fullName ?? "",
+      phone: unformatPhone(user?.phone ?? ""),
+    },
+  });
+  const fullName = useWatch({ control, name: "fullName" });
 
   async function pickAvatar() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      setErrorMsg("Precisamos de acesso às fotos para trocar sua foto de perfil.");
+      setSubmitError("Precisamos de acesso às fotos para trocar sua foto de perfil.");
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -40,33 +63,29 @@ export default function EditProfile() {
     });
     if (result.canceled || !result.assets[0]?.base64) return;
     const asset = result.assets[0];
-    setErrorMsg(null);
+    setSubmitError(null);
     try {
       await uploadAvatar.mutateAsync({
         base64: asset.base64!,
         mimeType: asset.mimeType ?? "image/jpeg",
       });
     } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : "Não foi possível enviar a foto.");
+      setSubmitError(e instanceof Error ? e.message : "Não foi possível enviar a foto.");
     }
   }
 
-  async function handleSave() {
-    if (fullName.trim().length < 2) {
-      setErrorMsg("Informe seu nome completo.");
-      return;
-    }
-    setErrorMsg(null);
+  const onValid = handleSubmit(async (data) => {
+    setSubmitError(null);
     try {
       await updateProfile.mutateAsync({
-        fullName: fullName.trim(),
-        phone: phone.trim() || undefined,
+        fullName: data.fullName,
+        phone: data.phone || undefined,
       });
       router.back();
     } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : "Não foi possível salvar.");
+      setSubmitError(e instanceof Error ? e.message : "Não foi possível salvar.");
     }
-  }
+  });
 
   return (
     <Screen>
@@ -95,38 +114,29 @@ export default function EditProfile() {
           </View>
         </Pressable>
 
-        <View style={styles.fieldBlock}>
-          <Text style={styles.label}>Nome completo</Text>
-          <View style={styles.field}>
-            <Ionicons name="person-outline" size={18} color={theme.colors.mutedForeground} />
-            <TextInput
-              style={styles.fieldValue}
-              value={fullName}
-              onChangeText={setFullName}
-              placeholder="Seu nome"
-              placeholderTextColor={theme.colors.mutedForeground}
-              autoCapitalize="words"
-              autoCorrect={false}
-            />
-          </View>
-        </View>
+        <FormTextField
+          control={control}
+          name="fullName"
+          label="Nome completo"
+          icon="person-outline"
+          placeholder="Seu nome"
+          autoCapitalize="words"
+          containerStyle={styles.fieldSpacing}
+        />
 
-        <View style={styles.fieldBlock}>
-          <Text style={styles.label}>Celular</Text>
-          <View style={styles.field}>
-            <Ionicons name="phone-portrait-outline" size={18} color={theme.colors.mutedForeground} />
-            <TextInput
-              style={styles.fieldValue}
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="(11) 90000-0000"
-              placeholderTextColor={theme.colors.mutedForeground}
-              keyboardType="phone-pad"
-            />
-          </View>
-        </View>
+        <FormTextField
+          control={control}
+          name="phone"
+          label="Celular"
+          icon="phone-portrait-outline"
+          placeholder="(11) 90000-0000"
+          keyboardType="phone-pad"
+          formatValue={formatPhone}
+          parseValue={unformatPhone}
+          containerStyle={styles.fieldSpacing}
+        />
 
-        <View style={styles.fieldBlock}>
+        <View style={[styles.fieldBlock, styles.fieldSpacing]}>
           <Text style={styles.label}>E-mail</Text>
           <View style={[styles.field, styles.fieldDisabled]}>
             <Ionicons name="mail-outline" size={18} color={theme.colors.mutedForeground} />
@@ -134,13 +144,16 @@ export default function EditProfile() {
           </View>
         </View>
 
-        {errorMsg && <Text style={styles.error}>{errorMsg}</Text>}
+        {submitError && <FormErrorText style={styles.submitError}>{submitError}</FormErrorText>}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         <Pressable
-          style={({ pressed }) => [styles.submit, { opacity: pressed || updateProfile.isPending ? 0.9 : 1 }]}
-          onPress={handleSave}
+          style={({ pressed }) => [
+            styles.submit,
+            { opacity: pressed || updateProfile.isPending ? 0.9 : 1 },
+          ]}
+          onPress={onValid}
           disabled={updateProfile.isPending}
         >
           {updateProfile.isPending ? (
@@ -190,8 +203,10 @@ const styles = StyleSheet.create((theme) => ({
     borderWidth: 3,
     borderColor: theme.colors.background,
   },
-  fieldBlock: {
+  fieldSpacing: {
     width: "100%",
+  },
+  fieldBlock: {
     marginBottom: 15,
   },
   label: {
@@ -214,24 +229,14 @@ const styles = StyleSheet.create((theme) => ({
   fieldDisabled: {
     opacity: 0.6,
   },
-  fieldValue: {
-    flex: 1,
-    fontSize: 15.5,
-    fontFamily: fonts.semiBold,
-    color: "#fff",
-  },
   fieldStatic: {
     flex: 1,
     fontSize: 15.5,
     fontFamily: fonts.semiBold,
     color: theme.colors.mutedForeground,
   },
-  error: {
-    fontSize: 13.5,
-    fontFamily: fonts.semiBold,
-    color: theme.colors.destructive,
+  submitError: {
     marginTop: 6,
-    alignSelf: "flex-start",
   },
   footer: {
     paddingHorizontal: 24,

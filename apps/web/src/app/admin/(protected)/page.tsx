@@ -53,8 +53,14 @@ function ProviderRow({ provider }: { provider: AdminProviderDTO }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{provider.fullName}</CardTitle>
+        <CardTitle>
+          {provider.fullName}
+          {provider.isCompany && provider.companyName ? ` · ${provider.companyName}` : ""}
+        </CardTitle>
         <CardDescription>
+          {provider.isCompany && (
+            <>Responsável: {provider.responsibleName ?? "não informado"} · </>
+          )}
           {provider.email} · {provider.headline ?? "sem cadastro profissional"} ·{" "}
           {provider.categoryNames.join(", ") || "sem categoria"} · {provider.serviceCount}{" "}
           serviço(s) · {provider.hasDocument ? "documento enviado" : "sem documento"}

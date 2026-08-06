@@ -10,25 +10,33 @@ export function OPTIONS() {
   return handleOptions();
 }
 
-const upsertSchema = z.object({
-  headline: z.string().min(2).max(80),
-  bio: z.string().max(600).optional(),
-  yearsExperience: z.number().int().min(0).max(60),
-  serviceRadiusKm: z.number().min(1).max(100),
-  baseLat: z.number().optional(),
-  baseLng: z.number().optional(),
-  allowsNegotiation: z.boolean().optional(),
-  categoryIds: z.array(z.string().min(1)).min(1),
-  services: z
-    .array(
-      z.object({
-        name: z.string().min(2).max(80),
-        priceCents: z.number().int().min(100),
-        categoryId: z.string().min(1),
-      }),
-    )
-    .min(1),
-});
+const upsertSchema = z
+  .object({
+    headline: z.string().min(2).max(80),
+    bio: z.string().max(600).optional(),
+    yearsExperience: z.number().int().min(0).max(60),
+    serviceRadiusKm: z.number().min(1).max(100),
+    baseLat: z.number().optional(),
+    baseLng: z.number().optional(),
+    allowsNegotiation: z.boolean().optional(),
+    isCompany: z.boolean().optional(),
+    companyName: z.string().min(2).max(120).optional(),
+    responsibleName: z.string().min(2).max(120).optional(),
+    categoryIds: z.array(z.string().min(1)).min(1),
+    services: z
+      .array(
+        z.object({
+          name: z.string().min(2).max(80),
+          priceCents: z.number().int().min(100),
+          categoryId: z.string().min(1),
+        }),
+      )
+      .min(1),
+  })
+  .refine((data) => !data.isCompany || (data.companyName && data.responsibleName), {
+    message: "Informe o nome da empresa e o nome do responsável",
+    path: ["companyName"],
+  });
 
 // GET /api/providers/me — cadastro profissional do prestador logado (null se ainda não criou).
 export async function GET(req: Request) {

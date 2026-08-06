@@ -1,31 +1,77 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { zodResolver } from "@hookform/resolvers/zod";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { useController, useFieldArray, useForm } from "react-hook-form";
+import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { z } from "zod";
 
 import { fonts } from "@/constants/fonts";
 import { Screen } from "@/components/ui/screen";
+import { FormChipSelect } from "@/components/form/chip-select";
+import { FormErrorText } from "@/components/form/error-text";
+import { FormInput } from "@/components/form/input";
 import { useCategories, useMyProviderProfile, useUploadProviderDocument, useUpsertProviderProfile } from "@/lib/hooks";
-
-type DraftService = { name: string; priceCents: number };
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Em análise",
   APPROVED: "Aprovado",
   BLOCKED: "Bloqueado",
 };
+
+const priceCentsSchema = z.string().transform((v, ctx) => {
+  const cents = Math.round(Number(v.replace(",", ".")) * 100);
+  if (!Number.isFinite(cents) || cents < 100) {
+    ctx.addIssue({ code: "custom", message: "Valor inválido" });
+    return z.NEVER;
+  }
+  return cents;
+});
+
+const kycSchema = z
+  .object({
+    headline: z.string().trim().min(2, "Conte o que você faz"),
+    bio: z.string(),
+    yearsExperience: z.string(),
+    serviceRadiusKm: z.string(),
+    categoryId: z.string().min(1, "Escolha uma categoria."),
+    allowsNegotiation: z.boolean(),
+    isCompany: z.boolean(),
+    companyName: z.string(),
+    responsibleName: z.string(),
+    services: z
+      .array(
+        z.object({
+          name: z.string().trim().min(2, "Nome do serviço muito curto"),
+          priceCents: priceCentsSchema,
+        }),
+      )
+      .min(1, "Adicione ao menos um serviço."),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.isCompany) return;
+    if (data.companyName.trim().length < 2) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Informe o nome da empresa",
+        path: ["companyName"],
+      });
+    }
+    if (data.responsibleName.trim().length < 2) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Informe o nome do responsável",
+        path: ["responsibleName"],
+      });
+    }
+  });
+
+type KycFormInput = z.input<typeof kycSchema>;
+type KycFormOutput = z.output<typeof kycSchema>;
 
 export default function ProviderKyc() {
   const { theme } = useUnistyles();
@@ -36,41 +82,58 @@ export default function ProviderKyc() {
   const upsertProfile = useUpsertProviderProfile();
   const uploadDocument = useUploadProviderDocument();
 
-  const [headline, setHeadline] = useState("");
-  const [bio, setBio] = useState("");
-  const [yearsExperience, setYearsExperience] = useState("0");
-  const [serviceRadiusKm, setServiceRadiusKm] = useState("10");
-  const [categoryId, setCategoryId] = useState<string | null>(null);
-  const [allowsNegotiation, setAllowsNegotiation] = useState(false);
-  const [services, setServices] = useState<DraftService[]>([]);
-  const [serviceName, setServiceName] = useState("");
-  const [servicePrice, setServicePrice] = useState("");
   const [document, setDocument] = useState<{ uri: string; base64: string; mimeType: string } | null>(
     null,
   );
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const { control, handleSubmit, reset, formState } = useForm<KycFormInput, unknown, KycFormOutput>({
+    resolver: zodResolver(kycSchema),
+    mode: "onBlur",
+    reValidateMode: "onChange",
+    defaultValues: {
+      headline: "",
+      bio: "",
+      yearsExperience: "0",
+      serviceRadiusKm: "10",
+      categoryId: "",
+      allowsNegotiation: false,
+      isCompany: false,
+      companyName: "",
+      responsibleName: "",
+      services: [],
+    },
+  });
+  const { field: allowsNegotiationField } = useController({ control, name: "allowsNegotiation" });
+  const { field: isCompanyField } = useController({ control, name: "isCompany" });
+  const { fields, append, remove } = useFieldArray({ control, name: "services" });
 
   // Pré-preenche o form quando o cadastro profissional já existe (edição).
   useEffect(() => {
     if (!profile) return;
-    setHeadline(profile.headline ?? "");
-    setBio(profile.bio ?? "");
-    setYearsExperience(String(profile.yearsExperience));
-    setServiceRadiusKm(String(profile.serviceRadiusKm));
-    setCategoryId(profile.categoryIds[0] ?? null);
-    setServices(profile.services.map((s) => ({ name: s.name, priceCents: s.priceCents })));
-    setAllowsNegotiation(profile.allowsNegotiation);
-  }, [profile]);
+    reset({
+      headline: profile.headline ?? "",
+      bio: profile.bio ?? "",
+      yearsExperience: String(profile.yearsExperience),
+      serviceRadiusKm: String(profile.serviceRadiusKm),
+      categoryId: profile.categoryIds[0] ?? "",
+      allowsNegotiation: profile.allowsNegotiation,
+      isCompany: profile.isCompany,
+      companyName: profile.companyName ?? "",
+      responsibleName: profile.responsibleName ?? "",
+      services: profile.services.map((s) => ({
+        name: s.name,
+        priceCents: (s.priceCents / 100).toFixed(2).replace(".", ","),
+      })),
+    });
+  }, [profile, reset]);
 
   const hasDocument = document !== null || !!profile?.hasDocument;
-
-  const canSubmit =
-    headline.trim().length >= 2 && !!categoryId && services.length > 0 && hasDocument;
 
   async function pickDocument() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      setErrorMsg("Precisamos de acesso às fotos para enviar o documento.");
+      setSubmitError("Precisamos de acesso às fotos para enviar o documento.");
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -85,57 +148,40 @@ export default function ProviderKyc() {
       base64: asset.base64!,
       mimeType: asset.mimeType ?? "image/jpeg",
     });
-    setErrorMsg(null);
+    setSubmitError(null);
   }
 
-  function addService() {
-    const priceCents = Math.round(Number(servicePrice.replace(",", ".")) * 100);
-    if (serviceName.trim().length < 2 || !Number.isFinite(priceCents) || priceCents < 100) {
-      setErrorMsg("Informe o nome do serviço e um preço válido.");
-      return;
-    }
-    setServices((prev) => [...prev, { name: serviceName.trim(), priceCents }]);
-    setServiceName("");
-    setServicePrice("");
-    setErrorMsg(null);
-  }
-
-  function removeService(index: number) {
-    setServices((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  async function handleSubmit() {
-    setErrorMsg(null);
-    if (!categoryId) {
-      setErrorMsg("Escolha ao menos uma categoria.");
-      return;
-    }
-    if (services.length === 0) {
-      setErrorMsg("Adicione ao menos um serviço.");
-      return;
-    }
+  const onValid = handleSubmit(async (data) => {
+    setSubmitError(null);
     if (!hasDocument) {
-      setErrorMsg("Envie uma foto do seu documento de identidade.");
+      setSubmitError("Envie uma foto do seu documento de identidade.");
       return;
     }
     try {
       await upsertProfile.mutateAsync({
-        headline: headline.trim(),
-        bio: bio.trim() || undefined,
-        yearsExperience: Number(yearsExperience) || 0,
-        serviceRadiusKm: Number(serviceRadiusKm) || 10,
-        allowsNegotiation,
-        categoryIds: [categoryId],
-        services: services.map((s) => ({ ...s, categoryId })),
+        headline: data.headline,
+        bio: data.bio.trim() || undefined,
+        yearsExperience: Number(data.yearsExperience) || 0,
+        serviceRadiusKm: Number(data.serviceRadiusKm) || 10,
+        allowsNegotiation: data.allowsNegotiation,
+        isCompany: data.isCompany,
+        companyName: data.isCompany ? data.companyName.trim() : undefined,
+        responsibleName: data.isCompany ? data.responsibleName.trim() : undefined,
+        categoryIds: [data.categoryId],
+        services: data.services.map((s) => ({
+          name: s.name,
+          priceCents: s.priceCents,
+          categoryId: data.categoryId,
+        })),
       });
       if (document) {
         await uploadDocument.mutateAsync({ base64: document.base64, mimeType: document.mimeType });
       }
       router.replace("/provider");
     } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : "Não foi possível enviar seu cadastro.");
+      setSubmitError(e instanceof Error ? e.message : "Não foi possível enviar seu cadastro.");
     }
-  }
+  });
 
   const submitting = upsertProfile.isPending || uploadDocument.isPending;
   const statusLabel = useMemo(
@@ -166,96 +212,105 @@ export default function ProviderKyc() {
       {isLoading ? (
         <ActivityIndicator color={theme.colors.primary} style={{ marginTop: 40 }} />
       ) : (
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           <Text style={styles.label}>Categoria</Text>
-          <View style={styles.chipRow}>
-            {categories.map((c) => (
-              <Pressable
-                key={c.id}
-                style={[styles.chip, categoryId === c.id && styles.chipActive]}
-                onPress={() => setCategoryId(c.id)}
-              >
-                <Text style={[styles.chipText, categoryId === c.id && styles.chipTextActive]}>
-                  {c.name}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <Text style={styles.label}>O que você faz</Text>
-          <TextInput
-            value={headline}
-            onChangeText={setHeadline}
-            placeholder="Ex.: Eletricista"
-            placeholderTextColor={theme.colors.mutedForeground}
-            style={styles.input}
+          <FormChipSelect
+            control={control}
+            name="categoryId"
+            options={categories.map((c) => ({ value: c.id, label: c.name }))}
           />
 
+          <Text style={styles.label}>O que você faz</Text>
+          <FormInput control={control} name="headline" placeholder="Ex.: Eletricista" />
+
           <Text style={styles.label}>Sobre você (opcional)</Text>
-          <View style={styles.textArea}>
-            <TextInput
-              value={bio}
-              onChangeText={setBio}
-              placeholder="Experiência, especialidades..."
-              placeholderTextColor={theme.colors.mutedForeground}
-              multiline
-              style={styles.textAreaInput}
+          <FormInput
+            control={control}
+            name="bio"
+            placeholder="Experiência, especialidades..."
+            multiline
+          />
+
+          <View style={styles.row2}>
+            <FormInput
+              control={control}
+              name="yearsExperience"
+              label="Anos de experiência"
+              keyboardType="number-pad"
+              containerStyle={{ flex: 1 }}
+            />
+            <FormInput
+              control={control}
+              name="serviceRadiusKm"
+              label="Raio de atuação (km)"
+              keyboardType="number-pad"
+              containerStyle={{ flex: 1 }}
             />
           </View>
 
-          <View style={styles.row2}>
+          <Text style={styles.label}>Tipo de perfil</Text>
+          <View style={styles.negotiationRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Anos de experiência</Text>
-              <TextInput
-                value={yearsExperience}
-                onChangeText={setYearsExperience}
-                keyboardType="number-pad"
-                placeholderTextColor={theme.colors.mutedForeground}
-                style={styles.input}
-              />
+              <Text style={styles.negotiationTitle}>Sou uma empresa</Text>
+              <Text style={styles.negotiationDetail}>
+                Ative se você representa uma empresa. O nome exibido aos clientes passa a ser o
+                do responsável, com o nome da empresa como informação adicional.
+              </Text>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Raio de atuação (km)</Text>
-              <TextInput
-                value={serviceRadiusKm}
-                onChangeText={setServiceRadiusKm}
-                keyboardType="number-pad"
-                placeholderTextColor={theme.colors.mutedForeground}
-                style={styles.input}
-              />
-            </View>
+            <Pressable
+              style={[styles.toggle, isCompanyField.value ? styles.toggleOn : styles.toggleOff]}
+              onPress={() => isCompanyField.onChange(!isCompanyField.value)}
+            >
+              <View style={[styles.knob, isCompanyField.value ? styles.knobOn : styles.knobOff]} />
+            </Pressable>
           </View>
 
+          {isCompanyField.value && (
+            <>
+              <Text style={styles.label}>Nome da empresa</Text>
+              <FormInput control={control} name="companyName" placeholder="Ex.: Construtora XYZ Ltda" />
+
+              <Text style={styles.label}>Nome do responsável</Text>
+              <FormInput control={control} name="responsibleName" placeholder="Nome de quem responde pela empresa" />
+            </>
+          )}
+
           <Text style={styles.label}>Serviços e preços</Text>
-          {services.map((s, i) => (
-            <View key={`${s.name}-${i}`} style={styles.serviceRow}>
-              <Text style={styles.serviceRowName}>{s.name}</Text>
-              <Text style={styles.serviceRowPrice}>R$ {(s.priceCents / 100).toFixed(2)}</Text>
-              <Pressable onPress={() => removeService(i)} hitSlop={10}>
+          {fields.map((field, index) => (
+            <View key={field.id} style={styles.serviceRow}>
+              <FormInput
+                control={control}
+                name={`services.${index}.name`}
+                placeholder="Nome do serviço"
+                containerStyle={styles.serviceNameField}
+              />
+              <FormInput
+                control={control}
+                name={`services.${index}.priceCents`}
+                placeholder="Preço"
+                keyboardType="decimal-pad"
+                containerStyle={styles.servicePriceField}
+              />
+              <Pressable onPress={() => remove(index)} hitSlop={10} style={styles.removeServiceButton}>
                 <Ionicons name="trash-outline" size={18} color={theme.colors.destructive} />
               </Pressable>
             </View>
           ))}
-          <View style={styles.addServiceRow}>
-            <TextInput
-              value={serviceName}
-              onChangeText={setServiceName}
-              placeholder="Nome do serviço"
-              placeholderTextColor={theme.colors.mutedForeground}
-              style={[styles.input, { flex: 2 }]}
-            />
-            <TextInput
-              value={servicePrice}
-              onChangeText={setServicePrice}
-              placeholder="Preço"
-              keyboardType="decimal-pad"
-              placeholderTextColor={theme.colors.mutedForeground}
-              style={[styles.input, { flex: 1 }]}
-            />
-            <Pressable style={styles.addServiceButton} onPress={addService} hitSlop={10}>
-              <Ionicons name="add" size={20} color="#fff" />
-            </Pressable>
-          </View>
+          <Pressable
+            style={styles.addServiceButton}
+            onPress={() => append({ name: "", priceCents: "" })}
+            hitSlop={10}
+          >
+            <Ionicons name="add" size={18} color={theme.colors.primary} />
+            <Text style={styles.addServiceButtonText}>Adicionar serviço</Text>
+          </Pressable>
+          {formState.errors.services?.root?.message && (
+            <FormErrorText>{formState.errors.services.root.message}</FormErrorText>
+          )}
 
           <Text style={styles.label}>Negociação de orçamento</Text>
           <View style={styles.negotiationRow}>
@@ -267,11 +322,14 @@ export default function ProviderKyc() {
               </Text>
             </View>
             <Pressable
-              style={[styles.toggle, allowsNegotiation ? styles.toggleOn : styles.toggleOff]}
-              onPress={() => setAllowsNegotiation((v) => !v)}
+              style={[
+                styles.toggle,
+                allowsNegotiationField.value ? styles.toggleOn : styles.toggleOff,
+              ]}
+              onPress={() => allowsNegotiationField.onChange(!allowsNegotiationField.value)}
             >
               <View
-                style={[styles.knob, allowsNegotiation ? styles.knobOn : styles.knobOff]}
+                style={[styles.knob, allowsNegotiationField.value ? styles.knobOn : styles.knobOff]}
               />
             </Pressable>
           </View>
@@ -307,7 +365,7 @@ export default function ProviderKyc() {
             </Pressable>
           )}
 
-          {errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
+          {submitError && <FormErrorText style={styles.errorText}>{submitError}</FormErrorText>}
         </ScrollView>
       )}
 
@@ -317,12 +375,9 @@ export default function ProviderKyc() {
           <Text style={styles.secureText}>Seus dados são criptografados e nunca compartilhados</Text>
         </View>
         <Pressable
-          style={({ pressed }) => [
-            styles.submit,
-            { opacity: pressed || submitting || !canSubmit ? 0.7 : 1 },
-          ]}
-          onPress={handleSubmit}
-          disabled={submitting || !canSubmit}
+          style={({ pressed }) => [styles.submit, { opacity: pressed || submitting ? 0.9 : 1 }]}
+          onPress={onValid}
+          disabled={submitting}
         >
           {submitting ? (
             <ActivityIndicator color="#fff" />
@@ -384,58 +439,6 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: 9,
     marginTop: 16,
   },
-  chipRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  chip: {
-    backgroundColor: "rgba(28,28,58,0.85)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  chipActive: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
-  },
-  chipText: {
-    fontSize: 13.5,
-    fontFamily: fonts.semiBold,
-    color: "#c9c7e4",
-  },
-  chipTextActive: {
-    color: "#fff",
-    fontFamily: fonts.bold,
-  },
-  input: {
-    backgroundColor: "rgba(28,28,58,0.85)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    borderRadius: 14,
-    paddingHorizontal: 15,
-    paddingVertical: 13,
-    fontSize: 14.5,
-    fontFamily: fonts.medium,
-    color: "#fff",
-  },
-  textArea: {
-    backgroundColor: "rgba(28,28,58,0.85)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    borderRadius: 17,
-    padding: 15,
-  },
-  textAreaInput: {
-    fontSize: 14.5,
-    fontFamily: fonts.medium,
-    color: "#fff",
-    lineHeight: 22,
-    minHeight: 66,
-    textAlignVertical: "top",
-  },
   row2: {
     flexDirection: "row",
     gap: 12,
@@ -443,36 +446,34 @@ const styles = StyleSheet.create((theme) => ({
   serviceRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    backgroundColor: "rgba(28,28,58,0.6)",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    gap: 8,
     marginBottom: 8,
   },
-  serviceRowName: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: fonts.semiBold,
-    color: theme.colors.foreground,
+  serviceNameField: {
+    flex: 2,
   },
-  serviceRowPrice: {
+  servicePriceField: {
+    flex: 1,
+  },
+  removeServiceButton: {
+    padding: 4,
+  },
+  addServiceButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderColor: "rgba(255,102,0,0.5)",
+    borderRadius: 14,
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  addServiceButtonText: {
     fontSize: 13.5,
     fontFamily: fonts.bold,
     color: theme.colors.primary,
-  },
-  addServiceRow: {
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "center",
-  },
-  addServiceButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    backgroundColor: theme.colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
   },
   negotiationRow: {
     flexDirection: "row",
@@ -605,9 +606,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   errorText: {
     marginTop: 16,
-    fontSize: 13.5,
-    fontFamily: fonts.semiBold,
-    color: theme.colors.destructive,
   },
   footer: {
     paddingHorizontal: 24,

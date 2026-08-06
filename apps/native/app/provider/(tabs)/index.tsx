@@ -2,11 +2,12 @@ import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
-import type { Order, OrderAction, OrderStatus } from "@/lib/api";
+import type { Order, OrderAction } from "@/lib/api";
 import { fonts } from "@/constants/fonts";
 import { useAuth } from "@/lib/auth-context";
 import { initialsOf, moneyFromCents, orderStatusLabel, shortDateTime, shortTime } from "@/lib/format";
@@ -20,18 +21,22 @@ import {
 import { useShareLocationWhileEnRoute } from "@/lib/location";
 import { Avatar } from "@/components/ui/avatar";
 import { Screen } from "@/components/ui/screen";
+import SpinButton from "@/components/ui/spin-button";
 
 function orderTitle(order: Order): string {
   return order.service?.name ?? order.category?.name ?? order.description ?? "Serviço";
 }
 
-// Próxima ação do prestador para um pedido já aceito.
-function nextAction(status: OrderStatus): { action: OrderAction; label: string } | null {
-  switch (status) {
+// Próxima ação do prestador para um pedido já aceito. Em EN_ROUTE, só libera
+// "Iniciar serviço" quando a posição do prestador chegou perto do cliente.
+function nextAction(order: Order): { action: OrderAction; label: string; disabled?: boolean } | null {
+  switch (order.status) {
     case "ACCEPTED":
       return { action: "start_route", label: "Iniciar trajeto" };
     case "EN_ROUTE":
-      return { action: "start_work", label: "Iniciar serviço" };
+      return order.tracking.arrived
+        ? { action: "start_work", label: "Iniciar serviço" }
+        : { action: "start_work", label: "Aguardando chegada...", disabled: true };
     case "IN_PROGRESS":
       return { action: "complete", label: "Concluir serviço" };
     default:
@@ -44,11 +49,12 @@ export default function ProviderDashboard() {
   const { theme } = useUnistyles();
   const { user } = useAuth();
   const { data: profile } = useMyProviderProfile();
-  const { data: orders = [], isLoading } = useOrders("provider");
+  const { data: orders = [], isLoading } = useOrders("provider", { poll: true });
   const transition = useTransitionOrder();
   const setAvailability = useSetAvailability();
   const { data: notifications } = useNotifications();
   const hasUnread = (notifications?.unreadCount ?? 0) > 0;
+  const [pendingOrder, setPendingOrder] = useState<{ id: string; action: OrderAction } | null>(null);
 
   const newOrders = orders.filter((o) => o.status === "CREATED");
   const activeOrders = orders.filter(
@@ -61,7 +67,22 @@ export default function ProviderDashboard() {
   );
   useShareLocationWhileEnRoute(enRouteOrder?.id);
 
-  const act = (id: string, action: OrderAction) => transition.mutate({ id, action });
+  const act = (id: string, action: OrderAction) => {
+    setPendingOrder({ id, action });
+    transition.mutate(
+      { id, action },
+      {
+        onSuccess: (order) => {
+          if (action === "start_route") {
+            router.push({ pathname: "/provider/delivery/[id]", params: { id: order.id } });
+          }
+        },
+        onError: (err) =>
+          Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível completar a ação."),
+        onSettled: () => setPendingOrder(null),
+      },
+    );
+  };
 
   return (
     <Screen>
@@ -81,16 +102,37 @@ export default function ProviderDashboard() {
               {hasUnread && <View style={styles.bellDot} />}
             </View>
           </Pressable>
-          <Pressable
-            style={[styles.activeChip, !profile?.isAvailable && styles.activeChipOff]}
+          <SpinButton
+            controlled
+            isActive={setAvailability.isPending}
             disabled={setAvailability.isPending}
+            idleText={profile?.isAvailable ? "Disponível" : "Offline"}
+            activeText="Atualizando..."
             onPress={() => setAvailability.mutate(!profile?.isAvailable)}
-          >
-            <View style={[styles.activeDot, !profile?.isAvailable && styles.activeDotOff]} />
-            <Text style={[styles.activeText, !profile?.isAvailable && styles.activeTextOff]}>
-              {profile?.isAvailable ? "Disponível" : "Offline"}
-            </Text>
-          </Pressable>
+            colors={{
+              idle: {
+                background: profile?.isAvailable ? "rgba(49,208,127,0.14)" : "rgba(255,255,255,0.07)",
+                text: profile?.isAvailable ? theme.colors.success : theme.colors.mutedForeground,
+              },
+              active: {
+                background: "rgba(255,102,0,0.14)",
+                text: theme.colors.primary,
+              },
+            }}
+            buttonStyle={{
+              paddingHorizontal: 12,
+              paddingVertical: 7,
+              borderRadius: 12,
+              fontSize: 12.5,
+            }}
+            spinnerConfig={{
+              size: 12,
+              strokeWidth: 1.6,
+              containerSize: 16,
+              containerBackground: "rgba(255,102,0,0.14)",
+              position: { right: -2, bottom: 5 },
+            }}
+          />
         </View>
 
         {profile && profile.status !== "APPROVED" && (
@@ -192,20 +234,40 @@ export default function ProviderDashboard() {
               </Pressable>
             )}
             <View style={styles.requestActions}>
-              <Pressable
-                style={styles.declineButton}
+              <SpinButton
+                controlled
+                isActive={
+                  transition.isPending && pendingOrder?.id === order.id && pendingOrder.action === "reject"
+                }
+                disabled={transition.isPending}
+                idleText="Recusar"
+                activeText="Recusando..."
                 onPress={() => act(order.id, "reject")}
-                disabled={transition.isPending}
-              >
-                <Text style={styles.declineText}>Recusar</Text>
-              </Pressable>
-              <Pressable
-                style={styles.acceptButton}
-                onPress={() => act(order.id, "accept")}
-                disabled={transition.isPending}
-              >
-                <Text style={styles.acceptText}>Aceitar pedido</Text>
-              </Pressable>
+                colors={{
+                  idle: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
+                  active: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
+                }}
+                buttonStyle={{ paddingHorizontal: 20, paddingVertical: 11, borderRadius: 13, fontSize: 13.5 }}
+                spinnerConfig={{ color: theme.colors.mutedForeground, containerBackground: "rgba(255,255,255,0.06)" }}
+              />
+              <View style={{ flex: 1 }}>
+                <SpinButton
+                  controlled
+                  isActive={
+                    transition.isPending && pendingOrder?.id === order.id && pendingOrder.action === "accept"
+                  }
+                  disabled={transition.isPending}
+                  idleText="Aceitar pedido"
+                  activeText="Aceitando..."
+                  onPress={() => act(order.id, "accept")}
+                  colors={{
+                    idle: { background: theme.colors.primary, text: "#fff" },
+                    active: { background: theme.colors.primary, text: "#fff" },
+                  }}
+                  buttonStyle={{ paddingHorizontal: 20, paddingVertical: 11, borderRadius: 13, fontSize: 14.5 }}
+                  spinnerConfig={{ color: "#fff", containerBackground: theme.colors.primary }}
+                />
+              </View>
             </View>
           </View>
         ))}
@@ -217,7 +279,7 @@ export default function ProviderDashboard() {
         )}
 
         {activeOrders.map((order) => {
-          const next = nextAction(order.status);
+          const next = nextAction(order);
           return (
             <View key={order.id} style={styles.activeCard}>
               <View style={styles.requestHeader}>
@@ -236,15 +298,47 @@ export default function ProviderDashboard() {
                   }
                 >
                   <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
+                  {order.unreadMessages > 0 && (
+                    <View style={styles.chatBadge}>
+                      <Text style={styles.chatBadgeText}>
+                        {order.unreadMessages > 9 ? "9+" : order.unreadMessages}
+                      </Text>
+                    </View>
+                  )}
                 </Pressable>
               </View>
               {next && (
-                <Pressable
-                  style={styles.advanceButton}
+                <SpinButton
+                  controlled
+                  isActive={
+                    transition.isPending &&
+                    pendingOrder?.id === order.id &&
+                    pendingOrder.action === next.action
+                  }
+                  disabled={transition.isPending || next.disabled}
+                  idleText={next.label}
+                  activeText="Atualizando..."
                   onPress={() => act(order.id, next.action)}
-                  disabled={transition.isPending}
+                  colors={{
+                    idle: {
+                      background: next.disabled ? "rgba(255,255,255,0.07)" : theme.colors.primary,
+                      text: "#fff",
+                    },
+                    active: { background: theme.colors.primary, text: "#fff" },
+                  }}
+                  buttonStyle={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 13, fontSize: 14.5 }}
+                  spinnerConfig={{ color: "#fff", containerBackground: theme.colors.primary }}
+                />
+              )}
+              {(order.status === "ACCEPTED" || order.status === "EN_ROUTE") && (
+                <Pressable
+                  style={styles.mapLink}
+                  onPress={() =>
+                    router.push({ pathname: "/provider/delivery/[id]", params: { id: order.id } })
+                  }
                 >
-                  <Text style={styles.acceptText}>{next.label}</Text>
+                  <Ionicons name="navigate" size={16} color={theme.colors.primary} />
+                  <Text style={styles.mapLinkText}>Ir para o mapa</Text>
                 </Pressable>
               )}
             </View>
@@ -320,35 +414,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 19,
     fontFamily: fonts.extraBold,
     color: theme.colors.foreground,
-  },
-  activeChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    backgroundColor: "rgba(49,208,127,0.14)",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 12,
-  },
-  activeChipOff: {
-    backgroundColor: "rgba(255,255,255,0.07)",
-  },
-  activeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: theme.colors.success,
-  },
-  activeDotOff: {
-    backgroundColor: theme.colors.mutedForeground,
-  },
-  activeText: {
-    fontSize: 12.5,
-    fontFamily: fonts.bold,
-    color: theme.colors.success,
-  },
-  activeTextOff: {
-    color: theme.colors.mutedForeground,
   },
   statusBanner: {
     flexDirection: "row",
@@ -461,6 +526,19 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 20,
     padding: 16,
     marginBottom: 12,
+    gap: 10,
+  },
+  mapLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 4,
+  },
+  mapLinkText: {
+    fontSize: 13.5,
+    fontFamily: fonts.bold,
+    color: theme.colors.primary,
   },
   requestHeader: {
     flexDirection: "row",
@@ -535,6 +613,25 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
   },
+  chatBadge: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.destructive,
+    borderWidth: 1.5,
+    borderColor: "#1c1c3a",
+  },
+  chatBadgeText: {
+    fontSize: 10,
+    fontFamily: fonts.extraBold,
+    color: theme.colors.destructiveForeground,
+  },
   proposeButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -551,40 +648,6 @@ const styles = StyleSheet.create((theme) => ({
   requestActions: {
     flexDirection: "row",
     gap: 10,
-  },
-  declineButton: {
-    backgroundColor: "rgba(255,255,255,0.06)",
-    paddingHorizontal: 20,
-    paddingVertical: 11,
-    borderRadius: 13,
-  },
-  declineText: {
-    fontSize: 13.5,
-    fontFamily: fonts.bold,
-    color: theme.colors.mutedForeground,
-  },
-  acceptButton: {
-    flex: 1,
-    backgroundColor: theme.colors.primary,
-    alignItems: "center",
-    paddingVertical: 11,
-    borderRadius: 13,
-    shadowColor: theme.colors.primary,
-    shadowOpacity: 0.32,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
-  },
-  advanceButton: {
-    backgroundColor: theme.colors.primary,
-    alignItems: "center",
-    paddingVertical: 12,
-    borderRadius: 13,
-  },
-  acceptText: {
-    fontSize: 14.5,
-    fontFamily: fonts.bold,
-    color: "#fff",
   },
   completedRow: {
     flexDirection: "row",

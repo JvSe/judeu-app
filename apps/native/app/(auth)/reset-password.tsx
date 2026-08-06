@@ -1,54 +1,60 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useForm } from "react-hook-form";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { z } from "zod";
 
 import { fonts } from "@/constants/fonts";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { FormErrorText } from "@/components/form/error-text";
+import { FormTextField } from "@/components/form/text-field";
 import { Screen } from "@/components/ui/screen";
+
+const resetPasswordSchema = z
+  .object({
+    code: z.string().regex(/^\d{6}$/, "Informe o código de 6 dígitos."),
+    newPassword: z.string().min(8, "A nova senha precisa de pelo menos 8 caracteres."),
+    confirmPassword: z.string(),
+  })
+  .refine((val) => val.newPassword === val.confirmPassword, {
+    message: "As senhas não coincidem.",
+    path: ["confirmPassword"],
+  });
+
+type ResetPasswordForm = z.infer<typeof resetPasswordSchema>;
+
+const digitsOnly = (value: string) => value.replace(/\D/g, "").slice(0, 6);
 
 export default function ResetPassword() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const { email } = useLocalSearchParams<{ email: string }>();
   const { resetPassword } = useAuth();
-
-  const [code, setCode] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  async function handleSubmit() {
-    if (loading) return;
-    if (!/^\d{6}$/.test(code)) {
-      setError("Informe o código de 6 dígitos.");
-      return;
-    }
-    if (newPassword.length < 8) {
-      setError("A nova senha precisa de pelo menos 8 caracteres.");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setError("As senhas não coincidem.");
-      return;
-    }
-    setError(null);
-    setLoading(true);
+  const { control, handleSubmit, formState } = useForm<ResetPasswordForm>({
+    resolver: zodResolver(resetPasswordSchema),
+    mode: "onBlur",
+    reValidateMode: "onChange",
+    defaultValues: { code: "", newPassword: "", confirmPassword: "" },
+  });
+
+  const onValid = handleSubmit(async (data) => {
+    setSubmitError(null);
     try {
-      const user = await resetPassword({ email, code, newPassword });
+      const user = await resetPassword({ email, code: data.code, newPassword: data.newPassword });
       router.replace(user.role === "PROVIDER" ? "/provider" : "/client");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Não foi possível trocar a senha.");
-    } finally {
-      setLoading(false);
+      setSubmitError(e instanceof ApiError ? e.message : "Não foi possível trocar a senha.");
     }
-  }
+  });
 
   return (
     <Screen>
@@ -74,69 +80,67 @@ export default function ResetPassword() {
           <Text style={styles.email}>{email}</Text>
         </Text>
 
-        <Text style={styles.label}>Código</Text>
-        <View style={styles.field}>
-          <Ionicons name="keypad-outline" size={19} color={theme.colors.mutedForeground} />
-          <TextInput
-            style={[styles.fieldValue, styles.codeInput]}
-            value={code}
-            onChangeText={(v) => setCode(v.replace(/\D/g, "").slice(0, 6))}
-            placeholder="000000"
-            placeholderTextColor={theme.colors.mutedForeground}
-            keyboardType="number-pad"
-            maxLength={6}
-            editable={!loading}
-          />
-        </View>
+        <FormTextField
+          control={control}
+          name="code"
+          label="Código"
+          icon="keypad-outline"
+          placeholder="000000"
+          keyboardType="number-pad"
+          maxLength={6}
+          editable={!formState.isSubmitting}
+          parseValue={digitsOnly}
+          inputStyle={styles.codeInput}
+          containerStyle={styles.fieldSpacing}
+        />
 
-        <Text style={styles.label}>Nova senha</Text>
-        <View style={styles.field}>
-          <Ionicons name="lock-closed-outline" size={19} color={theme.colors.mutedForeground} />
-          <TextInput
-            style={styles.fieldValue}
-            value={newPassword}
-            onChangeText={setNewPassword}
-            placeholder="••••••••"
-            placeholderTextColor={theme.colors.mutedForeground}
-            secureTextEntry={!showPassword}
-            autoCapitalize="none"
-            editable={!loading}
-          />
-          <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={10}>
-            <Ionicons
-              name={showPassword ? "eye-off-outline" : "eye-outline"}
-              size={20}
-              color={theme.colors.mutedForeground}
-            />
-          </Pressable>
-        </View>
+        <FormTextField
+          control={control}
+          name="newPassword"
+          label="Nova senha"
+          icon="lock-closed-outline"
+          placeholder="••••••••"
+          secureTextEntry={!showPassword}
+          autoCapitalize="none"
+          editable={!formState.isSubmitting}
+          containerStyle={styles.fieldSpacing}
+          rightAccessory={
+            <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={10}>
+              <Ionicons
+                name={showPassword ? "eye-off-outline" : "eye-outline"}
+                size={20}
+                color={theme.colors.mutedForeground}
+              />
+            </Pressable>
+          }
+        />
 
-        <Text style={styles.label}>Confirmar nova senha</Text>
-        <View style={styles.field}>
-          <Ionicons name="lock-closed-outline" size={19} color={theme.colors.mutedForeground} />
-          <TextInput
-            style={styles.fieldValue}
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            placeholder="••••••••"
-            placeholderTextColor={theme.colors.mutedForeground}
-            secureTextEntry={!showPassword}
-            autoCapitalize="none"
-            editable={!loading}
-            onSubmitEditing={handleSubmit}
-          />
-        </View>
+        <FormTextField
+          control={control}
+          name="confirmPassword"
+          label="Confirmar nova senha"
+          icon="lock-closed-outline"
+          placeholder="••••••••"
+          secureTextEntry={!showPassword}
+          autoCapitalize="none"
+          editable={!formState.isSubmitting}
+          onSubmitEditing={onValid}
+          containerStyle={styles.fieldSpacing}
+        />
 
-        {error && <Text style={styles.error}>{error}</Text>}
+        {submitError && <FormErrorText style={styles.submitError}>{submitError}</FormErrorText>}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 24 }]}>
         <Pressable
-          style={({ pressed }) => [styles.submit, { opacity: pressed || loading ? 0.9 : 1 }]}
-          onPress={handleSubmit}
-          disabled={loading}
+          style={({ pressed }) => [
+            styles.submit,
+            { opacity: pressed || formState.isSubmitting ? 0.9 : 1 },
+          ]}
+          onPress={onValid}
+          disabled={formState.isSubmitting}
         >
-          {loading ? (
+          {formState.isSubmitting ? (
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.submitText}>Trocar senha</Text>
@@ -195,38 +199,15 @@ const styles = StyleSheet.create((theme) => ({
     color: "#fff",
     fontFamily: fonts.bold,
   },
-  label: {
-    fontSize: 12.5,
-    fontFamily: fonts.bold,
-    color: theme.colors.mutedForeground,
+  fieldSpacing: {
     marginTop: 24,
-    marginBottom: 8,
-  },
-  field: {
-    height: 56,
-    backgroundColor: "rgba(28,28,58,0.85)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    borderRadius: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-  },
-  fieldValue: {
-    flex: 1,
-    fontSize: 15.5,
-    fontFamily: fonts.semiBold,
-    color: "#fff",
+    marginBottom: 0,
   },
   codeInput: {
     fontSize: 18,
     letterSpacing: 4,
   },
-  error: {
-    fontSize: 13.5,
-    fontFamily: fonts.semiBold,
-    color: theme.colors.destructive,
+  submitError: {
     marginTop: 16,
   },
   footer: {

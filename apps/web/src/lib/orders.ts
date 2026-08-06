@@ -1,7 +1,7 @@
 import type { OrderStatus, Prisma } from "@judeu/db";
 
 import { prisma } from "./db";
-import { geocodeAddress, routeBetween } from "./geo";
+import { haversineKm, routeBetween } from "./geo";
 import { notifyUser } from "./notifications";
 import { creditProviderWallet, refundIfPaid } from "./payments";
 
@@ -16,6 +16,19 @@ export const PLATFORM_FEE_RATE = 0.08;
 // (o geocoding real via Nominatim entra no incremento de cadastro de endereço).
 export const FALLBACK_LAT = -10.1841;
 export const FALLBACK_LNG = -48.3336;
+
+// Raio (linha reta) considerado "chegou" na casa do cliente, pra liberar o
+// botão de iniciar serviço — não depende do Valhalla, que roda best-effort.
+const ARRIVAL_RADIUS_KM = 0.15;
+
+function hasArrivedAtClient(
+  providerLat: number | null,
+  providerLng: number | null,
+  address: { lat: number; lng: number },
+): boolean {
+  if (providerLat == null || providerLng == null) return false;
+  return haversineKm({ lat: providerLat, lng: providerLng }, address) <= ARRIVAL_RADIUS_KM;
+}
 
 export type OrderAction =
   | "accept"
@@ -60,11 +73,13 @@ export type OrderDTO = {
   totalCents: number;
   cancelReason: string | null;
   createdAt: string;
+  unreadMessages: number;
   service: { id: string; name: string } | null;
   category: { id: string; name: string } | null;
   provider: {
     id: string;
     name: string;
+    companyName: string | null;
     headline: string | null;
     ratingAvg: number;
     allowsNegotiation: boolean;
@@ -88,10 +103,11 @@ export type OrderDTO = {
     distanceKm: number | null;
     etaMin: number | null;
     route: { lat: number; lng: number }[] | null;
+    arrived: boolean;
   };
 };
 
-function toDTO(o: OrderRow): OrderDTO {
+function toDTO(o: OrderRow, unreadMessages = 0): OrderDTO {
   return {
     id: o.id,
     status: o.status,
@@ -102,12 +118,17 @@ function toDTO(o: OrderRow): OrderDTO {
     totalCents: o.totalCents,
     cancelReason: o.cancelReason,
     createdAt: o.createdAt.toISOString(),
+    unreadMessages,
     service: o.service ? { id: o.service.id, name: o.service.name } : null,
     category: o.category ? { id: o.category.id, name: o.category.name } : null,
     provider: o.provider
       ? {
           id: o.provider.id,
-          name: o.provider.user.fullName,
+          name:
+            o.provider.isCompany && o.provider.responsibleName
+              ? o.provider.responsibleName
+              : o.provider.user.fullName,
+          companyName: o.provider.isCompany ? o.provider.companyName : null,
           headline: o.provider.headline,
           ratingAvg: o.provider.ratingAvg,
           allowsNegotiation: o.provider.allowsNegotiation,
@@ -136,6 +157,7 @@ function toDTO(o: OrderRow): OrderDTO {
       distanceKm: null,
       etaMin: null,
       route: null,
+      arrived: hasArrivedAtClient(o.providerLat, o.providerLng, o.address),
     },
   };
 }
@@ -143,21 +165,28 @@ function toDTO(o: OrderRow): OrderDTO {
 // Preenche distância/ETA reais (Valhalla) a partir da última posição do prestador.
 // Best-effort: sem VALHALLA_URL configurada (Railway pendente) ou em caso de erro,
 // mantém tracking.distanceKm/etaMin nulos em vez de derrubar a request.
+const routeCache = new Map<string, { expiresAt: number; route: Awaited<ReturnType<typeof routeBetween>> }>();
+const ROUTE_CACHE_TTL_MS = 20_000;
+
 async function withRoute(order: OrderRow, dto: OrderDTO): Promise<OrderDTO> {
   if (order.providerLat == null || order.providerLng == null) return dto;
-  try {
-    const route = await routeBetween(
-      { lat: order.providerLat, lng: order.providerLng },
-      { lat: order.address.lat, lng: order.address.lng },
-    );
-    if (route) {
-      dto.tracking.distanceKm = route.distanceKm;
-      dto.tracking.etaMin = route.durationMin;
-      dto.tracking.route = route.points;
-    }
-  } catch {
-    // Valhalla indisponível/não configurada — segue sem ETA.
+  const cacheKey = `${order.id}:${order.providerLat.toFixed(4)},${order.providerLng.toFixed(4)}`;
+  const cached = routeCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && cached.expiresAt > now && cached.route) {
+    dto.tracking.distanceKm = cached.route.distanceKm;
+    dto.tracking.etaMin = cached.route.durationMin;
+    dto.tracking.route = cached.route.points;
+    return dto;
   }
+  const route = await routeBetween(
+    { lat: order.providerLat, lng: order.providerLng },
+    { lat: order.address.lat, lng: order.address.lng },
+  );
+  routeCache.set(cacheKey, { expiresAt: now + ROUTE_CACHE_TTL_MS, route });
+  dto.tracking.distanceKm = route.distanceKm;
+  dto.tracking.etaMin = route.durationMin;
+  dto.tracking.route = route.points;
   return dto;
 }
 
@@ -167,18 +196,7 @@ export type CreateOrderInput = {
   categoryId?: string;
   description?: string;
   scheduledAt?: string; // ISO; ausente = "agora"
-  address: {
-    label?: string;
-    cep?: string;
-    street: string;
-    number?: string;
-    complement?: string;
-    neighborhood?: string;
-    city: string;
-    state: string;
-    lat?: number;
-    lng?: number;
-  };
+  addressId: string; // endereço já salvo no livro de endereços do cliente (RF-A6)
 };
 
 export async function createOrder(
@@ -193,6 +211,11 @@ export async function createOrder(
     return { error: "Prestador indisponível", status: 400 };
   }
 
+  const address = await prisma.address.findUnique({ where: { id: input.addressId } });
+  if (!address || address.userId !== clientId) {
+    return { error: "Endereço inválido", status: 400 };
+  }
+
   // Preço vem do serviço escolhido (se houver) e precisa pertencer ao prestador.
   let priceCents = 0;
   let serviceId: string | undefined;
@@ -204,31 +227,6 @@ export async function createOrder(
   }
   const platformFeeCents = Math.round(priceCents * PLATFORM_FEE_RATE);
   const totalCents = priceCents + platformFeeCents;
-
-  // Geocoding real via Nominatim (RF-C6) quando o app não manda lat/lng prontos.
-  // Best-effort: sem NOMINATIM_URL (Railway pendente) ou endereço não encontrado,
-  // cai no centro de Palmas em vez de falhar a criação do pedido.
-  let lat = input.address.lat;
-  let lng = input.address.lng;
-  if (lat == null || lng == null) {
-    try {
-      const query = [
-        `${input.address.street}${input.address.number ? `, ${input.address.number}` : ""}`,
-        input.address.neighborhood,
-        input.address.city,
-        input.address.state,
-      ]
-        .filter(Boolean)
-        .join(", ");
-      const geocoded = await geocodeAddress(query);
-      if (geocoded) {
-        lat = geocoded.lat;
-        lng = geocoded.lng;
-      }
-    } catch {
-      // Nominatim indisponível/não configurada — segue com o fallback abaixo.
-    }
-  }
 
   const order = await prisma.order.create({
     data: {
@@ -242,42 +240,59 @@ export async function createOrder(
       platformFeeCents,
       totalCents,
       status: "CREATED",
-      address: {
-        create: {
-          user: { connect: { id: clientId } },
-          label: input.address.label,
-          cep: input.address.cep,
-          street: input.address.street,
-          number: input.address.number,
-          complement: input.address.complement,
-          neighborhood: input.address.neighborhood,
-          city: input.address.city,
-          state: input.address.state,
-          lat: lat ?? FALLBACK_LAT,
-          lng: lng ?? FALLBACK_LNG,
-        },
-      },
+      address: { connect: { id: address.id } },
       events: { create: { status: "CREATED", note: "Pedido criado" } },
     },
     include: orderInclude,
   });
 
-  void notifyUser(provider.userId, "ORDER", {
-    title: order.scheduledAt ? "Novo pedido agendado" : "Novo pedido",
-    body: order.service?.name ?? order.category?.name ?? "Você recebeu um novo pedido",
-    data: { type: "order", orderId: order.id, role: "provider" },
-  });
+  // Prestadores com negociação ligada precisam ver o pedido antes do pagamento
+  // pra poder propor outro valor; os demais só são avisados quando o pagamento
+  // for confirmado (ver notifyProviderIfNeeded em payments.ts).
+  if (provider.allowsNegotiation) {
+    void notifyUser(provider.userId, "ORDER", {
+      title: order.scheduledAt ? "Novo pedido agendado" : "Novo pedido",
+      body: order.service?.name ?? order.category?.name ?? "Você recebeu um novo pedido",
+      data: { type: "order", orderId: order.id, role: "provider" },
+    });
+  }
 
   return toDTO(order);
 }
 
+// Conta mensagens não lidas (da outra parte) por pedido, pro badge de chat na listagem.
+async function unreadMessageCounts(
+  orderIds: string[],
+  viewerId: string,
+): Promise<Map<string, number>> {
+  if (orderIds.length === 0) return new Map();
+  const rows = await prisma.message.groupBy({
+    by: ["orderId"],
+    where: { orderId: { in: orderIds }, senderId: { not: viewerId }, readAt: null },
+    _count: { _all: true },
+  });
+  return new Map(rows.map((r) => [r.orderId, r._count._all]));
+}
+
+// Enquanto o pedido está CREATED e sem pagamento confirmado, ele fica fora das
+// listagens — exceto para prestadores com negociação ligada, que precisam ver
+// o pedido antes do pagamento pra poder propor outro valor (RF-D5/F1).
+const HIDE_UNPAID_CREATED = {
+  OR: [
+    { status: { not: "CREATED" } },
+    { payment: { status: "PAID" } },
+    { provider: { allowsNegotiation: true } },
+  ],
+} satisfies Prisma.OrderWhereInput;
+
 export async function listClientOrders(clientId: string): Promise<OrderDTO[]> {
   const rows = await prisma.order.findMany({
-    where: { clientId },
+    where: { clientId, ...HIDE_UNPAID_CREATED },
     include: orderInclude,
     orderBy: { createdAt: "desc" },
   });
-  return rows.map(toDTO);
+  const unread = await unreadMessageCounts(rows.map((o) => o.id), clientId);
+  return rows.map((o) => toDTO(o, unread.get(o.id) ?? 0));
 }
 
 // Fila do prestador: pedidos direcionados ao seu perfil.
@@ -285,11 +300,17 @@ export async function listProviderOrders(userId: string): Promise<OrderDTO[]> {
   const profile = await prisma.providerProfile.findUnique({ where: { userId } });
   if (!profile) return [];
   const rows = await prisma.order.findMany({
-    where: { providerId: profile.id },
+    where: {
+      providerId: profile.id,
+      ...(profile.allowsNegotiation
+        ? {}
+        : { OR: [{ status: { not: "CREATED" } }, { payment: { status: "PAID" } }] }),
+    },
     include: orderInclude,
     orderBy: { createdAt: "desc" },
   });
-  return rows.map(toDTO);
+  const unread = await unreadMessageCounts(rows.map((o) => o.id), userId);
+  return rows.map((o) => toDTO(o, unread.get(o.id) ?? 0));
 }
 
 export async function getOrder(id: string, userId: string): Promise<OrderDTO | null> {
@@ -299,7 +320,10 @@ export async function getOrder(id: string, userId: string): Promise<OrderDTO | n
   const isClient = o.clientId === userId;
   const isProvider = o.provider?.userId === userId;
   if (!isClient && !isProvider) return null;
-  return withRoute(o, toDTO(o));
+  const unreadMessages = await prisma.message.count({
+    where: { orderId: id, senderId: { not: userId }, readAt: null },
+  });
+  return withRoute(o, toDTO(o, unreadMessages));
 }
 
 // Prestador reporta sua posição atual enquanto o pedido está a caminho (RF-E3).
@@ -346,7 +370,11 @@ export async function transitionOrder(
 ): Promise<OrderDTO | { error: string; status: number }> {
   const order = await prisma.order.findUnique({
     where: { id },
-    include: { provider: { select: { userId: true } }, payment: true },
+    include: {
+      provider: { select: { userId: true, baseLat: true, baseLng: true } },
+      payment: true,
+      address: true,
+    },
   });
   if (!order) return { error: "Pedido não encontrado", status: 404 };
 
@@ -364,13 +392,29 @@ export async function transitionOrder(
   if (!rule.from.includes(order.status)) {
     return { error: `Transição inválida a partir de ${order.status}`, status: 409 };
   }
+  if (action === "start_work" && !hasArrivedAtClient(order.providerLat, order.providerLng, order.address)) {
+    return { error: "Você ainda não chegou ao local do cliente", status: 409 };
+  }
 
   const now = new Date();
+  const seedProviderLocation =
+    action === "start_route" &&
+    order.providerLat == null &&
+    order.provider?.baseLat != null &&
+    order.provider?.baseLng != null;
+
   const updated = await prisma.order.update({
     where: { id },
     data: {
       status: rule.to,
       ...(action === "accept" ? { acceptedAt: now } : {}),
+      ...(seedProviderLocation
+        ? {
+            providerLat: order.provider!.baseLat,
+            providerLng: order.provider!.baseLng,
+            providerLocationAt: now,
+          }
+        : {}),
       ...(rule.to === "COMPLETED" ? { completedAt: now } : {}),
       ...(rule.to === "CANCELLED"
         ? { cancelledAt: now, cancelReason: note ?? ACTION_NOTES[action] }
@@ -404,5 +448,5 @@ export async function transitionOrder(
     });
   }
 
-  return toDTO(updated);
+  return withRoute(updated, toDTO(updated));
 }
