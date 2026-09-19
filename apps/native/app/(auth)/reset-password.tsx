@@ -76,8 +76,8 @@ export default function ResetPassword() {
         </View>
         <Text style={styles.title}>Crie uma senha nova</Text>
         <Text style={styles.subtitle}>
-          Enviamos um código de 6 dígitos para{"\n"}
-          <Text style={styles.email}>{email}</Text>
+          No MVP o código é sempre 123456.{"\n"}
+          Conta: <Text style={styles.email}>{email}</Text>
         </Text>
 
         <FormTextField

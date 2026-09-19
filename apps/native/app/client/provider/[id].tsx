@@ -2,7 +2,8 @@ import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
-import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
@@ -21,6 +22,7 @@ export default function ProviderProfile() {
   const { theme } = useUnistyles();
   const { data: provider, isLoading } = useProvider(id);
   const { data: reviews = [] } = useProviderReviews(id);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
 
   if (isLoading || !provider) {
     return (
@@ -72,12 +74,22 @@ export default function ProviderProfile() {
 
             <Text style={styles.sectionTitle}>Serviços</Text>
             <View style={{ gap: 10 }}>
-              {provider.services.map((service) => (
-                <View key={service.id} style={styles.serviceRow}>
-                  <Text style={styles.serviceName}>{service.name}</Text>
-                  <Text style={styles.servicePrice}>{priceFromCents(service.priceCents)}</Text>
-                </View>
-              ))}
+              {provider.services.map((service) => {
+                const selected = service.id === (selectedServiceId ?? provider.services[0]?.id);
+                return (
+                  <Pressable
+                    key={service.id}
+                    style={[styles.serviceRow, selected && styles.serviceRowSelected]}
+                    onPress={() => setSelectedServiceId(service.id)}
+                  >
+                    <View style={[styles.serviceRadio, selected && styles.serviceRadioSelected]}>
+                      {selected && <View style={styles.serviceRadioDot} />}
+                    </View>
+                    <Text style={styles.serviceName}>{service.name}</Text>
+                    <Text style={styles.servicePrice}>{priceFromCents(service.priceCents)}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
 
             <Text style={styles.sectionTitle}>Avaliações</Text>
@@ -122,25 +134,33 @@ export default function ProviderProfile() {
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 14 }]}>
         <View>
-          <Text style={styles.footerLabel}>A partir de</Text>
-          <Text style={styles.footerPrice}>{priceFromCents(provider.priceFromCents)}</Text>
+          <Text style={styles.footerLabel}>
+            {selectedServiceId ? "Valor" : "A partir de"}
+          </Text>
+          <Text style={styles.footerPrice}>
+            {priceFromCents(
+              (provider.services.find((s) => s.id === selectedServiceId) ?? provider.services[0])
+                ?.priceCents ?? provider.priceFromCents,
+            )}
+          </Text>
         </View>
         <View style={{ flex: 1 }}>
           <PrimaryButton
             label="Contratar agora"
             onPress={() => {
-              const cheapest = provider.services[0];
+              const selected =
+                provider.services.find((s) => s.id === selectedServiceId) ?? provider.services[0];
               router.push({
                 pathname: "/client/create-order",
                 params: {
                   providerId: provider.id,
                   providerName: provider.name,
                   allowsNegotiation: String(provider.allowsNegotiation),
-                  ...(cheapest
+                  ...(selected
                     ? {
-                        serviceId: cheapest.id,
-                        serviceName: cheapest.name,
-                        priceCents: String(cheapest.priceCents),
+                        serviceId: selected.id,
+                        serviceName: selected.name,
+                        priceCents: String(selected.priceCents),
                       }
                     : {}),
                 },
@@ -249,13 +269,38 @@ const styles = StyleSheet.create((theme) => ({
   serviceRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 12,
     backgroundColor: "rgba(28,28,58,0.7)",
+    borderWidth: 1,
+    borderColor: "transparent",
     borderRadius: 16,
     paddingVertical: 15,
     paddingHorizontal: 16,
   },
+  serviceRowSelected: {
+    borderColor: theme.colors.primary,
+    backgroundColor: "rgba(28,28,58,0.95)",
+  },
+  serviceRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  serviceRadioSelected: {
+    borderColor: theme.colors.primary,
+  },
+  serviceRadioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: theme.colors.primary,
+  },
   serviceName: {
+    flex: 1,
     fontSize: 14.5,
     fontFamily: fonts.semiBold,
     color: "#e8e8f5",

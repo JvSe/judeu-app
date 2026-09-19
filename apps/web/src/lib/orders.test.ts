@@ -24,7 +24,8 @@ describe("TRANSITIONS (máquina de estados do pedido)", () => {
       reject: { from: ["CREATED"], to: "CANCELLED", by: "provider" },
       start_route: { from: ["ACCEPTED"], to: "EN_ROUTE", by: "provider" },
       start_work: { from: ["EN_ROUTE"], to: "IN_PROGRESS", by: "provider" },
-      complete: { from: ["IN_PROGRESS"], to: "COMPLETED", by: "provider" },
+      complete: { from: ["IN_PROGRESS"], to: "AWAITING_CONFIRMATION", by: "provider" },
+      confirm_completion: { from: ["AWAITING_CONFIRMATION"], to: "COMPLETED", by: "client" },
       cancel: { from: ["CREATED", "ACCEPTED"], to: "CANCELLED", by: "client" },
     });
   });
@@ -48,8 +49,11 @@ describe("TRANSITIONS (máquina de estados do pedido)", () => {
     }
   });
 
-  it("cancelamento é a única ação que o cliente pode disparar", () => {
+  it("cancelamento e confirmação de conclusão são as únicas ações que o cliente pode disparar", () => {
     const clientActions = Object.entries(TRANSITIONS).filter(([, rule]) => rule.by === "client");
-    expect(clientActions).toEqual([["cancel", TRANSITIONS.cancel]]);
+    expect(clientActions).toEqual([
+      ["confirm_completion", TRANSITIONS.confirm_completion],
+      ["cancel", TRANSITIONS.cancel],
+    ]);
   });
 });

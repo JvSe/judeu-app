@@ -59,11 +59,13 @@ export const SelfMarker = ({ size = 22 }: { size?: number }) => {
 export const ProviderMarker = ({
   initials,
   color,
+  imageUri,
   size = 46,
   highlighted,
 }: {
   initials: string;
   color: string;
+  imageUri?: string | null;
   size?: number;
   highlighted?: boolean;
 }) => {
@@ -80,7 +82,7 @@ export const ProviderMarker = ({
         },
       ]}
     >
-      <Avatar initials={initials} color={color} size={size - 6} />
+      <Avatar initials={initials} imageUri={imageUri} color={color} size={size - 6} />
     </View>
   );
 };

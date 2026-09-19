@@ -1,10 +1,13 @@
 import { useIsFocused } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import notifee from "react-native-notify-kit";
 
 import {
   addressesApi,
   catalogApi,
   chatApi,
+  jobsApi,
   notificationsApi,
   ordersApi,
   paymentsApi,
@@ -17,10 +20,13 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import type {
+  CreateJobPostingInput,
   CreateOrderInput,
   CreateProposalInput,
   CreateReviewInput,
   CreateSupportTicketInput,
+  JobFilters,
+  JobStatusValue,
   NotificationPreferences,
   OrderAction,
   PaymentMethodOption,
@@ -241,7 +247,13 @@ export function useWallet() {
 
 // ---- Cadastro profissional + KYC do prestador ----
 export function useMyProviderProfile() {
-  return useQuery({ queryKey: ["provider-profile", "me"], queryFn: () => providerProfileApi.me() });
+  const { user } = useAuth();
+  const canHaveProfile = user?.role === "PROVIDER" || user?.role === "BOTH";
+  return useQuery({
+    queryKey: ["provider-profile", "me"],
+    queryFn: () => providerProfileApi.me(),
+    enabled: canHaveProfile,
+  });
 }
 
 export function useUpsertProviderProfile() {
@@ -275,11 +287,37 @@ export function useSetAvailability() {
 // notificações liga; o badge do sino na Home/dashboard só usa o cache/fetch inicial.
 export function useNotifications(opts: { poll?: boolean } = {}) {
   const isFocused = useIsFocused();
-  return useQuery({
+  const query = useQuery({
     queryKey: ["notifications"],
     queryFn: () => notificationsApi.list(),
     refetchInterval: opts.poll && isFocused ? 8000 : false,
   });
+
+  // Exibe via notifee cada notificação nova que chegar enquanto a tela do centro
+  // de notificações está aberta — não depende do push remoto (funciona mesmo
+  // sem device físico/token registrado, já que só olha a lista já buscada).
+  const seenIds = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!opts.poll) return;
+    const items = query.data?.notifications;
+    if (!items) return;
+    if (!seenIds.current) {
+      seenIds.current = new Set(items.map((item) => item.id));
+      return;
+    }
+    for (const item of items) {
+      if (seenIds.current.has(item.id)) continue;
+      seenIds.current.add(item.id);
+      notifee.displayNotification({
+        title: item.title,
+        body: item.body,
+        data: (item.data ?? undefined) as Record<string, string | number | object> | undefined,
+        android: { channelId: "default" },
+      });
+    }
+  }, [opts.poll, query.data]);
+
+  return query;
 }
 
 export function useMarkNotificationRead() {
@@ -391,5 +429,103 @@ export function useSetDefaultAddress() {
   return useMutation({
     mutationFn: (id: string) => addressesApi.setDefault(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["addresses"] }),
+  });
+}
+
+// ---- Vagas de emprego: candidato (busca/aplica) ----
+export function useJobs(filters: JobFilters = {}) {
+  return useQuery({
+    queryKey: ["jobs", filters],
+    queryFn: () => jobsApi.list(filters),
+  });
+}
+
+export function useJob(id: string) {
+  return useQuery({
+    queryKey: ["job", id],
+    queryFn: () => jobsApi.get(id),
+    enabled: !!id,
+  });
+}
+
+export function useApplyToJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, message }: { id: string; message?: string }) => jobsApi.apply(id, message),
+    onSuccess: (_application, { id }) => {
+      qc.invalidateQueries({ queryKey: ["job", id] });
+      qc.invalidateQueries({ queryKey: ["my-job-applications"] });
+    },
+  });
+}
+
+export function useMyApplications() {
+  return useQuery({ queryKey: ["my-job-applications"], queryFn: () => jobsApi.myApplications() });
+}
+
+// ---- Vagas de emprego: empresa (publica/gerencia) ----
+export function useMyJobPostings(enabled = true) {
+  return useQuery({
+    queryKey: ["job-postings", "mine"],
+    queryFn: () => jobsApi.mine(),
+    enabled,
+  });
+}
+
+export function useMyJobPosting(id: string) {
+  return useQuery({
+    queryKey: ["job-posting", id],
+    queryFn: () => jobsApi.getMine(id),
+    enabled: !!id,
+  });
+}
+
+export function useCreateJobPosting() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateJobPostingInput) => jobsApi.create(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["job-postings", "mine"] }),
+  });
+}
+
+export function useSetJobPostingStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: JobStatusValue }) =>
+      jobsApi.setStatus(id, status),
+    onSuccess: (job) => {
+      qc.invalidateQueries({ queryKey: ["job-postings", "mine"] });
+      qc.invalidateQueries({ queryKey: ["job-posting", job.id] });
+    },
+  });
+}
+
+// Poll curto só em foco (mesmo padrão de useOrders) — a empresa acompanha novas candidaturas.
+export function useJobApplicants(jobId: string) {
+  const isFocused = useIsFocused();
+  return useQuery({
+    queryKey: ["job-applicants", jobId],
+    queryFn: () => jobsApi.applicants(jobId),
+    enabled: !!jobId,
+    refetchInterval: isFocused ? 8000 : false,
+  });
+}
+
+export function useRespondToApplication() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      jobId,
+      applicationId,
+      action,
+    }: {
+      jobId: string;
+      applicationId: string;
+      action: "accept" | "reject";
+    }) => jobsApi.respond(jobId, applicationId, action),
+    onSuccess: (_application, { jobId }) => {
+      qc.invalidateQueries({ queryKey: ["job-applicants", jobId] });
+      qc.invalidateQueries({ queryKey: ["job-postings", "mine"] });
+    },
   });
 }

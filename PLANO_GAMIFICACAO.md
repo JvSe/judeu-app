@@ -1,8 +1,8 @@
-# Plano de Gamificação — Ajuda+
+# Plano de Gamificação — Judeu
 
 ## Contexto
 
-O Ajuda+ é um marketplace de serviços locais (estilo GetNinjas) com dois papéis, CLIENT e PROVIDER. O produto já resolve o essencial (pedidos, chat, tracking, pagamentos, avaliação, suporte), mas hoje não há nenhum mecanismo de retenção/engajamento além da UX básica — nenhum sinal de progresso, confiabilidade ou reconhecimento é exposto ao usuário além da nota média crua (`ratingAvg`). O pedido é desenhar gamificação para todo o app, pensando como engenheiro RN/Expo + UI/UX.
+O Judeu é um marketplace de serviços locais (estilo GetNinjas) com dois papéis, CLIENT e PROVIDER. O produto já resolve o essencial (pedidos, chat, tracking, pagamentos, avaliação, suporte), mas hoje não há nenhum mecanismo de retenção/engajamento além da UX básica — nenhum sinal de progresso, confiabilidade ou reconhecimento é exposto ao usuário além da nota média crua (`ratingAvg`). O pedido é desenhar gamificação para todo o app, pensando como engenheiro RN/Expo + UI/UX.
 
 Como este é um marketplace de trabalho real (eletricistas, diaristas, etc.), com público que inclui prestadores autônomos de meia-idade, a gamificação precisa ser **sóbria**: reforçar sinais de confiança que já existem (nota, conclusão, recorrência), nunca introduzir moeda fictícia, loot box, ranking público entre pessoas, ou métricas que recompensem velocidade de aceite em vez de qualidade. Nomenclatura em português claro ("selo", "nível de confiabilidade", "conquista"), sem gíria gamer em inglês, sem confete/som de caça-níquel.
 

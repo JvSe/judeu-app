@@ -23,9 +23,11 @@ export default function ProviderLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="order/[id]" />
       <Stack.Screen name="delivery/[id]" />
       <Stack.Screen name="edit-profile" />
       <Stack.Screen name="kyc" />
+      <Stack.Screen name="vaga" />
       <Stack.Screen name="chat/[id]" />
       <Stack.Screen name="rating/[id]" />
       <Stack.Screen name="propose/[id]" />

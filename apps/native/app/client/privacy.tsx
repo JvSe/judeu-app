@@ -96,7 +96,7 @@ export default function Privacy() {
     try {
       const { export: data, generatedAt } = await authApi.exportData();
       await Share.share({
-        title: "Meus dados — Ajuda+",
+        title: "Meus dados — Judeu",
         message: JSON.stringify({ generatedAt, data }, null, 2),
       });
     } catch {

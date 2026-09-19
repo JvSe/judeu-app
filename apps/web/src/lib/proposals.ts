@@ -178,7 +178,8 @@ export async function respondToProposal(
   }
 
   const now = new Date();
-  const recipientId = proposal.byRole === "client" ? order.provider?.userId : order.clientId;
+  // Notifica quem propôs (está esperando resposta), não quem acabou de responder.
+  const recipientId = proposal.byRole === "client" ? order.clientId : order.provider?.userId;
 
   if (action === "reject") {
     const updated = await prisma.orderProposal.update({

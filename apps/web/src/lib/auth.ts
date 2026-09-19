@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomInt } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 import { env } from "@judeu/env/server";
 import bcrypt from "bcryptjs";
@@ -96,17 +96,18 @@ export async function revokeAllRefreshTokens(userId: string): Promise<void> {
   });
 }
 
-// ---- Recuperação de senha (RF-A4): código de 6 dígitos, hash no banco, TTL curto ----
+// ---- Recuperação de senha (RF-A4): código fixo no MVP (sem e-mail), hash no banco ----
 const RESET_TTL_MINUTES = 15;
+const MVP_RESET_CODE = "123456";
 
 function hashResetCode(userId: string, code: string): string {
   return createHash("sha256").update(`${userId}:${code}`).digest("hex");
 }
 
-// Gera um código de 6 dígitos e invalida códigos anteriores ainda não usados do
+// Emite o código fixo do MVP e invalida códigos anteriores ainda não usados do
 // mesmo usuário (evita acumular vários códigos válidos ao pedir de novo).
 export async function issuePasswordResetCode(userId: string): Promise<string> {
-  const code = randomInt(100000, 999999).toString();
+  const code = MVP_RESET_CODE;
   const expiresAt = new Date(Date.now() + RESET_TTL_MINUTES * 60 * 1000);
   await prisma.$transaction([
     prisma.passwordResetToken.updateMany({

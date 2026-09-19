@@ -1,4 +1,4 @@
-import type { OrderStatus, Prisma } from "@judeu/db";
+import type { OrderStatus, PaymentStatus, Prisma } from "@judeu/db";
 
 import { prisma } from "./db";
 import { haversineKm, routeBetween } from "./geo";
@@ -36,6 +36,7 @@ export type OrderAction =
   | "start_route"
   | "start_work"
   | "complete"
+  | "confirm_completion"
   | "cancel";
 
 // Transições permitidas: estado atual -> ação -> novo estado, com o papel que pode disparar.
@@ -47,7 +48,8 @@ export const TRANSITIONS: Record<
   reject: { from: ["CREATED"], to: "CANCELLED", by: "provider" },
   start_route: { from: ["ACCEPTED"], to: "EN_ROUTE", by: "provider" },
   start_work: { from: ["EN_ROUTE"], to: "IN_PROGRESS", by: "provider" },
-  complete: { from: ["IN_PROGRESS"], to: "COMPLETED", by: "provider" },
+  complete: { from: ["IN_PROGRESS"], to: "AWAITING_CONFIRMATION", by: "provider" },
+  confirm_completion: { from: ["AWAITING_CONFIRMATION"], to: "COMPLETED", by: "client" },
   cancel: { from: ["CREATED", "ACCEPTED"], to: "CANCELLED", by: "client" },
 };
 
@@ -56,9 +58,10 @@ const orderInclude = {
   service: { select: { id: true, name: true, priceCents: true } },
   category: { select: { id: true, name: true } },
   address: true,
-  provider: { include: { user: { select: { id: true, fullName: true } } } },
+  provider: { include: { user: { select: { id: true, fullName: true, avatarUrl: true } } } },
   client: { select: { id: true, fullName: true, phone: true } },
   events: { orderBy: { createdAt: "asc" } },
+  payment: { select: { status: true } },
 } satisfies Prisma.OrderInclude;
 
 type OrderRow = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
@@ -81,10 +84,12 @@ export type OrderDTO = {
     name: string;
     companyName: string | null;
     headline: string | null;
+    avatarUrl: string | null;
     ratingAvg: number;
     allowsNegotiation: boolean;
   } | null;
   client: { id: string; name: string; phone: string | null };
+  payment: { status: PaymentStatus } | null;
   address: {
     label: string | null;
     street: string;
@@ -130,11 +135,13 @@ function toDTO(o: OrderRow, unreadMessages = 0): OrderDTO {
               : o.provider.user.fullName,
           companyName: o.provider.isCompany ? o.provider.companyName : null,
           headline: o.provider.headline,
+          avatarUrl: o.provider.user.avatarUrl,
           ratingAvg: o.provider.ratingAvg,
           allowsNegotiation: o.provider.allowsNegotiation,
         }
       : null,
     client: { id: o.client.id, name: o.client.fullName, phone: o.client.phone },
+    payment: o.payment ? { status: o.payment.status } : null,
     address: {
       label: o.address.label,
       street: o.address.street,
@@ -358,7 +365,8 @@ const ACTION_NOTES: Record<OrderAction, string> = {
   reject: "Pedido recusado pelo prestador",
   start_route: "Prestador a caminho",
   start_work: "Serviço em execução",
-  complete: "Serviço concluído",
+  complete: "Serviço marcado como concluído pelo prestador — aguardando confirmação do cliente",
+  confirm_completion: "Cliente confirmou a conclusão do serviço",
   cancel: "Pedido cancelado pelo cliente",
 };
 
@@ -371,7 +379,7 @@ export async function transitionOrder(
   const order = await prisma.order.findUnique({
     where: { id },
     include: {
-      provider: { select: { userId: true, baseLat: true, baseLng: true } },
+      provider: { select: { userId: true } },
       payment: true,
       address: true,
     },
@@ -392,29 +400,20 @@ export async function transitionOrder(
   if (!rule.from.includes(order.status)) {
     return { error: `Transição inválida a partir de ${order.status}`, status: 409 };
   }
+  if (action === "accept" && order.payment?.status !== "PAID") {
+    return { error: "Pagamento do cliente ainda não foi confirmado", status: 409 };
+  }
   if (action === "start_work" && !hasArrivedAtClient(order.providerLat, order.providerLng, order.address)) {
     return { error: "Você ainda não chegou ao local do cliente", status: 409 };
   }
 
   const now = new Date();
-  const seedProviderLocation =
-    action === "start_route" &&
-    order.providerLat == null &&
-    order.provider?.baseLat != null &&
-    order.provider?.baseLng != null;
 
   const updated = await prisma.order.update({
     where: { id },
     data: {
       status: rule.to,
       ...(action === "accept" ? { acceptedAt: now } : {}),
-      ...(seedProviderLocation
-        ? {
-            providerLat: order.provider!.baseLat,
-            providerLng: order.provider!.baseLng,
-            providerLocationAt: now,
-          }
-        : {}),
       ...(rule.to === "COMPLETED" ? { completedAt: now } : {}),
       ...(rule.to === "CANCELLED"
         ? { cancelledAt: now, cancelReason: note ?? ACTION_NOTES[action] }
@@ -425,6 +424,7 @@ export async function transitionOrder(
   });
 
   // Repasse ao prestador (ledger interno) na conclusão; dinheiro é "pago" na hora.
+  // Só alcançável via confirm_completion agora — "complete" leva a AWAITING_CONFIRMATION.
   if (rule.to === "COMPLETED" && order.provider) {
     if (order.payment?.method === "CASH") {
       await prisma.payment.update({ where: { orderId: id }, data: { status: "PAID" } });

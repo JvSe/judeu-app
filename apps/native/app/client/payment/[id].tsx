@@ -67,7 +67,7 @@ export default function Payment() {
         return;
       }
       const init = await initPaymentSheet({
-        merchantDisplayName: "Ajuda+",
+        merchantDisplayName: "Judeu",
         paymentIntentClientSecret: result.clientSecret,
       });
       if (init.error) {

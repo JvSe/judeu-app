@@ -1,5 +1,14 @@
 // Utilitários de apresentação compartilhados pelas telas.
-import type { OrderStatus, SupportTicket, SupportTicketCategory } from "@/lib/api";
+import type {
+  JobApplicationStatusValue,
+  JobContractType,
+  JobShift,
+  JobStatusValue,
+  JobWeekday,
+  OrderStatus,
+  SupportTicket,
+  SupportTicketCategory,
+} from "@/lib/api";
 
 // Iniciais a partir do nome (ex.: "Carlos Mendes" -> "CM").
 export function initialsOf(name: string): string {
@@ -32,6 +41,7 @@ const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   ACCEPTED: "Aceito",
   EN_ROUTE: "A caminho",
   IN_PROGRESS: "Em execução",
+  AWAITING_CONFIRMATION: "Aguardando confirmação",
   COMPLETED: "Concluído",
   CANCELLED: "Cancelado",
 };
@@ -107,4 +117,88 @@ const SUPPORT_STATUS_LABELS: Record<SupportTicket["status"], string> = {
 
 export function supportStatusLabel(status: SupportTicket["status"]): string {
   return SUPPORT_STATUS_LABELS[status];
+}
+
+// Vagas de emprego: publicação (empresa) + candidatura (qualquer usuário).
+export const WEEKDAY_LABELS: Record<JobWeekday, string> = {
+  MONDAY: "Segunda",
+  TUESDAY: "Terça",
+  WEDNESDAY: "Quarta",
+  THURSDAY: "Quinta",
+  FRIDAY: "Sexta",
+  SATURDAY: "Sábado",
+  SUNDAY: "Domingo",
+};
+
+const WEEKDAY_ORDER: JobWeekday[] = [
+  "MONDAY",
+  "TUESDAY",
+  "WEDNESDAY",
+  "THURSDAY",
+  "FRIDAY",
+  "SATURDAY",
+  "SUNDAY",
+];
+
+export function weekdayLabel(day: JobWeekday): string {
+  return WEEKDAY_LABELS[day];
+}
+
+export const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+const CONTRACT_TYPE_LABELS: Record<JobContractType, string> = {
+  CLT: "CLT",
+  PJ: "PJ",
+  FREELANCE: "Freelance",
+  TEMPORARY: "Temporário",
+};
+
+export function contractTypeLabel(type: JobContractType): string {
+  return CONTRACT_TYPE_LABELS[type];
+}
+
+const JOB_STATUS_LABELS: Record<JobStatusValue, string> = {
+  OPEN: "Aberta",
+  CLOSED: "Fechada",
+};
+
+export function jobStatusLabel(status: JobStatusValue): string {
+  return JOB_STATUS_LABELS[status];
+}
+
+const JOB_APPLICATION_STATUS_LABELS: Record<JobApplicationStatusValue, string> = {
+  PENDING: "Pendente",
+  ACCEPTED: "Aceita",
+  REJECTED: "Recusada",
+};
+
+export function jobApplicationStatusLabel(status: JobApplicationStatusValue): string {
+  return JOB_APPLICATION_STATUS_LABELS[status];
+}
+
+// Agrupa turnos consecutivos com o mesmo horário (ex.: "Segunda a sexta, 08:00–17:00").
+export function formatShifts(shifts: JobShift[]): string[] {
+  const sorted = [...shifts].sort(
+    (a, b) => WEEKDAY_ORDER.indexOf(a.weekday) - WEEKDAY_ORDER.indexOf(b.weekday),
+  );
+  const groups: { days: JobWeekday[]; startTime: string; endTime: string }[] = [];
+  for (const shift of sorted) {
+    const last = groups[groups.length - 1];
+    const lastDayIndex = last ? WEEKDAY_ORDER.indexOf(last.days[last.days.length - 1]) : -1;
+    const sameSlot =
+      last && last.startTime === shift.startTime && last.endTime === shift.endTime &&
+      WEEKDAY_ORDER.indexOf(shift.weekday) === lastDayIndex + 1;
+    if (sameSlot) {
+      last.days.push(shift.weekday);
+    } else {
+      groups.push({ days: [shift.weekday], startTime: shift.startTime, endTime: shift.endTime });
+    }
+  }
+  return groups.map((g) => {
+    const days =
+      g.days.length > 2
+        ? `${weekdayLabel(g.days[0])} a ${weekdayLabel(g.days[g.days.length - 1])}`
+        : g.days.map(weekdayLabel).join(", ");
+    return `${days}, ${g.startTime}–${g.endTime}`;
+  });
 }

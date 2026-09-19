@@ -19,7 +19,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function ProviderProfileTab() {
   const { theme } = useUnistyles();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const { data: profile } = useMyProviderProfile();
 
   const statusColor =
@@ -68,6 +68,17 @@ export default function ProviderProfileTab() {
           <Ionicons name="chevron-forward" size={16} color={theme.colors.mutedForeground} />
         </Pressable>
 
+        {profile?.isCompany && (
+          <Pressable
+            style={({ pressed }) => [styles.menuRow, { opacity: pressed ? 0.7 : 1 }]}
+            onPress={() => router.push("/provider/vaga")}
+          >
+            <Ionicons name="briefcase-outline" size={19} color={theme.colors.primary} />
+            <Text style={styles.menuLabel}>Minhas vagas</Text>
+            <Ionicons name="chevron-forward" size={16} color={theme.colors.mutedForeground} />
+          </Pressable>
+        )}
+
         <Pressable
           style={({ pressed }) => [styles.menuRow, { opacity: pressed ? 0.7 : 1 }]}
           onPress={() => router.push("/provider/support")}
@@ -82,6 +93,17 @@ export default function ProviderProfileTab() {
           onPress={() => router.replace("/")}
         >
           <Text style={styles.switchLabel}>Trocar de perfil</Text>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [styles.logoutButton, { opacity: pressed ? 0.85 : 1 }]}
+          onPress={async () => {
+            await signOut();
+            router.replace("/");
+          }}
+        >
+          <Ionicons name="log-out-outline" size={18} color="#ff6b6b" />
+          <Text style={styles.logoutLabel}>Sair da conta</Text>
         </Pressable>
       </View>
     </Screen>
@@ -164,6 +186,24 @@ const styles = StyleSheet.create((theme) => ({
   switchLabel: {
     fontFamily: fonts.bold,
     color: theme.colors.primary,
+    fontSize: theme.fontSize.sm,
+  },
+  logoutButton: {
+    marginTop: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+    backgroundColor: "rgba(255,80,80,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(255,80,80,0.25)",
+    borderRadius: theme.borderRadius.lg,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  logoutLabel: {
+    fontFamily: fonts.bold,
+    color: "#ff6b6b",
     fontSize: theme.fontSize.sm,
   },
 }));

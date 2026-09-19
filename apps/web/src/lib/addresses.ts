@@ -77,21 +77,27 @@ export async function listAddresses(userId: string): Promise<AddressDTO[]> {
 // Geocodifica o endereço digitado; se falhar, usa coordenadas do app (GPS) quando
 // enviadas; só então cai no centro de Palmas (RF-C6).
 async function resolveLatLng(input: AddressInput): Promise<{ lat: number; lng: number }> {
+  const query = [
+    `${input.street}${input.number ? `, ${input.number}` : ""}`,
+    input.neighborhood,
+    input.city,
+    input.state,
+  ]
+    .filter(Boolean)
+    .join(", ");
   try {
-    const query = [
-      `${input.street}${input.number ? `, ${input.number}` : ""}`,
-      input.neighborhood,
-      input.city,
-      input.state,
-    ]
-      .filter(Boolean)
-      .join(", ");
     const geocoded = await geocodeAddress(query);
     if (geocoded) return { lat: geocoded.lat, lng: geocoded.lng };
-  } catch {
+    console.warn(`[addresses] Nominatim não encontrou resultado para "${query}"`);
+  } catch (err) {
     // Nominatim indisponível/não configurada — segue com o fallback abaixo.
+    console.warn(`[addresses] geocodeAddress falhou para "${query}":`, err);
   }
-  if (input.lat != null && input.lng != null) return { lat: input.lat, lng: input.lng };
+  if (input.lat != null && input.lng != null) {
+    console.warn(`[addresses] usando GPS do device como posição de "${query}"`);
+    return { lat: input.lat, lng: input.lng };
+  }
+  console.warn(`[addresses] usando fallback de Palmas (centro) para "${query}"`);
   return { lat: FALLBACK_LAT, lng: FALLBACK_LNG };
 }
 

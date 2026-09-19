@@ -2,13 +2,20 @@
 // centro de notificações, RF-I1/E2) — mesmo `data` gravado pelo servidor em
 // orders.ts/chat.ts (`{ type, orderId, role }`).
 export type NotificationData = {
-  type?: "order" | "chat" | "support";
+  type?: "order" | "chat" | "support" | "job";
   orderId?: string;
   ticketId?: string;
-  role?: "client" | "provider";
+  jobId?: string;
+  role?: "client" | "provider" | "candidate";
 };
 
 export function pathForNotification(data: NotificationData): string | null {
+  if (data.type === "job") {
+    if (!data.jobId) return null;
+    return data.role === "provider"
+      ? `/provider/vaga/applicants/${data.jobId}`
+      : `/jobs/${data.jobId}`;
+  }
   if (data.type === "support") {
     if (!data.ticketId) return null;
     return data.role === "provider"

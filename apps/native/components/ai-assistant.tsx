@@ -1,6 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -16,28 +16,47 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useLLM, type Message } from "react-native-executorch";
 
 import { fonts } from "@/constants/fonts";
-import { catalogApi, type Category, type ProviderListItem } from "@/lib/api";
-import { initialsOf, priceFromCents } from "@/lib/format";
-import { useCategories } from "@/lib/hooks";
+import { useAuth } from "@/lib/auth-context";
+import { catalogApi, jobsApi, type Category, type JobPosting, type ProviderListItem } from "@/lib/api";
+import { contractTypeLabel, initialsOf, moneyFromCents, priceFromCents } from "@/lib/format";
+import { useAddresses, useCategories, useMyProviderProfile, useOrders } from "@/lib/hooks";
 import {
   AI_MODEL,
-  buildSearchTool,
+  buildAssistantTools,
   buildSystemPrompt,
-  parseToolCallArgs,
+  deriveClientPersonalization,
+  JOB_TOOL_NAME,
+  JOBS_SEARCH_TOOL_NAME,
+  parseJobDraftFromTool,
+  parseToolCall,
   resolveCategoryId,
+  resolveContractType,
   sanitizeReply,
+  SEARCH_TOOL_NAME,
+  type ClientPersonalization,
+  type JobDraftArgs,
+  type JobSearchArgs,
   type SearchArgs,
 } from "@/lib/assistant";
+import { setJobDraft } from "@/lib/job-draft";
 import { Avatar } from "@/components/ui/avatar";
 
 type DisplayMessage = { role: "user" | "assistant"; content: string };
 
-// Resultado da busca, retido até a resposta do modelo ficar pronta.
 type SearchOutcome = {
   summary: string;
   label: string | null;
   providers: ProviderListItem[];
 };
+
+type JobSearchOutcome = {
+  summary: string;
+  label: string | null;
+  jobs: JobPosting[];
+};
+
+const FALLBACK_REPLY =
+  "Não entendi bem. Você precisa de um serviço agora, está procurando emprego, ou quer publicar uma vaga?";
 
 // Quantas mensagens da conversa acompanham cada geração. `generate` não aplica
 // a janela deslizante que o `sendMessage` da lib usa, então limitamos aqui para
@@ -48,12 +67,19 @@ export function AiAssistant() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const { data: categories = [] } = useCategories();
+  const { user } = useAuth();
+  const { data: addresses = [] } = useAddresses();
+  const { data: orders = [] } = useOrders("client");
+  const { data: providerProfile } = useMyProviderProfile();
+  const canPublishJobs = providerProfile?.isCompany === true;
 
   const llm = useLLM({ model: AI_MODEL });
 
   const [input, setInput] = useState("");
   const [providers, setProviders] = useState<ProviderListItem[]>([]);
+  const [jobs, setJobs] = useState<JobPosting[]>([]);
   const [searchLabel, setSearchLabel] = useState<string | null>(null);
+  const [resultKind, setResultKind] = useState<"providers" | "jobs" | null>(null);
   const [searching, setSearching] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   // Cobre o turno inteiro. `llm.isGenerating` volta a false durante a busca na
@@ -66,6 +92,13 @@ export function AiAssistant() {
   const scrollRef = useRef<ScrollView>(null);
   const categoriesRef = useRef<Category[]>(categories);
   categoriesRef.current = categories;
+  // Contexto do usuário (nome, cidade, categorias mais buscadas): sempre
+  // re-derivado de dado real do backend, nunca persistido localmente.
+  const personalizationRef = useRef<ClientPersonalization | undefined>(undefined);
+  personalizationRef.current = useMemo(
+    () => deriveClientPersonalization(user, addresses, orders, canPublishJobs),
+    [user, addresses, orders, canPublishJobs],
+  );
 
   // Busca crua no catálogo REAL do Supabase. Não toca na tela — quem chama
   // decide a hora de publicar, para os cards não aparecerem antes da resposta.
@@ -86,7 +119,7 @@ export function AiAssistant() {
       const categoryId = resolveCategoryId(cats, args.categoria ?? "");
       if (!categoryId) {
         return {
-          summary: `O Ajuda+ ainda não atende esse tipo de serviço. As categorias disponíveis são: ${cats
+          summary: `O Judeu ainda não atende esse tipo de serviço. As categorias disponíveis são: ${cats
             .map((c) => c.name)
             .join(", ")}.`,
           label: null,
@@ -115,10 +148,68 @@ export function AiAssistant() {
     [fetchProviders],
   );
 
+  const runJobSearch = useCallback(async (args: JobSearchArgs): Promise<JobSearchOutcome> => {
+    const cats = categoriesRef.current;
+    const categoryId = args.categoria ? resolveCategoryId(cats, args.categoria) : undefined;
+    const contractType = args.contrato ? resolveContractType(args.contrato) : undefined;
+    const termo = args.termo?.trim() || undefined;
+    const label =
+      cats.find((c) => c.id === categoryId)?.name ??
+      (contractType ? contractTypeLabel(contractType) : null) ??
+      termo ??
+      null;
+
+    try {
+      const list = await jobsApi.list({
+        categoryId,
+        contractType,
+        q: termo,
+      });
+      if (list.length === 0) {
+        return {
+          summary: label
+            ? `Nenhuma vaga de ${label} está aberta no momento.`
+            : "Nenhuma vaga aberta no momento.",
+          label: null,
+          jobs: [],
+        };
+      }
+      const top = list
+        .slice(0, 5)
+        .map((j) => {
+          const salary =
+            j.salaryCents != null ? moneyFromCents(j.salaryCents) : "a combinar";
+          return `${j.title} na ${j.providerCompany.name} (${contractTypeLabel(j.contractType)}, ${salary})`;
+        })
+        .join("; ");
+      return {
+        summary: `${list.length} vaga(s)${label ? ` de ${label}` : ""} encontradas: ${top}.`,
+        label,
+        jobs: list,
+      };
+    } catch {
+      return {
+        summary: "Não consegui buscar as vagas agora. Tente de novo em instantes.",
+        label: null,
+        jobs: [],
+      };
+    }
+  }, []);
+
+  const clearResults = useCallback(() => {
+    setProviders([]);
+    setJobs([]);
+    setSearchLabel(null);
+    setResultKind(null);
+  }, []);
+
   // Contexto de cada geração: system prompt com as categorias reais + a conversa.
   const buildContext = useCallback(
     (history: DisplayMessage[]): Message[] => [
-      { role: "system", content: buildSystemPrompt(categoriesRef.current) },
+      {
+        role: "system",
+        content: buildSystemPrompt(categoriesRef.current, personalizationRef.current),
+      },
       ...history.slice(-CONTEXT_MESSAGES),
     ],
     [],
@@ -135,68 +226,151 @@ export function AiAssistant() {
     setMessages(withUser);
 
     try {
-      // 1º turno: o modelo conversa ou pede a busca.
-      const raw = await llm.generate(buildContext(withUser), [
-        buildSearchTool(categoriesRef.current),
-      ]);
-      const args = parseToolCallArgs(raw);
+      const raw = await llm.generate(
+        buildContext(withUser),
+        buildAssistantTools(categoriesRef.current, {
+          canPublishJobs: personalizationRef.current?.canPublishJobs ?? false,
+        }),
+      );
+      const call = parseToolCall(raw);
 
-      if (!args) {
+      if (!call) {
         const reply = sanitizeReply(raw);
         setMessages([
           ...withUser,
           {
             role: "assistant",
-            content: reply || "Não entendi bem. Pode descrever o serviço que você precisa?",
+            content: reply || FALLBACK_REPLY,
           },
         ]);
         return;
       }
 
-      // Uma busca nova começou: os cards da anterior saem de cena agora, e não
-      // no meio da resposta.
-      setProviders([]);
-      setSearchLabel(null);
+      if (call.name === SEARCH_TOOL_NAME) {
+        clearResults();
+        const outcome = await runSearch(call.arguments as SearchArgs);
+        const followUp = await llm.generate([
+          ...buildContext(withUser),
+          {
+            role: "user",
+            content:
+              `Resultado da busca no catálogo do Judeu: ${outcome.summary}\n\n` +
+              "Responda em uma ou duas frases curtas, com tom natural — pode usar o nome da pessoa se fizer sentido, sem exagerar. " +
+              "Baseie-se apenas nesse resultado; se nada foi encontrado, diga isso com clareza. " +
+              "Não invente prestadores, notas ou preços.",
+          },
+        ]);
+        setMessages([
+          ...withUser,
+          { role: "assistant", content: sanitizeReply(followUp) || outcome.summary },
+        ]);
+        setSearchLabel(outcome.label);
+        setProviders(outcome.providers);
+        setResultKind("providers");
+        return;
+      }
 
-      // 2º turno: devolvemos o resultado real do catálogo e deixamos o modelo
-      // redigir a resposta. Sem tools aqui, para ele não buscar de novo.
-      const outcome = await runSearch(args);
-      const followUp = await llm.generate([
-        ...buildContext(withUser),
-        {
-          role: "user",
-          content:
-            `Resultado da busca no catálogo do Ajuda+: ${outcome.summary}\n\n` +
-            "Responda ao usuário em uma ou duas frases curtas, baseado apenas nesse resultado. " +
-            "Se nada foi encontrado, diga isso com clareza. Não invente prestadores, notas ou preços.",
-        },
-      ]);
-      // Mensagem e cards no mesmo commit: os prestadores nunca aparecem antes.
+      if (call.name === JOBS_SEARCH_TOOL_NAME) {
+        clearResults();
+        const outcome = await runJobSearch(call.arguments as JobSearchArgs);
+        const followUp = await llm.generate([
+          ...buildContext(withUser),
+          {
+            role: "user",
+            content:
+              `Resultado da busca de vagas no Judeu: ${outcome.summary}\n\n` +
+              "Responda em uma ou duas frases curtas, com tom natural — pode usar o nome da pessoa se fizer sentido, sem exagerar. " +
+              "Baseie-se apenas nesse resultado; se nada foi encontrado, diga isso com clareza. " +
+              "Não invente vagas, empresas ou salários.",
+          },
+        ]);
+        setMessages([
+          ...withUser,
+          { role: "assistant", content: sanitizeReply(followUp) || outcome.summary },
+        ]);
+        setSearchLabel(outcome.label);
+        setJobs(outcome.jobs);
+        setResultKind("jobs");
+        return;
+      }
+
+      if (call.name === JOB_TOOL_NAME) {
+        if (!personalizationRef.current?.canPublishJobs) {
+          setMessages([
+            ...withUser,
+            {
+              role: "assistant",
+              content:
+                "Publicar vaga é para empresas cadastradas no Judeu. Você precisa de um prestador pra um serviço agora, ou está procurando emprego?",
+            },
+          ]);
+          return;
+        }
+        const draft = parseJobDraftFromTool(call.arguments as JobDraftArgs, categoriesRef.current);
+        if (!draft) {
+          setMessages([
+            ...withUser,
+            {
+              role: "assistant",
+              content:
+                "Ainda falta algum dado da vaga. Me conta categoria, título, o que a pessoa vai fazer, contrato, salário (ou a combinar) e os dias/horários.",
+            },
+          ]);
+          return;
+        }
+        setJobDraft(draft);
+        setMessages([
+          ...withUser,
+          {
+            role: "assistant",
+            content: "Fechei a vaga com o que você me passou. Dá uma olhada e publica se estiver ok.",
+          },
+        ]);
+        router.push("/provider/vaga/ai/review");
+        return;
+      }
+
+      const reply = sanitizeReply(raw);
       setMessages([
         ...withUser,
-        { role: "assistant", content: sanitizeReply(followUp) || outcome.summary },
+        {
+          role: "assistant",
+          content: reply || FALLBACK_REPLY,
+        },
       ]);
-      setSearchLabel(outcome.label);
-      setProviders(outcome.providers);
     } catch {
-      // llm.error só cobre falha de carga do modelo, não de geração.
       setSendError("Não consegui responder agora. Tente reformular a mensagem.");
     } finally {
       setBusy(false);
     }
-  }, [input, busy, llm, messages, buildContext, runSearch]);
+  }, [input, busy, llm, messages, buildContext, runSearch, runJobSearch, clearResults]);
 
   // Fallback determinístico: toca numa categoria e busca direto, sem depender do
   // modelo. Aqui não há mensagem para esperar, então publica assim que chega.
   const handleCategoryChip = useCallback(
     async (category: Category) => {
       setSearching(true);
+      setJobs([]);
+      setResultKind("providers");
       setSearchLabel(category.name);
       setProviders(await fetchProviders(category.id));
       setSearching(false);
     },
     [fetchProviders],
   );
+
+  const handleJobsChip = useCallback(async () => {
+    setSearching(true);
+    setProviders([]);
+    setResultKind("jobs");
+    setSearchLabel("emprego");
+    try {
+      setJobs(await jobsApi.list());
+    } catch {
+      setJobs([]);
+    }
+    setSearching(false);
+  }, []);
 
   // --- Estado 1: carregando o modelo (download pode ser de centenas de MB) ---
   if (!llm.isReady) {
@@ -250,10 +424,11 @@ export function AiAssistant() {
             <View style={styles.introIcon}>
               <Ionicons name="sparkles" size={22} color={theme.colors.primary} />
             </View>
-            <Text style={styles.introTitle}>Como posso ajudar?</Text>
+            <Text style={styles.introTitle}>Como posso te ajudar?</Text>
             <Text style={styles.introSub}>
-              Me conta em poucas palavras o que está acontecendo. Eu entendo o problema, sugiro a
-              melhor solução e chamo os profissionais mais bem avaliados perto de você.
+              Me conta do seu jeito. Pode ser um serviço pra resolver agora, uma vaga de emprego
+              ou, se você é empresa, publicar uma vaga. Eu te ajudo a chegar no que você
+              realmente precisa.
             </Text>
             <View style={styles.chipsRow}>
               {categories.map((c) => (
@@ -261,6 +436,17 @@ export function AiAssistant() {
                   <Text style={styles.chipText}>{c.name}</Text>
                 </Pressable>
               ))}
+              <Pressable style={styles.chip} onPress={handleJobsChip}>
+                <Text style={styles.chipText}>Vagas de emprego</Text>
+              </Pressable>
+              {canPublishJobs ? (
+                <Pressable
+                  style={styles.chip}
+                  onPress={() => router.push("/provider/vaga/ai/chat")}
+                >
+                  <Text style={styles.chipText}>Publicar vaga</Text>
+                </Pressable>
+              ) : null}
             </View>
           </View>
         ) : null}
@@ -289,12 +475,12 @@ export function AiAssistant() {
 
         {sendError ? <Text style={styles.errorText}>{sendError}</Text> : null}
 
-        {(searching || providers.length > 0) && (
+        {resultKind === "providers" && (searching || providers.length > 0) && (
           <View style={styles.results}>
             <Text style={styles.resultsTitle}>
               {searchLabel ? `Prestadores de ${searchLabel}` : "Prestadores"}
             </Text>
-            {searching ? (
+            {searching && providers.length === 0 ? (
               <ActivityIndicator color={theme.colors.primary} style={{ marginTop: 8 }} />
             ) : (
               providers.map((p) => (
@@ -321,6 +507,36 @@ export function AiAssistant() {
             )}
           </View>
         )}
+
+        {resultKind === "jobs" && (searching || jobs.length > 0) && (
+          <View style={styles.results}>
+            <Text style={styles.resultsTitle}>
+              {searchLabel ? `Vagas de ${searchLabel}` : "Vagas"}
+            </Text>
+            {searching && jobs.length === 0 ? (
+              <ActivityIndicator color={theme.colors.primary} style={{ marginTop: 8 }} />
+            ) : (
+              jobs.map((job) => (
+                <Pressable
+                  key={job.id}
+                  style={({ pressed }) => [styles.providerCard, { opacity: pressed ? 0.85 : 1 }]}
+                  onPress={() => router.push({ pathname: "/jobs/[id]", params: { id: job.id } })}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.providerName}>{job.title}</Text>
+                    <Text style={styles.providerMeta}>
+                      {job.providerCompany.name} · {contractTypeLabel(job.contractType)}
+                    </Text>
+                    <Text style={styles.jobSalary}>
+                      {job.salaryCents != null ? moneyFromCents(job.salaryCents) : "Salário a combinar"}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={theme.colors.mutedForeground} />
+                </Pressable>
+              ))
+            )}
+          </View>
+        )}
       </ScrollView>
 
       <View style={[styles.inputRow, { paddingBottom: insets.bottom + 10 }]}>
@@ -328,7 +544,7 @@ export function AiAssistant() {
           style={styles.input}
           value={input}
           onChangeText={setInput}
-          placeholder="Descreva o serviço que você precisa…"
+          placeholder="Me conta o que você precisa…"
           placeholderTextColor={theme.colors.mutedForeground}
           editable={!busy}
           onSubmitEditing={handleSend}
@@ -447,6 +663,12 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fonts.medium,
     color: theme.colors.mutedForeground,
     marginTop: 2,
+  },
+  jobSalary: {
+    fontSize: 13.5,
+    fontFamily: fonts.extraBold,
+    color: theme.colors.primary,
+    marginTop: 4,
   },
   inputRow: {
     flexDirection: "row",

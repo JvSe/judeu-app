@@ -1,30 +1,55 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
-import type { Order, OrderAction } from "@/lib/api";
+import { Avatar } from "@/components/ui/avatar";
+import { GlassSurface } from "@/components/ui/glass-surface";
+import { ProviderMarker, SelfMarker } from "@/components/ui/map-marker";
+import { RealMap } from "@/components/ui/real-map";
+import { Screen } from "@/components/ui/screen";
+import SpinButton from "@/components/ui/spin-button";
 import { fonts } from "@/constants/fonts";
+import type { Order, OrderAction, OrderStatus } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { initialsOf, moneyFromCents, orderStatusLabel, shortDateTime, shortTime } from "@/lib/format";
 import {
+  initialsOf,
+  moneyFromCents,
+  orderStatusLabel,
+  shortDateTime,
+  shortTime,
+} from "@/lib/format";
+import {
+  useMyJobPostings,
   useMyProviderProfile,
   useNotifications,
   useOrders,
   useSetAvailability,
   useTransitionOrder,
 } from "@/lib/hooks";
-import { useShareLocationWhileEnRoute } from "@/lib/location";
-import { Avatar } from "@/components/ui/avatar";
-import { Screen } from "@/components/ui/screen";
-import SpinButton from "@/components/ui/spin-button";
+import { useCurrentLocation, useShareLocationWhileEnRoute } from "@/lib/location";
 
 function orderTitle(order: Order): string {
   return order.service?.name ?? order.category?.name ?? order.description ?? "Serviço";
+}
+
+function firstNameOf(fullName: string | undefined): string {
+  return fullName?.trim().split(/\s+/)[0] || "Prestador";
+}
+
+function addressLine(order: Order): string {
+  const { street, number, neighborhood, city } = order.address;
+  return `${street}${number ? `, ${number}` : ""}${neighborhood ? ` · ${neighborhood}` : ""} · ${city}`;
 }
 
 // Próxima ação do prestador para um pedido já aceito. Em EN_ROUTE, só libera
@@ -49,16 +74,23 @@ export default function ProviderDashboard() {
   const { theme } = useUnistyles();
   const { user } = useAuth();
   const { data: profile } = useMyProviderProfile();
+  const isCompany = profile?.isCompany === true;
+  const { data: myJobs = [] } = useMyJobPostings(isCompany);
   const { data: orders = [], isLoading } = useOrders("provider", { poll: true });
   const transition = useTransitionOrder();
   const setAvailability = useSetAvailability();
   const { data: notifications } = useNotifications();
   const hasUnread = (notifications?.unreadCount ?? 0) > 0;
   const [pendingOrder, setPendingOrder] = useState<{ id: string; action: OrderAction } | null>(null);
+  const myLocation = useCurrentLocation();
 
   const newOrders = orders.filter((o) => o.status === "CREATED");
   const activeOrders = orders.filter(
-    (o) => o.status === "ACCEPTED" || o.status === "EN_ROUTE" || o.status === "IN_PROGRESS",
+    (o) =>
+      o.status === "ACCEPTED" ||
+      o.status === "EN_ROUTE" ||
+      o.status === "IN_PROGRESS" ||
+      o.status === "AWAITING_CONFIRMATION",
   );
   const completedOrders = orders.filter((o) => o.status === "COMPLETED");
 
@@ -66,6 +98,17 @@ export default function ProviderDashboard() {
     (o) => o.status === "ACCEPTED" || o.status === "EN_ROUTE",
   );
   useShareLocationWhileEnRoute(enRouteOrder?.id);
+
+  const prevStatusRef = useRef<Map<string, OrderStatus>>(new Map());
+  useEffect(() => {
+    for (const order of orders) {
+      const prev = prevStatusRef.current.get(order.id);
+      if (prev === "AWAITING_CONFIRMATION" && order.status === "COMPLETED") {
+        router.push({ pathname: "/provider/rating/[id]", params: { id: order.id } });
+      }
+    }
+    prevStatusRef.current = new Map(orders.map((o) => [o.id, o.status]));
+  }, [orders]);
 
   const act = (id: string, action: OrderAction) => {
     setPendingOrder({ id, action });
@@ -84,55 +127,99 @@ export default function ProviderDashboard() {
     );
   };
 
+  const isAvailable = Boolean(profile?.isAvailable);
+  const firstName = firstNameOf(user?.fullName);
+
+  const mapCenter = useMemo<[number, number] | undefined>(() => {
+    if (myLocation) return [myLocation.lng, myLocation.lat];
+    if (profile?.baseLng != null && profile?.baseLat != null) {
+      return [profile.baseLng, profile.baseLat];
+    }
+    return undefined;
+  }, [myLocation, profile?.baseLat, profile?.baseLng]);
+
+  const markers = useMemo(() => {
+    const selfLngLat = mapCenter;
+    const jobPins = [...newOrders, ...activeOrders]
+      .filter((o) => o.address.lat != null && o.address.lng != null)
+      .slice(0, 8)
+      .map((order, index) => ({
+        id: order.id,
+        lngLat: [order.address.lng, order.address.lat] as [number, number],
+        render: () => (
+          <ProviderMarker
+            initials={initialsOf(order.client.name)}
+            color={order.status === "CREATED" ? "#FF6600" : "#3a3a70"}
+            highlighted={index === 0 && order.status === "CREATED"}
+          />
+        ),
+        onPress: () => router.push({ pathname: "/provider/order/[id]", params: { id: order.id } }),
+      }));
+
+    return [
+      ...jobPins,
+      ...(selfLngLat
+        ? [
+            {
+              id: "self",
+              lngLat: selfLngLat,
+              render: () => <SelfMarker />,
+            },
+          ]
+        : []),
+    ];
+  }, [activeOrders, mapCenter, newOrders]);
+
+  const availabilityLabel = setAvailability.isPending
+    ? "Atualizando..."
+    : isAvailable
+      ? "Você está disponível"
+      : "Ficar disponível agora";
+
   return (
     <Screen>
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + 6 }]}
-        showsVerticalScrollIndicator={false}
+      <RealMap markers={markers} center={mapCenter} />
+
+      <View
+        style={[styles.overlay, { paddingTop: insets.top + 12 }]}
+        pointerEvents="box-none"
       >
-        <View style={styles.headerRow}>
-          <Avatar initials={initialsOf(user?.fullName ?? "?")} size={46} radius={14} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.welcome}>Bem-vindo,</Text>
-            <Text style={styles.name}>{user?.fullName ?? "Prestador"}</Text>
-          </View>
-          <Pressable onPress={() => router.push("/provider/notifications" as never)} hitSlop={8}>
-            <View style={styles.bellButton}>
-              <Ionicons name="notifications-outline" size={20} color={theme.colors.foreground} />
-              {hasUnread && <View style={styles.bellDot} />}
+        <View style={styles.topBar}>
+          <GlassSurface
+            style={[styles.greetingPill, isAvailable ? styles.greetingPillOn : styles.greetingPillOff]}
+          >
+            <Avatar
+              initials={initialsOf(user?.fullName ?? "?")}
+              imageUri={user?.avatarUrl}
+              size={34}
+              radius={11}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.greetingLabel}>OLÁ, {firstName.toUpperCase()}</Text>
+              <Text
+                style={[styles.greetingValue, !isAvailable && styles.greetingValueOff]}
+                numberOfLines={1}
+              >
+                {isAvailable ? "Disponível agora" : "Você está offline"}
+              </Text>
             </View>
+            <View style={[styles.liveDot, !isAvailable && styles.liveDotOff]} />
+          </GlassSurface>
+          <Pressable
+            onPress={() =>
+              router.push((isCompany ? "/provider/vaga" : "/jobs") as never)
+            }
+          >
+            <GlassSurface style={styles.iconButton}>
+              <Ionicons name="briefcase-outline" size={22} color="#fff" />
+            </GlassSurface>
           </Pressable>
-          <SpinButton
-            controlled
-            isActive={setAvailability.isPending}
-            disabled={setAvailability.isPending}
-            idleText={profile?.isAvailable ? "Disponível" : "Offline"}
-            activeText="Atualizando..."
-            onPress={() => setAvailability.mutate(!profile?.isAvailable)}
-            colors={{
-              idle: {
-                background: profile?.isAvailable ? "rgba(49,208,127,0.14)" : "rgba(255,255,255,0.07)",
-                text: profile?.isAvailable ? theme.colors.success : theme.colors.mutedForeground,
-              },
-              active: {
-                background: "rgba(255,102,0,0.14)",
-                text: theme.colors.primary,
-              },
-            }}
-            buttonStyle={{
-              paddingHorizontal: 12,
-              paddingVertical: 7,
-              borderRadius: 12,
-              fontSize: 12.5,
-            }}
-            spinnerConfig={{
-              size: 12,
-              strokeWidth: 1.6,
-              containerSize: 16,
-              containerBackground: "rgba(255,102,0,0.14)",
-              position: { right: -2, bottom: 5 },
-            }}
-          />
+          <Pressable onPress={() => router.push("/provider/notifications" as never)}>
+            <GlassSurface style={styles.iconButton}>
+              <Ionicons name="notifications-outline" size={22} color="#fff" />
+              {hasUnread && <View style={styles.bellDot} />}
+            </GlassSurface>
+          </Pressable>
         </View>
 
         {profile && profile.status !== "APPROVED" && (
@@ -166,111 +253,209 @@ export default function ProviderDashboard() {
           </Pressable>
         )}
 
-        <LinearGradient colors={["#FF6600", "#d94f00"]} style={styles.earningsCard}>
-          <Text style={styles.earningsLabel}>Pedidos ativos</Text>
-          <Text style={styles.earningsValue}>{activeOrders.length}</Text>
-          <View style={styles.earningsStatsRow}>
-            <View>
-              <Text style={styles.earningsStatValue}>{newOrders.length}</Text>
-              <Text style={styles.earningsStatLabel}>Novos</Text>
+        <Pressable
+          style={({ pressed }) => [
+            styles.availabilityBar,
+            !isAvailable && styles.availabilityBarOff,
+            { opacity: pressed ? 0.9 : 1 },
+          ]}
+          onPress={() => setAvailability.mutate(!isAvailable)}
+          disabled={setAvailability.isPending}
+        >
+          <Ionicons
+            name={isAvailable ? "radio-button-on" : "moon"}
+            size={22}
+            color={isAvailable ? "#fff" : theme.colors.mutedForeground}
+          />
+          <Text style={[styles.availabilityText, !isAvailable && styles.availabilityTextOff]}>
+            {availabilityLabel}
+          </Text>
+        </Pressable>
+
+        {isCompany && (
+          <Pressable
+            style={({ pressed }) => [styles.vagaCard, { opacity: pressed ? 0.92 : 1 }]}
+            onPress={() =>
+              router.push(myJobs.length > 0 ? "/provider/vaga" : "/provider/vaga/ai/chat")
+            }
+          >
+            <View style={styles.vagaIcon}>
+              <Ionicons name="briefcase" size={22} color="#fff" />
             </View>
-            <View>
-              <Text style={styles.earningsStatValue}>
-                {orders.filter((o) => o.status === "COMPLETED").length}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.vagaTitle}>Publicar vaga</Text>
+              <Text style={styles.vagaSubtitle} numberOfLines={1}>
+                {myJobs.length > 0
+                  ? `${myJobs.length} vaga${myJobs.length === 1 ? "" : "s"} da empresa`
+                  : "Contrate pela sua empresa com a JudIA"}
               </Text>
-              <Text style={styles.earningsStatLabel}>Concluídos</Text>
             </View>
-            <View>
-              <Text style={styles.earningsStatValue}>{orders.length}</Text>
-              <Text style={styles.earningsStatLabel}>Total</Text>
-            </View>
+            <Pressable
+              style={styles.vagaButton}
+              onPress={() => router.push("/provider/vaga/ai/chat")}
+            >
+              <Text style={styles.vagaButtonText}>Nova</Text>
+            </Pressable>
+          </Pressable>
+        )}
+      </View>
+
+      <ScrollView
+        style={styles.sheet}
+        contentContainerStyle={styles.sheetContent}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+      >
+        <View style={styles.statsRow}>
+          <View style={styles.statChip}>
+            <Text style={styles.statValue}>{activeOrders.length}</Text>
+            <Text style={styles.statLabel}>Ativos</Text>
           </View>
-        </LinearGradient>
+          <View style={styles.statChip}>
+            <Text style={styles.statValue}>{newOrders.length}</Text>
+            <Text style={styles.statLabel}>Novos</Text>
+          </View>
+          <View style={styles.statChip}>
+            <Text style={styles.statValue}>{completedOrders.length}</Text>
+            <Text style={styles.statLabel}>Concluídos</Text>
+          </View>
+          <View style={styles.statChip}>
+            <Text style={styles.statValue}>{orders.length}</Text>
+            <Text style={styles.statLabel}>Total</Text>
+          </View>
+        </View>
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Novos pedidos</Text>
-          {newOrders.length > 0 && (
+          {newOrders.length > 0 ? (
             <View style={styles.newBadge}>
               <Text style={styles.newBadgeText}>{newOrders.length} novos</Text>
             </View>
+          ) : (
+            <Pressable onPress={() => router.push("/provider/map" as never)}>
+              <Text style={styles.sectionLink}>Ver mapa</Text>
+            </Pressable>
           )}
         </View>
 
-        {isLoading && <ActivityIndicator color={theme.colors.primary} style={{ marginVertical: 16 }} />}
-        {!isLoading && newOrders.length === 0 && (
-          <Text style={styles.emptyText}>Nenhum pedido novo no momento.</Text>
+        {isLoading && (
+          <ActivityIndicator color={theme.colors.primary} style={{ marginVertical: 16 }} />
         )}
 
-        {newOrders.map((order) => (
-          <View key={order.id} style={styles.requestCard}>
-            <View style={styles.requestHeader}>
-              <View style={styles.requestIcon}>
-                <Ionicons name="flash" size={20} color={theme.colors.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.requestTitle}>{orderTitle(order)}</Text>
-                <Text style={styles.requestMeta}>
-                  {order.client.name} · {shortTime(order.createdAt)}
-                </Text>
-              </View>
-              <Text style={styles.requestPrice}>{moneyFromCents(order.totalCents)}</Text>
-            </View>
-            {order.scheduledAt && (
-              <View style={styles.scheduledChip}>
-                <Ionicons name="calendar" size={13} color={theme.colors.primary} />
-                <Text style={styles.scheduledChipText}>
-                  Agendado para {shortDateTime(order.scheduledAt)}
-                </Text>
-              </View>
-            )}
-            {order.description && <Text style={styles.requestDesc}>{order.description}</Text>}
-            {profile?.allowsNegotiation && (
-              <Pressable
-                style={styles.proposeButton}
-                onPress={() => router.push({ pathname: "/provider/propose/[id]", params: { id: order.id } })}
-              >
-                <Ionicons name="pricetag-outline" size={14} color="#FF9a52" />
-                <Text style={styles.proposeButtonText}>Propor outro valor</Text>
-              </Pressable>
-            )}
-            <View style={styles.requestActions}>
-              <SpinButton
-                controlled
-                isActive={
-                  transition.isPending && pendingOrder?.id === order.id && pendingOrder.action === "reject"
-                }
-                disabled={transition.isPending}
-                idleText="Recusar"
-                activeText="Recusando..."
-                onPress={() => act(order.id, "reject")}
-                colors={{
-                  idle: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
-                  active: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
-                }}
-                buttonStyle={{ paddingHorizontal: 20, paddingVertical: 11, borderRadius: 13, fontSize: 13.5 }}
-                spinnerConfig={{ color: theme.colors.mutedForeground, containerBackground: "rgba(255,255,255,0.06)" }}
-              />
-              <View style={{ flex: 1 }}>
-                <SpinButton
-                  controlled
-                  isActive={
-                    transition.isPending && pendingOrder?.id === order.id && pendingOrder.action === "accept"
-                  }
-                  disabled={transition.isPending}
-                  idleText="Aceitar pedido"
-                  activeText="Aceitando..."
-                  onPress={() => act(order.id, "accept")}
-                  colors={{
-                    idle: { background: theme.colors.primary, text: "#fff" },
-                    active: { background: theme.colors.primary, text: "#fff" },
-                  }}
-                  buttonStyle={{ paddingHorizontal: 20, paddingVertical: 11, borderRadius: 13, fontSize: 14.5 }}
-                  spinnerConfig={{ color: "#fff", containerBackground: theme.colors.primary }}
-                />
-              </View>
-            </View>
+        {!isLoading && newOrders.length === 0 && (
+          <View style={styles.emptyCard}>
+            <Ionicons name="flash-outline" size={18} color={theme.colors.mutedForeground} />
+            <Text style={styles.emptyText}>Nenhum pedido novo no momento.</Text>
           </View>
-        ))}
+        )}
+
+        {newOrders.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.cardsRow}
+          >
+            {newOrders.map((order) => {
+              const paymentPaid = order.payment?.status === "PAID";
+              const accepting =
+                transition.isPending && pendingOrder?.id === order.id && pendingOrder.action === "accept";
+              const rejecting =
+                transition.isPending && pendingOrder?.id === order.id && pendingOrder.action === "reject";
+              return (
+                <Pressable
+                  key={order.id}
+                  style={({ pressed }) => [styles.jobCard, { opacity: pressed ? 0.92 : 1 }]}
+                  onPress={() =>
+                    router.push({ pathname: "/provider/order/[id]", params: { id: order.id } })
+                  }
+                >
+                  <View style={styles.jobHeader}>
+                    <Avatar initials={initialsOf(order.client.name)} color="#3a3a70" size={46} radius={14} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.jobTitle} numberOfLines={1}>
+                        {orderTitle(order)}
+                      </Text>
+                      <Text style={styles.jobMeta} numberOfLines={1}>
+                        {order.client.name} · {shortTime(order.createdAt)}
+                      </Text>
+                    </View>
+                    <Text style={styles.jobPrice}>{moneyFromCents(order.totalCents)}</Text>
+                  </View>
+
+                  <View style={styles.jobAddress}>
+                    <Ionicons name="location" size={13} color={theme.colors.mutedForeground} />
+                    <Text style={styles.jobAddressText} numberOfLines={1}>
+                      {addressLine(order)}
+                    </Text>
+                  </View>
+
+                  {order.scheduledAt && (
+                    <View style={styles.scheduledChip}>
+                      <Ionicons name="calendar" size={13} color={theme.colors.primary} />
+                      <Text style={styles.scheduledChipText}>
+                        Agendado para {shortDateTime(order.scheduledAt)}
+                      </Text>
+                    </View>
+                  )}
+
+                  {order.description ? (
+                    <Text style={styles.jobDesc} numberOfLines={2}>
+                      {order.description}
+                    </Text>
+                  ) : null}
+
+                  {profile?.allowsNegotiation && (
+                    <Pressable
+                      style={styles.proposeButton}
+                      onPress={() =>
+                        router.push({ pathname: "/provider/propose/[id]", params: { id: order.id } })
+                      }
+                    >
+                      <Ionicons name="pricetag-outline" size={14} color="#FF9a52" />
+                      <Text style={styles.proposeButtonText}>Propor outro valor</Text>
+                    </Pressable>
+                  )}
+
+                  <View style={styles.jobActions}>
+                    <SpinButton
+                      controlled
+                      isActive={rejecting}
+                      disabled={transition.isPending}
+                      idleText="Recusar"
+                      activeText="Recusando..."
+                      onPress={() => act(order.id, "reject")}
+                      colors={{
+                        idle: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
+                        active: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
+                      }}
+                      buttonStyle={{ paddingHorizontal: 16, paddingVertical: 11, borderRadius: 13, fontSize: 13.5 }}
+                      spinnerConfig={{
+                        color: theme.colors.mutedForeground,
+                        containerBackground: "rgba(255,255,255,0.06)",
+                      }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <SpinButton
+                        controlled
+                        isActive={accepting}
+                        disabled={transition.isPending || !paymentPaid}
+                        idleText={paymentPaid ? "Aceitar" : "Aguardando pagamento"}
+                        activeText="Aceitando..."
+                        onPress={() => act(order.id, "accept")}
+                        colors={{
+                          idle: { background: theme.colors.primary, text: "#fff" },
+                          active: { background: theme.colors.primary, text: "#fff" },
+                        }}
+                        buttonStyle={{ paddingHorizontal: 16, paddingVertical: 11, borderRadius: 13, fontSize: 14 }}
+                        spinnerConfig={{ color: "#fff", containerBackground: theme.colors.primary }}
+                      />
+                    </View>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        )}
 
         {activeOrders.length > 0 && (
           <View style={styles.sectionHeader}>
@@ -278,156 +463,206 @@ export default function ProviderDashboard() {
           </View>
         )}
 
-        {activeOrders.map((order) => {
-          const next = nextAction(order);
-          return (
-            <View key={order.id} style={styles.activeCard}>
-              <View style={styles.requestHeader}>
-                <Avatar initials={initialsOf(order.client.name)} color="#3a3a70" size={44} radius={13} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.requestTitle}>{orderTitle(order)}</Text>
-                  <Text style={styles.requestMeta}>{order.client.name}</Text>
+        <ScrollView
+          horizontal={activeOrders.length > 1}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={activeOrders.length > 1 ? styles.cardsRow : undefined}
+          scrollEnabled={activeOrders.length > 1}
+        >
+          {activeOrders.map((order) => {
+            const next = nextAction(order);
+            const updating =
+              transition.isPending && pendingOrder?.id === order.id && pendingOrder.action === next?.action;
+            return (
+              <Pressable
+                key={order.id}
+                style={({ pressed }) => [
+                  styles.activeCard,
+                  activeOrders.length > 1 && styles.activeCardWide,
+                  { opacity: pressed ? 0.92 : 1 },
+                ]}
+                onPress={() =>
+                  router.push({ pathname: "/provider/order/[id]", params: { id: order.id } })
+                }
+              >
+                <View style={styles.jobHeader}>
+                  <Avatar initials={initialsOf(order.client.name)} color="#3a3a70" size={46} radius={14} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.jobTitle} numberOfLines={1}>
+                      {orderTitle(order)}
+                    </Text>
+                    <Text style={styles.jobMeta}>{order.client.name}</Text>
+                  </View>
+                  <View style={styles.statusChip}>
+                    <Text style={styles.statusChipText}>{orderStatusLabel(order.status)}</Text>
+                  </View>
+                  <Pressable
+                    style={styles.chatIconButton}
+                    onPress={() =>
+                      router.push({ pathname: "/provider/chat/[id]", params: { id: order.id } })
+                    }
+                  >
+                    <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
+                    {order.unreadMessages > 0 && (
+                      <View style={styles.chatBadge}>
+                        <Text style={styles.chatBadgeText}>
+                          {order.unreadMessages > 9 ? "9+" : order.unreadMessages}
+                        </Text>
+                      </View>
+                    )}
+                  </Pressable>
                 </View>
-                <View style={styles.statusChip}>
-                  <Text style={styles.statusChipText}>{orderStatusLabel(order.status)}</Text>
-                </View>
-                <Pressable
-                  style={styles.chatIconButton}
-                  onPress={() =>
-                    router.push({ pathname: "/provider/chat/[id]", params: { id: order.id } })
-                  }
-                >
-                  <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
-                  {order.unreadMessages > 0 && (
-                    <View style={styles.chatBadge}>
-                      <Text style={styles.chatBadgeText}>
-                        {order.unreadMessages > 9 ? "9+" : order.unreadMessages}
-                      </Text>
-                    </View>
-                  )}
-                </Pressable>
-              </View>
-              {next && (
-                <SpinButton
-                  controlled
-                  isActive={
-                    transition.isPending &&
-                    pendingOrder?.id === order.id &&
-                    pendingOrder.action === next.action
-                  }
-                  disabled={transition.isPending || next.disabled}
-                  idleText={next.label}
-                  activeText="Atualizando..."
-                  onPress={() => act(order.id, next.action)}
-                  colors={{
-                    idle: {
-                      background: next.disabled ? "rgba(255,255,255,0.07)" : theme.colors.primary,
-                      text: "#fff",
-                    },
-                    active: { background: theme.colors.primary, text: "#fff" },
-                  }}
-                  buttonStyle={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 13, fontSize: 14.5 }}
-                  spinnerConfig={{ color: "#fff", containerBackground: theme.colors.primary }}
-                />
-              )}
-              {(order.status === "ACCEPTED" || order.status === "EN_ROUTE") && (
-                <Pressable
-                  style={styles.mapLink}
-                  onPress={() =>
-                    router.push({ pathname: "/provider/delivery/[id]", params: { id: order.id } })
-                  }
-                >
-                  <Ionicons name="navigate" size={16} color={theme.colors.primary} />
-                  <Text style={styles.mapLinkText}>Ir para o mapa</Text>
-                </Pressable>
-              )}
-            </View>
-          );
-        })}
+
+                {next && (
+                  <SpinButton
+                    controlled
+                    isActive={updating}
+                    disabled={transition.isPending || next.disabled}
+                    idleText={next.label}
+                    activeText="Atualizando..."
+                    onPress={() => act(order.id, next.action)}
+                    colors={{
+                      idle: {
+                        background: next.disabled ? "rgba(255,255,255,0.07)" : theme.colors.primary,
+                        text: "#fff",
+                      },
+                      active: { background: theme.colors.primary, text: "#fff" },
+                    }}
+                    buttonStyle={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 13, fontSize: 14.5 }}
+                    spinnerConfig={{ color: "#fff", containerBackground: theme.colors.primary }}
+                  />
+                )}
+
+                {(order.status === "ACCEPTED" || order.status === "EN_ROUTE") && (
+                  <Pressable
+                    style={styles.mapLink}
+                    onPress={() =>
+                      router.push({ pathname: "/provider/delivery/[id]", params: { id: order.id } })
+                    }
+                  >
+                    <Ionicons name="navigate" size={16} color={theme.colors.primary} />
+                    <Text style={styles.mapLinkText}>Ir para o mapa</Text>
+                  </Pressable>
+                )}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
 
         {completedOrders.length > 0 && (
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Concluídos</Text>
-          </View>
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Concluídos</Text>
+            </View>
+            {completedOrders.slice(0, 10).map((order) => (
+              <Pressable
+                key={order.id}
+                style={({ pressed }) => [styles.completedRow, { opacity: pressed ? 0.85 : 1 }]}
+                onPress={() =>
+                  router.push({ pathname: "/provider/rating/[id]", params: { id: order.id } })
+                }
+              >
+                <Avatar initials={initialsOf(order.client.name)} color="#3a3a70" size={44} radius={13} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.jobTitle}>{orderTitle(order)}</Text>
+                  <Text style={styles.jobMeta}>{order.client.name}</Text>
+                </View>
+                <View style={{ alignItems: "flex-end" }}>
+                  <Text style={styles.jobPrice}>{moneyFromCents(order.totalCents)}</Text>
+                  <Text style={styles.rateCta}>★ avaliar</Text>
+                </View>
+              </Pressable>
+            ))}
+          </>
         )}
-
-        {completedOrders.slice(0, 10).map((order) => (
-          <Pressable
-            key={order.id}
-            style={({ pressed }) => [styles.completedRow, { opacity: pressed ? 0.85 : 1 }]}
-            onPress={() =>
-              router.push({ pathname: "/provider/rating/[id]", params: { id: order.id } })
-            }
-          >
-            <Avatar initials={initialsOf(order.client.name)} color="#3a3a70" size={44} radius={13} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.requestTitle}>{orderTitle(order)}</Text>
-              <Text style={styles.requestMeta}>{order.client.name}</Text>
-            </View>
-            <View style={{ alignItems: "flex-end" }}>
-              <Text style={styles.requestPrice}>{moneyFromCents(order.totalCents)}</Text>
-              <Text style={styles.rateCta}>★ avaliar</Text>
-            </View>
-          </Pressable>
-        ))}
       </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
-  content: {
-    paddingHorizontal: 20,
-    paddingBottom: 120,
+  overlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
+    gap: 13,
   },
-  headerRow: {
+  topBar: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    marginBottom: 22,
+    gap: 11,
   },
-  bellButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: theme.colors.card,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+  greetingPill: {
+    flex: 1,
+    height: 50,
+    borderRadius: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 12,
+  },
+  greetingPillOn: {
+    borderColor: "rgba(49,208,127,0.45)",
+  },
+  greetingPillOff: {
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  greetingValueOff: {
+    color: theme.colors.mutedForeground,
+  },
+  greetingLabel: {
+    fontSize: 10.5,
+    color: theme.colors.mutedForeground,
+    fontFamily: fonts.bold,
+    lineHeight: 12,
+  },
+  greetingValue: {
+    fontSize: 14,
+    color: "#fff",
+    fontFamily: fonts.bold,
+    marginTop: 2,
+  },
+  liveDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: theme.colors.success,
+  },
+  liveDotOff: {
+    backgroundColor: theme.colors.mutedForeground,
+  },
+  iconButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
   },
   bellDot: {
     position: "absolute",
-    top: 8,
-    right: 9,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    top: 13,
+    right: 13,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
     backgroundColor: theme.colors.primary,
-  },
-  welcome: {
-    fontSize: 13,
-    fontFamily: fonts.semiBold,
-    color: theme.colors.mutedForeground,
-  },
-  name: {
-    fontSize: 19,
-    fontFamily: fonts.extraBold,
-    color: theme.colors.foreground,
+    borderWidth: 1.5,
+    borderColor: "#14142e",
   },
   statusBanner: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: "rgba(255,102,0,0.1)",
+    backgroundColor: "rgba(20,20,46,0.92)",
     borderWidth: 1,
     borderColor: "rgba(255,102,0,0.35)",
     borderRadius: 16,
     padding: 14,
-    marginBottom: 16,
   },
   statusBannerBlocked: {
-    backgroundColor: "rgba(255,77,77,0.1)",
+    backgroundColor: "rgba(20,20,46,0.92)",
     borderColor: "rgba(255,77,77,0.35)",
   },
   statusBannerTitle: {
@@ -441,57 +676,129 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.mutedForeground,
     marginTop: 1,
   },
-  earningsCard: {
-    borderRadius: 26,
-    padding: 22,
-    shadowColor: "#FF6600",
-    shadowOpacity: 0.35,
-    shadowRadius: 36,
-    shadowOffset: { width: 0, height: 16 },
+  availabilityBar: {
+    backgroundColor: theme.colors.primary,
+    borderRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 13,
+    shadowColor: theme.colors.primary,
+    shadowOpacity: 0.4,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
     elevation: 6,
   },
-  earningsLabel: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.85)",
-    fontFamily: fonts.semiBold,
+  availabilityBarOff: {
+    backgroundColor: "rgba(28,28,58,0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    shadowColor: "transparent",
+    shadowOpacity: 0,
+    elevation: 0,
   },
-  earningsValue: {
-    fontSize: 42,
+  availabilityText: {
+    fontSize: 17,
+    fontFamily: fonts.bold,
+    color: "#fff",
+  },
+  availabilityTextOff: {
+    color: theme.colors.mutedForeground,
+  },
+  vagaCard: {
+    backgroundColor: "rgba(28,28,58,0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(255,102,0,0.45)",
+    borderRadius: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  vagaIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: theme.colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  vagaTitle: {
+    fontSize: 16,
     fontFamily: fonts.extraBold,
     color: "#fff",
-    letterSpacing: -1,
+  },
+  vagaSubtitle: {
+    fontSize: 12.5,
+    fontFamily: fonts.semiBold,
+    color: theme.colors.mutedForeground,
     marginTop: 2,
   },
-  earningsStatsRow: {
-    flexDirection: "row",
-    gap: 22,
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.25)",
+  vagaButton: {
+    backgroundColor: theme.colors.primary,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
-  earningsStatValue: {
-    fontSize: 19,
+  vagaButtonText: {
+    color: "#fff",
+    fontSize: 13,
+    fontFamily: fonts.bold,
+  },
+  sheet: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 108,
+    maxHeight: "48%",
+  },
+  sheetContent: {
+    paddingBottom: 8,
+  },
+  statsRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  statChip: {
+    flex: 1,
+    backgroundColor: "rgba(28,28,58,0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: 14,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  statValue: {
+    fontSize: 16,
     fontFamily: fonts.extraBold,
     color: "#fff",
   },
-  earningsStatLabel: {
-    fontSize: 11.5,
-    fontFamily: fonts.medium,
-    color: "rgba(255,255,255,0.8)",
+  statLabel: {
+    fontSize: 10.5,
+    fontFamily: fonts.semiBold,
+    color: theme.colors.mutedForeground,
     marginTop: 2,
   },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",
-    marginTop: 26,
-    marginBottom: 13,
+    marginBottom: 12,
+    paddingHorizontal: 16,
   },
   sectionTitle: {
-    fontSize: 17,
+    fontSize: 20,
     fontFamily: fonts.extraBold,
-    color: theme.colors.foreground,
+    color: "#fff",
+  },
+  sectionLink: {
+    fontSize: 13,
+    fontFamily: fonts.bold,
+    color: theme.colors.primary,
   },
   newBadge: {
     backgroundColor: theme.colors.primary,
@@ -504,66 +811,68 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fonts.extraBold,
     color: "#fff",
   },
+  emptyCard: {
+    marginHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(28,28,58,0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+  },
   emptyText: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontFamily: fonts.medium,
     color: theme.colors.mutedForeground,
-    textAlign: "center",
-    paddingVertical: 20,
+    flex: 1,
   },
-  requestCard: {
-    backgroundColor: "rgba(28,28,58,0.8)",
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 12,
-  },
-  activeCard: {
-    backgroundColor: "rgba(28,28,58,0.8)",
-    borderWidth: 1.5,
-    borderColor: theme.colors.primary,
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 12,
-    gap: 10,
-  },
-  mapLink: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 4,
-  },
-  mapLinkText: {
-    fontSize: 13.5,
-    fontFamily: fonts.bold,
-    color: theme.colors.primary,
-  },
-  requestHeader: {
-    flexDirection: "row",
-    alignItems: "center",
+  cardsRow: {
     gap: 12,
-    marginBottom: 14,
+    paddingHorizontal: 16,
   },
-  requestIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
-    backgroundColor: theme.colors.accent,
+  jobCard: {
+    width: 300,
+    backgroundColor: "rgba(28,28,58,0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: theme.borderRadius.xxl,
+    padding: 15,
+  },
+  jobHeader: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 11,
   },
-  requestTitle: {
+  jobTitle: {
     fontSize: 15,
     fontFamily: fonts.bold,
-    color: theme.colors.foreground,
+    color: "#fff",
   },
-  requestMeta: {
-    fontSize: 12.5,
-    fontFamily: fonts.medium,
+  jobMeta: {
+    fontSize: 12,
+    fontFamily: fonts.semiBold,
     color: theme.colors.mutedForeground,
     marginTop: 1,
+  },
+  jobPrice: {
+    fontSize: 16,
+    fontFamily: fonts.extraBold,
+    color: theme.colors.primary,
+  },
+  jobAddress: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 12,
+  },
+  jobAddressText: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: fonts.semiBold,
+    color: theme.colors.mutedForeground,
   },
   scheduledChip: {
     flexDirection: "row",
@@ -574,24 +883,49 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 9,
     paddingHorizontal: 9,
     paddingVertical: 4,
-    marginBottom: 12,
+    marginTop: 10,
   },
   scheduledChipText: {
     fontSize: 11.5,
     fontFamily: fonts.bold,
     color: "#FF9a52",
   },
-  requestDesc: {
+  jobDesc: {
     fontSize: 13,
     fontFamily: fonts.medium,
     color: "#c9c7e4",
     lineHeight: 18,
-    marginBottom: 14,
+    marginTop: 10,
   },
-  requestPrice: {
-    fontSize: 18,
-    fontFamily: fonts.extraBold,
-    color: theme.colors.primary,
+  proposeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    marginTop: 10,
+  },
+  proposeButtonText: {
+    fontSize: 12.5,
+    fontFamily: fonts.bold,
+    color: "#FF9a52",
+  },
+  jobActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 14,
+  },
+  activeCard: {
+    marginHorizontal: 16,
+    backgroundColor: "rgba(28,28,58,0.92)",
+    borderWidth: 1.5,
+    borderColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.xxl,
+    padding: 15,
+    gap: 10,
+  },
+  activeCardWide: {
+    width: 300,
+    marginHorizontal: 0,
   },
   statusChip: {
     backgroundColor: "rgba(255,102,0,0.16)",
@@ -608,7 +942,6 @@ const styles = StyleSheet.create((theme) => ({
     width: 36,
     height: 36,
     borderRadius: 18,
-    marginLeft: 10,
     backgroundColor: theme.colors.primary,
     alignItems: "center",
     justifyContent: "center",
@@ -632,30 +965,26 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fonts.extraBold,
     color: theme.colors.destructiveForeground,
   },
-  proposeButton: {
+  mapLink: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    alignSelf: "flex-start",
-    marginBottom: 12,
+    gap: 8,
+    paddingVertical: 4,
   },
-  proposeButtonText: {
-    fontSize: 12.5,
+  mapLinkText: {
+    fontSize: 13.5,
     fontFamily: fonts.bold,
-    color: "#FF9a52",
-  },
-  requestActions: {
-    flexDirection: "row",
-    gap: 10,
+    color: theme.colors.primary,
   },
   completedRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 13,
-    backgroundColor: "rgba(28,28,58,0.55)",
+    backgroundColor: "rgba(28,28,58,0.92)",
     borderRadius: 18,
     padding: 14,
+    marginHorizontal: 16,
     marginBottom: 10,
   },
   rateCta: {

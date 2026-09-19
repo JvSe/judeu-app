@@ -1,7 +1,7 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -20,6 +20,7 @@ const FLOW: { status: OrderStatus; title: string }[] = [
   { status: "ACCEPTED", title: "Pedido aceito" },
   { status: "EN_ROUTE", title: "Profissional a caminho" },
   { status: "IN_PROGRESS", title: "Serviço em execução" },
+  { status: "AWAITING_CONFIRMATION", title: "Aguardando sua confirmação" },
   { status: "COMPLETED", title: "Concluído e pago" },
 ];
 
@@ -37,6 +38,18 @@ export default function OrderDetail() {
   const { data: proposals = [] } = useOrderProposals(id);
   const respondToProposal = useRespondToProposal();
   const [respondAction, setRespondAction] = useState<"accept" | "reject" | null>(null);
+  const navigatedToPaymentRef = useRef(false);
+
+  // Se a outra parte aceitou a proposta enquanto o cliente estava fora dessa
+  // tela, o próximo poll flagra o novo preço e já manda direto pro pagamento.
+  useEffect(() => {
+    if (!order || order.status !== "CREATED" || order.payment) return;
+    if (navigatedToPaymentRef.current) return;
+    const accepted = proposals.find((p) => p.status === "ACCEPTED");
+    if (!accepted) return;
+    navigatedToPaymentRef.current = true;
+    router.push({ pathname: "/client/payment/[id]", params: { id: order.id } });
+  }, [order, proposals]);
 
   if (isLoading || !order) {
     return (
@@ -70,9 +83,26 @@ export default function OrderDetail() {
     respondToProposal.mutate(
       { orderId: order.id, proposalId: pendingProposal.id, action },
       {
+        onSuccess: () => {
+          if (action === "accept" && !navigatedToPaymentRef.current) {
+            navigatedToPaymentRef.current = true;
+            router.push({ pathname: "/client/payment/[id]", params: { id: order.id } });
+          }
+        },
         onError: (err) =>
           Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível responder à proposta."),
         onSettled: () => setRespondAction(null),
+      },
+    );
+  };
+
+  const handleConfirmCompletion = () => {
+    transition.mutate(
+      { id: order.id, action: "confirm_completion" },
+      {
+        onSuccess: () => router.push({ pathname: "/client/rating/[id]", params: { id: order.id } }),
+        onError: (err) =>
+          Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível confirmar a conclusão."),
       },
     );
   };
@@ -92,6 +122,60 @@ export default function OrderDetail() {
           </Text>
         </View>
       </View>
+
+      {canNegotiate && pendingProposal?.byRole === "provider" && (
+        <View style={styles.negotiationBannerWrap}>
+          <View style={styles.negotiationCard}>
+            <Text style={styles.negotiationLabel}>O prestador propôs um novo valor</Text>
+            <Text style={styles.negotiationValue}>{moneyFromCents(pendingProposal.priceCents)}</Text>
+            {pendingProposal.note && (
+              <Text style={styles.negotiationNote}>“{pendingProposal.note}”</Text>
+            )}
+            <View style={styles.negotiationActions}>
+              <SpinButton
+                controlled
+                isActive={respondAction === "reject" && respondToProposal.isPending}
+                disabled={respondToProposal.isPending}
+                idleText="Recusar"
+                activeText="Recusando..."
+                onPress={() => handleRespondProposal("reject")}
+                colors={{
+                  idle: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
+                  active: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
+                }}
+                buttonStyle={{ paddingHorizontal: 18, paddingVertical: 12, borderRadius: 13, fontSize: 13 }}
+                spinnerConfig={{ color: theme.colors.mutedForeground, containerBackground: "rgba(255,255,255,0.06)" }}
+              />
+              <View style={{ flex: 1 }}>
+                <SpinButton
+                  controlled
+                  isActive={respondAction === "accept" && respondToProposal.isPending}
+                  disabled={respondToProposal.isPending}
+                  idleText={`Aceitar ${moneyFromCents(pendingProposal.priceCents)}`}
+                  activeText="Aceitando..."
+                  onPress={() => handleRespondProposal("accept")}
+                  colors={{
+                    idle: { background: theme.colors.primary, text: "#fff" },
+                    active: { background: theme.colors.primary, text: "#fff" },
+                  }}
+                  buttonStyle={{ paddingHorizontal: 18, paddingVertical: 12, borderRadius: 13, fontSize: 13 }}
+                  spinnerConfig={{ color: "#fff", containerBackground: theme.colors.primary }}
+                />
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {canNegotiate && pendingProposal?.byRole === "client" && (
+        <View style={styles.negotiationBannerWrap}>
+          <View style={styles.negotiationCard}>
+            <Text style={styles.negotiationLabel}>Sua proposta</Text>
+            <Text style={styles.negotiationValue}>{moneyFromCents(pendingProposal.priceCents)}</Text>
+            <Text style={styles.negotiationWaiting}>Aguardando resposta do prestador…</Text>
+          </View>
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.providerCard}>
@@ -224,53 +308,22 @@ export default function OrderDetail() {
           </Pressable>
         )}
 
-        {canNegotiate && pendingProposal?.byRole === "provider" && (
-          <View style={styles.negotiationCard}>
-            <Text style={styles.negotiationLabel}>O prestador propôs um novo valor</Text>
-            <Text style={styles.negotiationValue}>{moneyFromCents(pendingProposal.priceCents)}</Text>
-            {pendingProposal.note && (
-              <Text style={styles.negotiationNote}>“{pendingProposal.note}”</Text>
-            )}
-            <View style={styles.negotiationActions}>
-              <SpinButton
-                controlled
-                isActive={respondAction === "reject" && respondToProposal.isPending}
-                disabled={respondToProposal.isPending}
-                idleText="Recusar"
-                activeText="Recusando..."
-                onPress={() => handleRespondProposal("reject")}
-                colors={{
-                  idle: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
-                  active: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
-                }}
-                buttonStyle={{ paddingHorizontal: 18, paddingVertical: 12, borderRadius: 13, fontSize: 13 }}
-                spinnerConfig={{ color: theme.colors.mutedForeground, containerBackground: "rgba(255,255,255,0.06)" }}
-              />
-              <View style={{ flex: 1 }}>
-                <SpinButton
-                  controlled
-                  isActive={respondAction === "accept" && respondToProposal.isPending}
-                  disabled={respondToProposal.isPending}
-                  idleText={`Aceitar ${moneyFromCents(pendingProposal.priceCents)}`}
-                  activeText="Aceitando..."
-                  onPress={() => handleRespondProposal("accept")}
-                  colors={{
-                    idle: { background: theme.colors.primary, text: "#fff" },
-                    active: { background: theme.colors.primary, text: "#fff" },
-                  }}
-                  buttonStyle={{ paddingHorizontal: 18, paddingVertical: 12, borderRadius: 13, fontSize: 13 }}
-                  spinnerConfig={{ color: "#fff", containerBackground: theme.colors.primary }}
-                />
-              </View>
-            </View>
-          </View>
-        )}
-
-        {canNegotiate && pendingProposal?.byRole === "client" && (
-          <View style={styles.negotiationCard}>
-            <Text style={styles.negotiationLabel}>Sua proposta</Text>
-            <Text style={styles.negotiationValue}>{moneyFromCents(pendingProposal.priceCents)}</Text>
-            <Text style={styles.negotiationWaiting}>Aguardando resposta do prestador…</Text>
+        {order.status === "AWAITING_CONFIRMATION" && (
+          <View style={{ marginBottom: 16 }}>
+            <SpinButton
+              controlled
+              isActive={transition.isPending}
+              disabled={transition.isPending}
+              idleText="Confirmar conclusão do serviço"
+              activeText="Confirmando..."
+              onPress={handleConfirmCompletion}
+              colors={{
+                idle: { background: theme.colors.primary, text: "#fff" },
+                active: { background: theme.colors.primary, text: "#fff" },
+              }}
+              buttonStyle={{ paddingVertical: 14, borderRadius: 16, fontSize: 14.5 }}
+              spinnerConfig={{ color: "#fff", containerBackground: theme.colors.primary }}
+            />
           </View>
         )}
 
@@ -353,6 +406,12 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: 24,
     paddingTop: 22,
     paddingBottom: 40,
+  },
+  negotiationBannerWrap: {
+    paddingHorizontal: 24,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
   },
   providerCard: {
     flexDirection: "row",

@@ -1,6 +1,6 @@
 # Planejamento — Busca por IA conversacional (on-device)
 
-> Funcionalidade central do Ajuda+ (RF-J). Este documento registra a **decisão de
+> Funcionalidade central do Judeu (RF-J). Este documento registra a **decisão de
 > arquitetura**, o **desenho da solução**, o que **já foi implementado** e o **handoff**
 > para colocar em pé num device. Complementa o [guia técnico do ExecuTorch](./react-native-executorch-guide.md).
 
@@ -8,7 +8,7 @@
 
 ## 1. Decisão de arquitetura
 
-A busca de serviço do Ajuda+ é feita por uma **IA conversacional**: o usuário descreve em
+A busca de serviço do Judeu é feita por uma **IA conversacional**: o usuário descreve em
 linguagem natural o que precisa e a IA devolve os prestadores certos. Havia três caminhos:
 
 | Opção | O que é | Veredito |

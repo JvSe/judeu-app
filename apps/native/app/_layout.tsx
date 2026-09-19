@@ -15,6 +15,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useUnistyles } from "react-native-unistyles";
+import notifee, { EventType } from "react-native-notify-kit";
 
 import { AuthProvider } from "@/lib/auth-context";
 import { pathForNotification } from "@/lib/notifications";
@@ -27,11 +28,16 @@ initAssistant();
 
 SplashScreen.preventAutoHideAsync();
 
-// Mostra o alerta mesmo com o app em primeiro plano (padrão do SDK é não mostrar).
+// Evita que o notifee intercepte o delegate de push remoto no iOS — o
+// addNotificationResponseReceivedListener do expo-notifications continua no
+// controle do tap em background/killed; o notifee só exibe em primeiro plano.
+notifee.setNotificationConfig({ ios: { handleRemoteNotifications: false } });
+
+// Não mostra o alerta nativo em primeiro plano — o notifee exibe no lugar (useEffect abaixo).
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
+    shouldShowBanner: false,
+    shouldShowList: false,
     shouldPlaySound: false,
     shouldSetBadge: false,
   }),
@@ -58,6 +64,30 @@ export default function RootLayout() {
     }
   }, [fontsLoaded]);
 
+  // Exibe via notifee (em vez do banner nativo) quando a push chega com o app aberto.
+  useEffect(() => {
+    const sub = Notifications.addNotificationReceivedListener((event) => {
+      const { title, body, data } = event.request.content;
+      notifee.displayNotification({
+        title: title ?? undefined,
+        body: body ?? undefined,
+        data: data as Record<string, string | number | object>,
+        android: { channelId: "default" },
+      });
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Tap em notificação exibida pelo notifee (primeiro plano).
+  useEffect(() => {
+    return notifee.onForegroundEvent(({ type, detail }) => {
+      if (type !== EventType.PRESS) return;
+      const path = pathForNotification(detail.notification?.data ?? {});
+      if (path) router.push(path as never);
+    });
+  }, [router]);
+
+  // Tap em notificação exibida pelo SO (background/killed) — segue via expo-notifications.
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const path = pathForNotification(response.notification.request.content.data ?? {});
@@ -85,6 +115,7 @@ export default function RootLayout() {
               <Stack.Screen name="(auth)" />
               <Stack.Screen name="client" />
               <Stack.Screen name="provider" />
+              <Stack.Screen name="jobs" />
               <Stack.Screen name="terms" />
               <Stack.Screen name="privacy-policy" />
             </Stack>

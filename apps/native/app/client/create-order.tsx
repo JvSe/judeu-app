@@ -13,7 +13,7 @@ import { fonts } from "@/constants/fonts";
 import { moneyFromCents } from "@/lib/format";
 import { formatBirthday } from "@/lib/formatters/format-birthday.helper";
 import { formatTime } from "@/lib/formatters/format-time.helper";
-import { useAddresses, useCreateOrder } from "@/lib/hooks";
+import { useAddresses, useCreateOrder, useProvider } from "@/lib/hooks";
 import { FormErrorText } from "@/components/form/error-text";
 import { FormInput } from "@/components/form/input";
 import { Screen } from "@/components/ui/screen";
@@ -75,8 +75,11 @@ export default function CreateOrder() {
   }>();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(params.serviceId ?? null);
 
   const { data: addresses, isLoading: addressesLoading } = useAddresses();
+  const { data: provider, isLoading: providerLoading } = useProvider(params.providerId ?? "");
+  const services = provider?.services;
 
   // Seleciona o endereço padrão automaticamente quando a lista chega (ou se o
   // endereço selecionado deixou de existir, ex.: acabou de ser removido).
@@ -87,6 +90,14 @@ export default function CreateOrder() {
       return addresses.find((a) => a.isDefault)?.id ?? addresses[0].id;
     });
   }, [addresses]);
+
+  useEffect(() => {
+    if (!services?.length) return;
+    setSelectedServiceId((current) => {
+      if (current && services.some((s) => s.id === current)) return current;
+      return services[0].id;
+    });
+  }, [services]);
 
   const { control, handleSubmit } = useForm<CreateOrderForm>({
     resolver: zodResolver(createOrderSchema),
@@ -102,7 +113,10 @@ export default function CreateOrder() {
   const { field: whenField } = useController({ control, name: "when" });
 
   const createOrder = useCreateOrder();
-  const priceCents = params.priceCents ? Number(params.priceCents) : 0;
+  const selectedService = services?.find((s) => s.id === selectedServiceId);
+  const priceCents = selectedService?.priceCents ?? (params.priceCents ? Number(params.priceCents) : 0);
+  const serviceName = selectedService?.name ?? params.serviceName ?? "Serviço a combinar";
+  const providerName = provider?.name ?? params.providerName ?? "Prestador";
 
   const onValid = handleSubmit(async (data) => {
     setSubmitError(null);
@@ -115,6 +129,10 @@ export default function CreateOrder() {
       setSubmitError("Selecione um endereço para continuar.");
       return;
     }
+    if (services && services.length > 0 && !selectedService) {
+      setSubmitError("Selecione o serviço que você deseja.");
+      return;
+    }
     let scheduledAt: string | undefined;
     if (data.when === "agendar") {
       const parsed = parseScheduledAt(data.scheduleDate, data.scheduleTime);
@@ -123,7 +141,7 @@ export default function CreateOrder() {
     try {
       const order = await createOrder.mutateAsync({
         providerId: params.providerId,
-        serviceId: params.serviceId,
+        serviceId: selectedService?.id ?? params.serviceId,
         description: data.description.trim() || undefined,
         scheduledAt,
         addressId: selectedAddress.id,
@@ -154,17 +172,46 @@ export default function CreateOrder() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.label}>Serviço</Text>
-        <View style={styles.serviceCard}>
+        <Text style={styles.label}>Prestador</Text>
+        <View style={styles.providerCard}>
           <View style={styles.serviceIcon}>
             <Ionicons name="flash" size={21} color={theme.colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.serviceName}>{params.providerName ?? "Prestador"}</Text>
-            <Text style={styles.serviceSub}>{params.serviceName ?? "Serviço a combinar"}</Text>
+            <Text style={styles.serviceName}>{providerName}</Text>
+            <Text style={styles.serviceSub}>{serviceName}</Text>
           </View>
-          {priceCents > 0 && <Text style={styles.servicePrice}>{moneyFromCents(priceCents)}</Text>}
         </View>
+
+        <Text style={styles.label}>Qual serviço?</Text>
+        {providerLoading ? (
+          <ActivityIndicator color={theme.colors.primary} style={styles.addressLoading} />
+        ) : services && services.length > 0 ? (
+          <View style={{ gap: 10, marginBottom: 20 }}>
+            {services.map((service) => {
+              const selected = service.id === selectedServiceId;
+              return (
+                <Pressable
+                  key={service.id}
+                  style={[styles.addressCard, selected && styles.addressCardActive]}
+                  onPress={() => setSelectedServiceId(service.id)}
+                >
+                  <View style={[styles.addressRadio, selected && styles.addressRadioActive]}>
+                    {selected && <View style={styles.addressRadioDot} />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.addressLabel}>{service.name}</Text>
+                  </View>
+                  <Text style={styles.servicePrice}>{moneyFromCents(service.priceCents)}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={[styles.addressEmpty, { marginBottom: 20 }]}>
+            Este prestador ainda não cadastrou serviços. O valor fica a combinar.
+          </Text>
+        )}
 
         <Text style={styles.label}>Descreva o problema</Text>
         <FormInput
@@ -316,13 +363,13 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: 9,
     marginTop: 4,
   },
-  serviceCard: {
+  providerCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: 13,
     backgroundColor: "rgba(28,28,58,0.85)",
-    borderWidth: 1.5,
-    borderColor: theme.colors.primary,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     borderRadius: 17,
     padding: 14,
     marginBottom: 20,

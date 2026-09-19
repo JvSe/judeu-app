@@ -1,7 +1,15 @@
+import { Platform } from "react-native";
 import { clearTokens, getTokens, saveTokens } from "@/lib/tokens";
 
-// Base da API (apps/web). Em dispositivo físico use o IP da máquina, não localhost.
-const BASE_URL = process.env.EXPO_PUBLIC_SERVER_URL;
+// Base da API (apps/web). Em dev, simulador iOS enxerga o Mac via "localhost" e
+// emulador Android via alias "10.0.2.2" — nenhum dos dois usa o IP real da rede,
+// então funciona mesmo trocando de Wi-Fi. Em dispositivo físico, sobrescreva
+// EXPO_PUBLIC_SERVER_URL no .env com o IP da máquina. Em build (não-dev), usa
+// sempre a URL configurada em EXPO_PUBLIC_SERVER_URL.
+const DEV_SERVER_URL = Platform.OS === "android" ? "http://10.0.2.2:3001" : "http://localhost:3001";
+const BASE_URL = __DEV__
+  ? process.env.EXPO_PUBLIC_SERVER_URL ?? DEV_SERVER_URL
+  : process.env.EXPO_PUBLIC_SERVER_URL;
 
 export type AppUser = {
   id: string;
@@ -245,6 +253,7 @@ export type ProviderListItem = {
   name: string;
   companyName: string | null;
   role: string | null;
+  avatarUrl: string | null;
   rating: number;
   reviews: number;
   yearsExperience: number;
@@ -347,6 +356,7 @@ export type OrderStatus =
   | "ACCEPTED"
   | "EN_ROUTE"
   | "IN_PROGRESS"
+  | "AWAITING_CONFIRMATION"
   | "COMPLETED"
   | "CANCELLED";
 
@@ -356,6 +366,7 @@ export type OrderAction =
   | "start_route"
   | "start_work"
   | "complete"
+  | "confirm_completion"
   | "cancel";
 
 export type OrderAddress = {
@@ -387,10 +398,12 @@ export type Order = {
     name: string;
     companyName: string | null;
     headline: string | null;
+    avatarUrl: string | null;
     ratingAvg: number;
     allowsNegotiation: boolean;
   } | null;
   client: { id: string; name: string; phone: string | null };
+  payment: { status: "PENDING" | "PAID" | "REFUNDED" | "FAILED" } | null;
   address: OrderAddress;
   events: { status: OrderStatus; note: string | null; createdAt: string }[];
   tracking: {
@@ -594,14 +607,15 @@ export const pushApi = {
 // ---- Centro de notificações in-app + preferências (RF-I1) ----
 export type NotificationItem = {
   id: string;
-  type: "ORDER" | "MESSAGE" | "SUPPORT";
+  type: "ORDER" | "MESSAGE" | "SUPPORT" | "JOB";
   title: string;
   body: string;
   data: {
-    type?: "order" | "chat" | "support";
+    type?: "order" | "chat" | "support" | "job";
     orderId?: string;
-    role?: "client" | "provider";
+    role?: "client" | "provider" | "candidate";
     ticketId?: string;
+    jobId?: string;
   } | null;
   readAt: string | null;
   createdAt: string;
@@ -678,5 +692,125 @@ export const supportApi = {
       method: "POST",
       body: input,
     }).then((r) => r.ticket);
+  },
+};
+
+// ---- Vagas de emprego: publicação (empresa) + candidatura (qualquer usuário) ----
+export type JobContractType = "CLT" | "PJ" | "FREELANCE" | "TEMPORARY";
+export type JobWeekday =
+  | "MONDAY"
+  | "TUESDAY"
+  | "WEDNESDAY"
+  | "THURSDAY"
+  | "FRIDAY"
+  | "SATURDAY"
+  | "SUNDAY";
+export type JobStatusValue = "OPEN" | "CLOSED";
+export type JobApplicationStatusValue = "PENDING" | "ACCEPTED" | "REJECTED";
+
+export type JobShift = { weekday: JobWeekday; startTime: string; endTime: string };
+
+export type JobPosting = {
+  id: string;
+  title: string;
+  description: string;
+  contractType: JobContractType;
+  salaryCents: number | null;
+  status: JobStatusValue;
+  category: { id: string; name: string };
+  providerCompany: { id: string; name: string; companyName: string | null };
+  shifts: JobShift[];
+  applicantCount: number;
+  myApplication: { id: string; status: JobApplicationStatusValue } | null;
+  createdAt: string;
+};
+
+export type CreateJobPostingInput = {
+  categoryId: string;
+  title: string;
+  description: string;
+  contractType: JobContractType;
+  salaryCents?: number;
+  shifts: JobShift[];
+};
+
+export type JobApplicant = {
+  id: string;
+  status: JobApplicationStatusValue;
+  message: string | null;
+  createdAt: string;
+  respondedAt: string | null;
+  applicant: { id: string; name: string };
+};
+
+export type MyJobApplication = {
+  id: string;
+  status: JobApplicationStatusValue;
+  message: string | null;
+  createdAt: string;
+  respondedAt: string | null;
+  jobPosting: { id: string; title: string; companyName: string; status: JobStatusValue };
+};
+
+export type JobFilters = { categoryId?: string; contractType?: JobContractType; q?: string };
+
+function jobFiltersQuery(filters: JobFilters = {}): string {
+  const params = new URLSearchParams();
+  if (filters.categoryId) params.set("categoryId", filters.categoryId);
+  if (filters.contractType) params.set("contractType", filters.contractType);
+  if (filters.q) params.set("q", filters.q);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+export const jobsApi = {
+  // Candidato: busca vagas abertas.
+  list(filters?: JobFilters) {
+    return apiFetch<{ jobs: JobPosting[] }>(`/api/jobs${jobFiltersQuery(filters)}`).then(
+      (r) => r.jobs,
+    );
+  },
+  get(id: string) {
+    return apiFetch<{ job: JobPosting }>(`/api/jobs/${id}`).then((r) => r.job);
+  },
+  apply(id: string, message?: string) {
+    return apiFetch<{ application: MyJobApplication }>(`/api/jobs/${id}/apply`, {
+      method: "POST",
+      body: { message },
+    }).then((r) => r.application);
+  },
+  myApplications() {
+    return apiFetch<{ applications: MyJobApplication[] }>("/api/jobs/applications").then(
+      (r) => r.applications,
+    );
+  },
+  // Empresa: publica e gerencia suas vagas.
+  mine() {
+    return apiFetch<{ jobs: JobPosting[] }>("/api/jobs/me").then((r) => r.jobs);
+  },
+  create(input: CreateJobPostingInput) {
+    return apiFetch<{ job: JobPosting }>("/api/jobs/me", { method: "POST", body: input }).then(
+      (r) => r.job,
+    );
+  },
+  getMine(id: string) {
+    return apiFetch<{ job: JobPosting }>(`/api/jobs/me/${id}`).then((r) => r.job);
+  },
+  setStatus(id: string, status: JobStatusValue) {
+    return apiFetch<{ job: JobPosting }>(`/api/jobs/me/${id}`, {
+      method: "PATCH",
+      body: { status },
+    }).then((r) => r.job);
+  },
+  applicants(id: string) {
+    return apiFetch<{ applicants: JobApplicant[] }>(`/api/jobs/me/${id}/applicants`).then(
+      (r) => r.applicants,
+    );
+  },
+  respond(jobId: string, applicationId: string, action: "accept" | "reject") {
+    return apiFetch<{ application: JobApplicant }>(
+      `/api/jobs/me/${jobId}/applicants/${applicationId}/respond`,
+      { method: "POST", body: { action } },
+    ).then((r) => r.application);
   },
 };

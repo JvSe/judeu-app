@@ -19,13 +19,17 @@ export function useWatchCurrentLocation(): { lat: number; lng: number } | null {
 
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted" || cancelled) return;
+      if (cancelled) return;
+      if (status !== "granted") {
+        console.warn("[location] useWatchCurrentLocation: permissão de localização negada");
+        return;
+      }
       subscriptionRef.current = await Location.watchPositionAsync(FOREGROUND_LOCATION_WATCH, (pos) => {
         if (!cancelled) {
           setPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude });
         }
       });
-    })().catch(() => undefined);
+    })().catch((err) => console.warn("[location] useWatchCurrentLocation falhou:", err));
 
     return () => {
       cancelled = true;
@@ -49,12 +53,21 @@ export function useShareLocationWhileEnRoute(orderId: string | undefined) {
     let cancelled = false;
 
     const report = (lat: number, lng: number) => {
-      updateLocation.mutate({ id: orderId, lat, lng });
+      updateLocation.mutate(
+        { id: orderId, lat, lng },
+        {
+          onError: (err) => console.warn("[location] falha ao enviar posição do prestador:", err),
+        },
+      );
     };
 
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted" || cancelled) return;
+      if (cancelled) return;
+      if (status !== "granted") {
+        console.warn("[location] useShareLocationWhileEnRoute: permissão de localização negada");
+        return;
+      }
 
       try {
         const now = await Location.getCurrentPositionAsync({
@@ -63,14 +76,15 @@ export function useShareLocationWhileEnRoute(orderId: string | undefined) {
         if (!cancelled) {
           report(now.coords.latitude, now.coords.longitude);
         }
-      } catch {
+      } catch (err) {
         // Sem fix imediato — watch abaixo continua tentando.
+        console.warn("[location] sem fix de GPS imediato:", err);
       }
 
       subscriptionRef.current = await Location.watchPositionAsync(FOREGROUND_LOCATION_WATCH, (position) => {
         report(position.coords.latitude, position.coords.longitude);
       });
-    })().catch(() => undefined);
+    })().catch((err) => console.warn("[location] useShareLocationWhileEnRoute falhou:", err));
 
     return () => {
       cancelled = true;
@@ -91,14 +105,18 @@ export function useCurrentLocation(): { lat: number; lng: number } | null {
 
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted" || cancelled) return;
+      if (cancelled) return;
+      if (status !== "granted") {
+        console.warn("[location] useCurrentLocation: permissão de localização negada");
+        return;
+      }
       const result = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
       if (!cancelled) {
         setPosition({ lat: result.coords.latitude, lng: result.coords.longitude });
       }
-    })().catch(() => undefined);
+    })().catch((err) => console.warn("[location] useCurrentLocation falhou:", err));
 
     return () => {
       cancelled = true;

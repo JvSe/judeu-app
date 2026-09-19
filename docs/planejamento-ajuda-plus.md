@@ -1,6 +1,6 @@
-# Ajuda+ — Planejamento completo (do protótipo ao produto)
+# Judeu — Planejamento completo (do protótipo ao produto)
 
-> Documento mestre do projeto **Ajuda+** (`judeu`, `com.judeu.app`): levantamento de
+> Documento mestre do projeto **Judeu** (`judeu`, `com.judeu.app`): levantamento de
 > requisitos, decisões técnicas, roadmap e **log de incrementos** já entregues.
 > Complementa os docs específicos em [apps/native/docs/](../apps/native/docs/).
 
@@ -37,7 +37,7 @@
 
 ## 1. Contexto
 
-O **Ajuda+** é um **marketplace de serviços locais sob demanda** (estilo GetNinjas/TaskRabbit para o
+O **Judeu** é um **marketplace de serviços locais sob demanda** (estilo GetNinjas/TaskRabbit para o
 Brasil), com dois lados: **cliente** ("Quero contratar") e **prestador** ("Quero trabalhar").
 Categorias: Reparos, Limpeza, Frete, Beleza. Lançamento inicial em **Palmas/TO**.
 
@@ -549,7 +549,7 @@ renderização do mapa não foi validada visualmente.
 `apps/native/ios` e `android/` já existiam no working tree (gerados por `expo prebuild` numa sessão
 anterior, gitignored) com Pods já instalados. Rodei `npx expo run:ios --device <iPhone 17 simulator>`:
 build do Xcode (`xcodebuild ... judeu.xcworkspace`) terminou com **0 erros**, o app foi instalado e
-aberto no simulador, subindo a tela de onboarding (**"Ajuda+ — Encontre quem resolve"**) normalmente —
+aberto no simulador, subindo a tela de onboarding (**"Judeu — Encontre quem resolve"**) normalmente —
 primeira confirmação real de que o prebuild com MapLibre/Stripe/push/location compila e roda. Subi
 também o backend (`apps/web`, porta 3001) e o Metro (porta 8082, porta 8081 já ocupada por outro
 projeto na máquina) em background; criei um usuário de teste (`teste.cliente@ajuda.app` /

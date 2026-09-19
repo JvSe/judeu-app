@@ -83,7 +83,13 @@ export default function Tracking() {
             id: "provider",
             lngLat: providerCoord,
             render: () => (
-              <ProviderMarker initials={initialsOf(providerName)} color="#3a3a70" highlighted size={48} />
+              <ProviderMarker
+                initials={initialsOf(providerName)}
+                color="#3a3a70"
+                imageUri={order.provider?.avatarUrl}
+                highlighted
+                size={48}
+              />
             ),
           },
         ]
@@ -181,7 +187,13 @@ export default function Tracking() {
         </View>
 
         <View style={styles.providerRow}>
-          <Avatar initials={initialsOf(providerName)} color="#3a3a70" size={52} radius={16} />
+          <Avatar
+            initials={initialsOf(providerName)}
+            imageUri={order.provider?.avatarUrl}
+            color="#3a3a70"
+            size={52}
+            radius={16}
+          />
           <View style={{ flex: 1 }}>
             <Text style={styles.providerName}>{providerName}</Text>
             <Text style={styles.providerRole}>

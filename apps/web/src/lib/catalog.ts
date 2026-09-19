@@ -16,6 +16,7 @@ export type ProviderListDTO = {
   name: string;
   companyName: string | null;
   role: string | null;
+  avatarUrl: string | null;
   rating: number;
   reviews: number;
   yearsExperience: number;
@@ -28,7 +29,7 @@ export type ProviderListDTO = {
 
 // Empresa (isCompany=true) exibe o nome do responsável como referência ao cliente,
 // em vez da razão social — o nome da empresa vira dado secundário (companyName).
-function displayName(p: { isCompany: boolean; responsibleName: string | null; user: { fullName: string } }): string {
+export function displayName(p: { isCompany: boolean; responsibleName: string | null; user: { fullName: string } }): string {
   return p.isCompany && p.responsibleName ? p.responsibleName : p.user.fullName;
 }
 
@@ -82,7 +83,7 @@ type ProviderRow = {
   baseLng: number | null;
   isAvailable: boolean;
   allowsNegotiation: boolean;
-  user: { fullName: string };
+  user: { fullName: string; avatarUrl: string | null };
   services: { priceCents: number }[];
 };
 
@@ -92,6 +93,7 @@ function toProviderListDTO(p: ProviderRow): ProviderListDTO {
     name: displayName(p),
     companyName: p.isCompany ? p.companyName : null,
     role: p.headline,
+    avatarUrl: p.user.avatarUrl,
     rating: p.ratingAvg,
     reviews: p.ratingCount,
     yearsExperience: p.yearsExperience,
@@ -169,6 +171,7 @@ export async function getProvider(id: string): Promise<ProviderDetailDTO | null>
     name: displayName(p),
     companyName: p.isCompany ? p.companyName : null,
     role: p.headline,
+    avatarUrl: p.user.avatarUrl,
     rating: p.ratingAvg,
     reviews: p.ratingCount,
     yearsExperience: p.yearsExperience,

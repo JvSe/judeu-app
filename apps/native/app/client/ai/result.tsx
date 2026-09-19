@@ -6,9 +6,9 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
-import { fonts } from "@/constants/fonts";
 import { Avatar } from "@/components/ui/avatar";
 import { Screen } from "@/components/ui/screen";
+import { fonts } from "@/constants/fonts";
 
 export default function AiResult() {
   const { theme } = useUnistyles();
@@ -24,18 +24,24 @@ export default function AiResult() {
           <Ionicons name="sparkles" size={20} color="#fff" />
         </LinearGradient>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerName}>Ajuda+ IA</Text>
+          <Text style={styles.headerName}>JudIA</Text>
           <Text style={styles.headerSub}>plano pronto</Text>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.recommendation}>
           <Text style={styles.recommendationTitle}>Minha recomendação</Text>
           <Text style={styles.recommendationBody}>
-            Pelo que você descreveu, é uma <Text style={styles.bold}>troca de sifão</Text> — serviço
-            rápido, ~40 min. Separei os <Text style={styles.bold}>2 encanadores mais bem avaliados</Text>{" "}
-            a menos de 2 km, disponíveis hoje. Recomendo o Roberto: melhor nota e mais perto.
+            Pelo que você descreveu, é uma{" "}
+            <Text style={styles.bold}>troca de sifão</Text> — serviço rápido,
+            ~40 min. Separei os{" "}
+            <Text style={styles.bold}>2 encanadores mais bem avaliados</Text> a
+            menos de 2 km, disponíveis hoje. Recomendo o Roberto: melhor nota e
+            mais perto.
           </Text>
         </View>
 
@@ -46,13 +52,21 @@ export default function AiResult() {
 
         <View style={styles.bestCard}>
           <View style={styles.bestTop}>
-            <Avatar initials="RS" color={theme.colors.primary} size={56} radius={16} fontSize={18} />
+            <Avatar
+              initials="RS"
+              color={theme.colors.primary}
+              size={56}
+              radius={16}
+              fontSize={18}
+            />
             <View style={{ flex: 1 }}>
               <View style={styles.nameRow}>
                 <Text style={styles.bestName}>Roberto Silva</Text>
                 <Ionicons name="star" size={15} color={theme.colors.primary} />
               </View>
-              <Text style={styles.bestMeta}>Encanador · 0,8 km · disponível agora</Text>
+              <Text style={styles.bestMeta}>
+                Encanador · 0,8 km · disponível agora
+              </Text>
               <View style={styles.badgeRow}>
                 <View style={styles.badgeOrange}>
                   <Text style={styles.badgeOrangeText}>★ 4.9 (412)</Text>
@@ -69,8 +83,16 @@ export default function AiResult() {
               <Text style={styles.estValue}>R$ 110</Text>
             </View>
             <Pressable
-              style={({ pressed }) => [styles.talkButton, { opacity: pressed ? 0.9 : 1 }]}
-              onPress={() => router.push({ pathname: "/client/chat/[id]", params: { id: "rafael-souza" } })}
+              style={({ pressed }) => [
+                styles.talkButton,
+                { opacity: pressed ? 0.9 : 1 },
+              ]}
+              onPress={() =>
+                router.push({
+                  pathname: "/client/chat/[id]",
+                  params: { id: "rafael-souza" },
+                })
+              }
             >
               <Text style={styles.talkText}>Falar com Roberto</Text>
             </Pressable>
@@ -79,8 +101,16 @@ export default function AiResult() {
 
         <Text style={styles.altLabel}>Outra ótima opção</Text>
         <Pressable
-          style={({ pressed }) => [styles.altCard, { opacity: pressed ? 0.85 : 1 }]}
-          onPress={() => router.push({ pathname: "/client/provider/[id]", params: { id: "rafael-souza" } })}
+          style={({ pressed }) => [
+            styles.altCard,
+            { opacity: pressed ? 0.85 : 1 },
+          ]}
+          onPress={() =>
+            router.push({
+              pathname: "/client/provider/[id]",
+              params: { id: "rafael-souza" },
+            })
+          }
         >
           <Avatar initials="JP" color="#3a3a70" size={48} radius={14} />
           <View style={{ flex: 1 }}>
@@ -98,10 +128,20 @@ export default function AiResult() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 14 }]}>
-        <Text style={styles.footerNote}>A IA já preparou a conversa com o resumo do problema</Text>
+        <Text style={styles.footerNote}>
+          A IA já preparou a conversa com o resumo do problema
+        </Text>
         <Pressable
-          style={({ pressed }) => [styles.hireButton, { opacity: pressed ? 0.9 : 1 }]}
-          onPress={() => router.push({ pathname: "/client/payment/[id]", params: { id: "rafael-souza" } })}
+          style={({ pressed }) => [
+            styles.hireButton,
+            { opacity: pressed ? 0.9 : 1 },
+          ]}
+          onPress={() =>
+            router.push({
+              pathname: "/client/payment/[id]",
+              params: { id: "rafael-souza" },
+            })
+          }
         >
           <Text style={styles.hireText}>Contratar agora</Text>
         </Pressable>

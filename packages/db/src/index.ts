@@ -15,6 +15,10 @@ export type {
   SupportTicketCategory,
   SupportTicketStatus,
   ProposalStatus,
+  JobContractType,
+  JobStatus,
+  WeekDay,
+  JobApplicationStatus,
 } from "../prisma/generated/client";
 
 export function createPrismaClient() {

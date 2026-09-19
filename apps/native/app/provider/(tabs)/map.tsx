@@ -35,6 +35,7 @@ export default function ProviderMap() {
   const myLocation = useWatchCurrentLocation();
 
   const newOrder = orders.find((o) => o.status === "CREATED");
+  const newOrderPaymentPaid = newOrder?.payment?.status === "PAID";
   const activeOrder = orders.find(
     (o) => o.status === "ACCEPTED" || o.status === "EN_ROUTE" || o.status === "IN_PROGRESS",
   );
@@ -164,8 +165,8 @@ export default function ProviderMap() {
               <SpinButton
                 controlled
                 isActive={respondAction === "accept" && transition.isPending}
-                disabled={transition.isPending}
-                idleText="Aceitar chamada"
+                disabled={transition.isPending || !newOrderPaymentPaid}
+                idleText={newOrderPaymentPaid ? "Aceitar chamada" : "Aguardando pagamento"}
                 activeText="Aceitando..."
                 onPress={() => act(newOrder.id, "accept")}
                 colors={{

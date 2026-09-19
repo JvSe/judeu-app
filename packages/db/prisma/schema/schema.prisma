@@ -33,6 +33,7 @@ enum OrderStatus {
   ACCEPTED
   EN_ROUTE
   IN_PROGRESS
+  AWAITING_CONFIRMATION
   COMPLETED
   CANCELLED
 
@@ -75,6 +76,7 @@ enum NotificationType {
   ORDER
   MESSAGE
   SUPPORT
+  JOB
 
   @@map("notificationtype")
 }
@@ -86,6 +88,42 @@ enum ProposalStatus {
   SUPERSEDED
 
   @@map("proposalstatus")
+}
+
+enum JobContractType {
+  CLT
+  PJ
+  FREELANCE
+  TEMPORARY
+
+  @@map("jobcontracttype")
+}
+
+enum JobStatus {
+  OPEN
+  CLOSED
+
+  @@map("jobstatus")
+}
+
+enum WeekDay {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+
+  @@map("weekday")
+}
+
+enum JobApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+
+  @@map("jobapplicationstatus")
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +165,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   notifications       Notification[]
   supportTickets      SupportTicket[]
+  jobApplications     JobApplication[]
 
   @@index([role])
   @@map("user")
@@ -221,6 +260,7 @@ model ProviderProfile {
   services        Service[]
   categories      ProviderCategory[]
   ordersAsProvider Order[]           @relation("ProviderOrders")
+  jobPostings     JobPosting[]
 
   @@index([status, isAvailable])
   @@map("providerprofile")
@@ -236,6 +276,7 @@ model Category {
   services   Service[]
   providers  ProviderCategory[]
   orders     Order[]
+  jobPostings JobPosting[]
 
   @@map("category")
 }
@@ -494,6 +535,65 @@ model AiMessage {
 
   @@index([conversationId])
   @@map("aimessage")
+}
+
+// ---------------------------------------------------------------------------
+// Vagas de emprego: empresas (ProviderProfile.isCompany=true) publicam vagas
+// com escala de trabalho; qualquer usuário autenticado pode se candidatar.
+// ---------------------------------------------------------------------------
+
+model JobPosting {
+  id           String           @id @default(uuid())
+  providerId   String
+  categoryId   String
+  title        String
+  description  String
+  contractType JobContractType
+  salaryCents  Int? // null = "a combinar"
+  status       JobStatus        @default(OPEN)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  provider     ProviderProfile   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  category     Category          @relation(fields: [categoryId], references: [id])
+  shifts       JobShift[]
+  applications JobApplication[]
+
+  @@index([status, categoryId])
+  @@index([providerId])
+  @@map("jobposting")
+}
+
+// Turno semanal da escala de trabalho (dia + horário). startTime/endTime em
+// formato "HH:mm" — mesmo formato que a tool de IA do app já emite.
+model JobShift {
+  id           String  @id @default(uuid())
+  jobPostingId String
+  weekday      WeekDay
+  startTime    String
+  endTime      String
+
+  jobPosting JobPosting @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+
+  @@index([jobPostingId])
+  @@map("jobshift")
+}
+
+model JobApplication {
+  id           String                @id @default(uuid())
+  jobPostingId String
+  applicantId  String
+  message      String?
+  status       JobApplicationStatus  @default(PENDING)
+  createdAt    DateTime              @default(now())
+  respondedAt  DateTime?
+
+  jobPosting JobPosting @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+  applicant  User       @relation(fields: [applicantId], references: [id])
+
+  @@unique([jobPostingId, applicantId])
+  @@index([applicantId])
+  @@map("jobapplication")
 }
 
 // ---------------------------------------------------------------------------

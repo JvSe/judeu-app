@@ -11,7 +11,15 @@ export function OPTIONS() {
 }
 
 const bodySchema = z.object({
-  action: z.enum(["accept", "reject", "start_route", "start_work", "complete", "cancel"]),
+  action: z.enum([
+    "accept",
+    "reject",
+    "start_route",
+    "start_work",
+    "complete",
+    "confirm_completion",
+    "cancel",
+  ]),
   note: z.string().max(300).optional(),
 });
 

@@ -1,6 +1,6 @@
 # apps/geo — Serviços de geolocalização (self-hosted na Railway)
 
-Dois serviços OSM/gratuitos que alimentam o fluxo de pedido do Ajuda+:
+Dois serviços OSM/gratuitos que alimentam o fluxo de pedido do Judeu:
 
 | Serviço | Papel | Porta | Imagem base |
 |---|---|---|---|

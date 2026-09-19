@@ -3,8 +3,8 @@ import { LegalScreen, type LegalSection } from "@/components/ui/legal-screen";
 
 const sections: LegalSection[] = [
   {
-    heading: "1. O que é o Ajuda+",
-    body: "O Ajuda+ é uma plataforma que conecta clientes a prestadores de serviços independentes (reparos, limpeza, frete e beleza) em Palmas/TO. O Ajuda+ não presta os serviços contratados — atua como intermediário entre as duas partes, que celebram o contrato de prestação de serviço diretamente entre si.",
+    heading: "1. O que é o Judeu",
+    body: "O Judeu é uma plataforma que conecta clientes a prestadores de serviços independentes (reparos, limpeza, frete e beleza) em Palmas/TO. O Judeu não presta os serviços contratados — atua como intermediário entre as duas partes, que celebram o contrato de prestação de serviço diretamente entre si.",
   },
   {
     heading: "2. Cadastro e conta",

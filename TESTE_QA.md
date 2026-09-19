@@ -1,4 +1,4 @@
-# Plano de Teste — Ajuda+ (app mobile)
+# Plano de Teste — Judeu (app mobile)
 
 Plano de QA exploratório organizado por fluxo de usuário. Siga a ordem sugerida — ela reproduz a jornada real de alguém abrindo o app pela primeira vez.
 

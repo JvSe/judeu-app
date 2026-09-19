@@ -4,7 +4,7 @@ import { LegalScreen, type LegalSection } from "@/components/ui/legal-screen";
 const sections: LegalSection[] = [
   {
     heading: "1. Quais dados coletamos",
-    body: "Nome, e-mail, telefone e senha (cadastro); endereço e CEP (pra localizar prestadores e calcular rota); localização do dispositivo (achar profissionais perto de você e, durante um atendimento, compartilhar sua posição em tempo real); documento de identidade (apenas prestadores, para verificação/KYC); histórico de pedidos, mensagens de chat e avaliações; dados de pagamento, processados diretamente pelo Stripe — o Ajuda+ nunca armazena número de cartão.",
+    body: "Nome, e-mail, telefone e senha (cadastro); endereço e CEP (pra localizar prestadores e calcular rota); localização do dispositivo (achar profissionais perto de você e, durante um atendimento, compartilhar sua posição em tempo real); documento de identidade (apenas prestadores, para verificação/KYC); histórico de pedidos, mensagens de chat e avaliações; dados de pagamento, processados diretamente pelo Stripe — o Judeu nunca armazena número de cartão.",
   },
   {
     heading: "2. Para que usamos esses dados",

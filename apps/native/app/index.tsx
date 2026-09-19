@@ -1,7 +1,7 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Redirect, router } from "expo-router";
-import { Pressable, Text, View } from "react-native";
+import { Image, Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { fonts } from "@/constants/fonts";
@@ -23,12 +23,8 @@ export default function Onboarding() {
       <View style={styles.glowBottom} />
 
       <View style={styles.hero}>
-        <View style={styles.logo}>
-          <Text style={styles.logoText}>A+</Text>
-        </View>
-        <Text style={styles.brand}>
-          Ajuda<Text style={{ color: theme.colors.primary }}>+</Text>
-        </Text>
+        <Image source={require("../assets/images/icon.png")} style={styles.logo} resizeMode="cover" />
+        <Text style={styles.brand}>Judeu</Text>
         <Text style={styles.tagline}>
           Ajuda + eu. Encontre quem resolve — ou seja quem resolve — pertinho de você.
         </Text>
@@ -108,19 +104,11 @@ const styles = StyleSheet.create((theme) => ({
     width: 96,
     height: 96,
     borderRadius: 30,
-    backgroundColor: theme.colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
     shadowColor: theme.colors.primary,
     shadowOpacity: 0.5,
     shadowRadius: 44,
     shadowOffset: { width: 0, height: 20 },
     elevation: 10,
-  },
-  logoText: {
-    fontSize: 48,
-    fontFamily: fonts.extraBold,
-    color: "#fff",
   },
   brand: {
     fontSize: 46,

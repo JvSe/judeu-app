@@ -6,10 +6,10 @@ import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
-import { fonts } from "@/constants/fonts";
-import { aiAvailable } from "@/lib/assistant";
 import { AiAssistant } from "@/components/ai-assistant";
 import { Screen } from "@/components/ui/screen";
+import { fonts } from "@/constants/fonts";
+import { aiAvailable } from "@/lib/assistant";
 
 export default function AiChat() {
   const { theme } = useUnistyles();
@@ -26,7 +26,7 @@ export default function AiChat() {
           <Ionicons name="sparkles" size={20} color="#fff" />
         </LinearGradient>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerName}>Ajuda+ IA</Text>
+          <Text style={styles.headerName}>JudIA</Text>
           <Text style={styles.headerSub}>responde no seu aparelho</Text>
         </View>
       </View>
@@ -36,15 +36,25 @@ export default function AiChat() {
       ) : (
         // Sem runtime nativo do ExecuTorch (Expo Go / web): manda para a busca por categoria.
         <View style={styles.unavailable}>
-          <Ionicons name="sparkles-outline" size={30} color={theme.colors.mutedForeground} />
+          <Ionicons
+            name="sparkles-outline"
+            size={30}
+            color={theme.colors.mutedForeground}
+          />
           <Text style={styles.unavailableText}>
-            O assistente roda no aparelho e precisa de um build de desenvolvimento.
+            O assistente roda no aparelho e precisa de um build de
+            desenvolvimento.
           </Text>
           <Pressable
-            style={({ pressed }) => [styles.unavailableButton, { opacity: pressed ? 0.9 : 1 }]}
+            style={({ pressed }) => [
+              styles.unavailableButton,
+              { opacity: pressed ? 0.9 : 1 },
+            ]}
             onPress={() => router.replace("/client/explore")}
           >
-            <Text style={styles.unavailableButtonText}>Buscar por categoria</Text>
+            <Text style={styles.unavailableButtonText}>
+              Buscar por categoria
+            </Text>
           </Pressable>
         </View>
       )}

@@ -107,6 +107,7 @@ export default function ClientHome() {
           <ProviderMarker
             initials={initialsOf(p.name)}
             color={index === 0 ? "#FF6600" : "#3a3a70"}
+            imageUri={p.avatarUrl}
             highlighted={index === 0}
           />
         ),
@@ -146,6 +147,11 @@ export default function ClientHome() {
               </Text>
             </View>
           </GlassSurface>
+          <Pressable onPress={() => router.push("/jobs" as never)}>
+            <GlassSurface style={styles.bellButton}>
+              <Ionicons name="briefcase-outline" size={22} color="#fff" />
+            </GlassSurface>
+          </Pressable>
           <Pressable
             onPress={() => router.push("/client/notifications" as never)}
           >
@@ -196,6 +202,7 @@ export default function ClientHome() {
                 <View style={styles.providerHeader}>
                   <Avatar
                     initials={initialsOf(provider.name)}
+                    imageUri={provider.avatarUrl}
                     color={avatarColor(index)}
                     size={46}
                     radius={14}

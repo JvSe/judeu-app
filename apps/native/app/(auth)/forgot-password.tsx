@@ -67,8 +67,8 @@ export default function ForgotPassword() {
         </View>
         <Text style={styles.title}>Esqueceu sua senha?</Text>
         <Text style={styles.subtitle}>
-          Informe o e-mail da sua conta. Se ele existir, enviamos um código de 6 dígitos para
-          criar uma senha nova.
+          Informe o e-mail da sua conta. No MVP o código de recuperação é sempre 123456 — não
+          enviamos e-mail.
         </Text>
 
         <FormTextField

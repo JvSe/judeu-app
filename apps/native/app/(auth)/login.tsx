@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { router } from "expo-router";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { z } from "zod";
@@ -54,9 +54,7 @@ export default function Login() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.logo}>
-          <Text style={styles.logoText}>A+</Text>
-        </View>
+        <Image source={require("../../assets/images/icon.png")} style={styles.logo} resizeMode="cover" />
         <Text style={styles.title}>Bem-vindo{"\n"}de volta</Text>
         <Text style={styles.subtitle}>Entre para continuar contratando ou trabalhando.</Text>
 
@@ -165,19 +163,11 @@ const styles = StyleSheet.create((theme) => ({
     width: 62,
     height: 62,
     borderRadius: 19,
-    backgroundColor: theme.colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
     shadowColor: theme.colors.primary,
     shadowOpacity: 0.45,
     shadowRadius: 30,
     shadowOffset: { width: 0, height: 14 },
     elevation: 8,
-  },
-  logoText: {
-    fontSize: 29,
-    fontFamily: fonts.extraBold,
-    color: "#fff",
   },
   title: {
     fontSize: 33,
