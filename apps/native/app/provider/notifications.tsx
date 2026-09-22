@@ -112,7 +112,7 @@ export default function ProviderNotifications() {
         <View style={styles.prefsGroup}>
           {(
             [
-              { key: "notifyOrders" as const, icon: "cube-outline" as const, label: "Pedidos", detail: "Novo pedido e mudanças de status" },
+              { key: "notifyOrders" as const, icon: "cube-outline" as const, label: "Chamadas", detail: "Nova chamada e mudanças de status" },
               { key: "notifyMessages" as const, icon: "chatbubble-ellipses-outline" as const, label: "Mensagens", detail: "Chat com o cliente" },
             ]
           ).map((pref, index) => {

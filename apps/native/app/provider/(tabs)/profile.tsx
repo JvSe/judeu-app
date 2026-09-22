@@ -68,13 +68,22 @@ export default function ProviderProfileTab() {
           <Ionicons name="chevron-forward" size={16} color={theme.colors.mutedForeground} />
         </Pressable>
 
-        {profile?.isCompany && (
+        {profile?.isCompany ? (
           <Pressable
             style={({ pressed }) => [styles.menuRow, { opacity: pressed ? 0.7 : 1 }]}
             onPress={() => router.push("/provider/vaga")}
           >
             <Ionicons name="briefcase-outline" size={19} color={theme.colors.primary} />
             <Text style={styles.menuLabel}>Minhas vagas</Text>
+            <Ionicons name="chevron-forward" size={16} color={theme.colors.mutedForeground} />
+          </Pressable>
+        ) : (
+          <Pressable
+            style={({ pressed }) => [styles.menuRow, { opacity: pressed ? 0.7 : 1 }]}
+            onPress={() => router.push("/jobs" as never)}
+          >
+            <Ionicons name="briefcase-outline" size={19} color={theme.colors.primary} />
+            <Text style={styles.menuLabel}>Vagas de empresas</Text>
             <Ionicons name="chevron-forward" size={16} color={theme.colors.mutedForeground} />
           </Pressable>
         )}

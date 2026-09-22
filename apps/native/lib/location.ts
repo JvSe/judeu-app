@@ -1,7 +1,7 @@
 import * as Location from "expo-location";
 import { useEffect, useRef, useState } from "react";
 
-import { useUpdateOrderLocation } from "@/lib/hooks";
+import { useUpdateOrderLocation, useUpdateProviderLocation } from "@/lib/hooks";
 
 export const FOREGROUND_LOCATION_WATCH = {
   accuracy: Location.Accuracy.Balanced,
@@ -124,4 +124,44 @@ export function useCurrentLocation(): { lat: number; lng: number } | null {
   }, []);
 
   return position;
+}
+
+// GPS ocioso: prestador online manda a posição para aparecer no mapa do cliente.
+export function useShareIdleLocation(enabled: boolean) {
+  const update = useUpdateProviderLocation();
+  const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+
+    const report = (lat: number, lng: number) => {
+      update.mutate(
+        { lat, lng },
+        { onError: (err) => console.warn("[location] falha ao enviar GPS ocioso:", err) },
+      );
+    };
+
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (cancelled) return;
+      if (status !== "granted") return;
+      try {
+        const now = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        if (!cancelled) report(now.coords.latitude, now.coords.longitude);
+      } catch (err) {
+        console.warn("[location] sem fix de GPS ocioso:", err);
+      }
+      subscriptionRef.current = await Location.watchPositionAsync(FOREGROUND_LOCATION_WATCH, (pos) => {
+        report(pos.coords.latitude, pos.coords.longitude);
+      });
+    })().catch((err) => console.warn("[location] useShareIdleLocation falhou:", err));
+
+    return () => {
+      cancelled = true;
+      subscriptionRef.current?.remove();
+      subscriptionRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled]);
 }

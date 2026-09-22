@@ -185,6 +185,21 @@ export async function setProviderAvailability(
   return toDTO(profile);
 }
 
+export async function updateProviderLocation(
+  userId: string,
+  lat: number,
+  lng: number,
+): Promise<MyProviderProfileDTO | { error: string; status: number }> {
+  const profile = await prisma.providerProfile.findUnique({ where: { userId } });
+  if (!profile) return { error: "Cadastro profissional não encontrado", status: 404 };
+  const updated = await prisma.providerProfile.update({
+    where: { userId },
+    data: { lastLat: lat, lastLng: lng, lastLocationAt: new Date() },
+    include: profileInclude,
+  });
+  return toDTO(updated);
+}
+
 // ---------------------------------------------------------------------------
 // Moderação (RF-H3, painel admin): fila de aprovação de KYC.
 // ---------------------------------------------------------------------------

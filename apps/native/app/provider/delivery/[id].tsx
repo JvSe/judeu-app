@@ -60,6 +60,9 @@ export default function ProviderDelivery() {
     );
   }
 
+  const canStart =
+    order.payment?.status === "PAID" || order.payment?.method === "CASH";
+
   const { lat: destLat, lng: destLng } = order.address;
   const destCoord: [number, number] = [destLng, destLat];
   const { distanceKm, etaMin, route, arrived } = order.tracking;
@@ -127,7 +130,11 @@ export default function ProviderDelivery() {
         </IconButton>
         <View style={styles.statusPill}>
           <Text style={styles.statusText} numberOfLines={1}>
-            {order.status === "ACCEPTED" ? "Pronto para ir" : "A caminho do cliente"}
+            {order.status === "ACCEPTED"
+              ? canStart
+                ? "Pronto para ir"
+                : "Aguardando pagamento"
+              : "A caminho do cliente"}
           </Text>
         </View>
       </View>
@@ -162,12 +169,16 @@ export default function ProviderDelivery() {
           </Pressable>
         </View>
 
+        {order.status === "ACCEPTED" && !canStart && (
+          <Text style={styles.waitPay}>O cliente ainda está confirmando o pagamento.</Text>
+        )}
+
         {order.status === "ACCEPTED" && (
           <SpinButton
             controlled
             isActive={pendingAction === "start_route" && transition.isPending}
-            disabled={transition.isPending}
-            idleText="Iniciar trajeto"
+            disabled={transition.isPending || !canStart}
+            idleText={canStart ? "Iniciar trajeto" : "Aguardando pagamento"}
             activeText="Iniciando..."
             onPress={() => runTransition("start_route")}
             colors={{
@@ -264,6 +275,12 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: "rgba(255,255,255,0.14)",
     alignSelf: "center",
     marginBottom: 4,
+  },
+  waitPay: {
+    fontSize: 13.5,
+    fontFamily: fonts.medium,
+    color: theme.colors.mutedForeground,
+    marginBottom: 12,
   },
   title: {
     fontSize: 18,

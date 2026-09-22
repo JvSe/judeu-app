@@ -260,8 +260,13 @@ export type ProviderListItem = {
   priceFromCents: number | null;
   baseLat: number | null;
   baseLng: number | null;
+  lastLat: number | null;
+  lastLng: number | null;
+  serviceRadiusKm: number;
   isAvailable: boolean;
   allowsNegotiation: boolean;
+  distanceKm: number | null;
+  etaMin: number | null;
 };
 
 export type ProviderDetail = ProviderListItem & {
@@ -284,6 +289,17 @@ export const catalogApi = {
   providers(categoryId?: string) {
     const qs = categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : "";
     return apiFetch<{ providers: ProviderListItem[] }>(`/api/providers${qs}`).then((r) => r.providers);
+  },
+  nearby(opts: { lat: number; lng: number; categoryId?: string; excludeProviderId?: string }) {
+    const qs = new URLSearchParams({
+      lat: String(opts.lat),
+      lng: String(opts.lng),
+    });
+    if (opts.categoryId) qs.set("categoryId", opts.categoryId);
+    if (opts.excludeProviderId) qs.set("excludeProviderId", opts.excludeProviderId);
+    return apiFetch<{ providers: ProviderListItem[] }>(`/api/providers/nearby?${qs}`).then(
+      (r) => r.providers,
+    );
   },
   provider(id: string) {
     return apiFetch<{ provider: ProviderDetail }>(`/api/providers/${id}`).then((r) => r.provider);
@@ -348,6 +364,12 @@ export const providerProfileApi = {
       body: { isAvailable },
     }).then((r) => r.profile);
   },
+  updateLocation(lat: number, lng: number) {
+    return apiFetch<{ profile: MyProviderProfile }>("/api/providers/me/location", {
+      method: "POST",
+      body: { lat, lng },
+    }).then((r) => r.profile);
+  },
 };
 
 // ---- Pedidos (ciclo de vida + máquina de estados) ----
@@ -390,6 +412,7 @@ export type Order = {
   totalCents: number;
   cancelReason: string | null;
   createdAt: string;
+  offerExpiresAt: string;
   unreadMessages: number;
   service: { id: string; name: string } | null;
   category: { id: string; name: string } | null;
@@ -403,7 +426,7 @@ export type Order = {
     allowsNegotiation: boolean;
   } | null;
   client: { id: string; name: string; phone: string | null };
-  payment: { status: "PENDING" | "PAID" | "REFUNDED" | "FAILED" } | null;
+  payment: { status: "PENDING" | "PAID" | "REFUNDED" | "FAILED"; method: PaymentMethodOption } | null;
   address: OrderAddress;
   events: { status: OrderStatus; note: string | null; createdAt: string }[];
   tracking: {
@@ -448,6 +471,12 @@ export const ordersApi = {
     return apiFetch<{ order: Order }>(`/api/orders/${id}/location`, {
       method: "POST",
       body: { lat, lng },
+    }).then((r) => r.order);
+  },
+  reassign(id: string, providerId: string) {
+    return apiFetch<{ order: Order }>(`/api/orders/${id}/reassign`, {
+      method: "POST",
+      body: { providerId },
     }).then((r) => r.order);
   },
 };

@@ -1,7 +1,7 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
-import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
@@ -45,12 +45,25 @@ export default function ProviderEarnings() {
           <Text style={styles.balanceLabel}>Saldo disponível</Text>
           <Text style={styles.balanceValue}>{moneyFromCents(wallet.balanceCents)}</Text>
           <View style={styles.balanceActions}>
-            <View style={styles.withdrawButton}>
+            <Pressable
+              style={styles.withdrawButton}
+              onPress={() =>
+                Alert.alert(
+                  "Saque",
+                  "O saque fica disponível depois da verificação da conta e dos dados bancários.",
+                )
+              }
+            >
               <Text style={styles.withdrawText}>Sacar</Text>
-            </View>
-            <View style={styles.statementButton}>
+            </Pressable>
+            <Pressable
+              style={styles.statementButton}
+              onPress={() =>
+                Alert.alert("Extrato", "Seu histórico de ganhos está listado abaixo.")
+              }
+            >
               <Text style={styles.statementText}>Extrato</Text>
-            </View>
+            </Pressable>
           </View>
         </LinearGradient>
 

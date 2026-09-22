@@ -1,24 +1,16 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import { useController, useForm } from "react-hook-form";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { z } from "zod";
 
 import { fonts } from "@/constants/fonts";
-import { moneyFromCents } from "@/lib/format";
-import { formatBirthday } from "@/lib/formatters/format-birthday.helper";
-import { formatTime } from "@/lib/formatters/format-time.helper";
+import { formatAddressLine, moneyFromCents } from "@/lib/format";
 import { useAddresses, useCreateOrder, useProvider } from "@/lib/hooks";
-import { FormErrorText } from "@/components/form/error-text";
-import { FormInput } from "@/components/form/input";
 import { Screen } from "@/components/ui/screen";
 
-// Combina "DD/MM/AAAA" + "HH:MM" num Date local; null se incompleto/inválido.
 function parseScheduledAt(date: string, time: string): Date | null {
   const dateMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(date);
   const timeMatch = /^(\d{2}):(\d{2})$/.exec(time);
@@ -35,34 +27,7 @@ function parseScheduledAt(date: string, time: string): Date | null {
   return valid ? parsed : null;
 }
 
-const createOrderSchema = z
-  .object({
-    when: z.enum(["agora", "agendar"]),
-    scheduleDate: z.string(),
-    scheduleTime: z.string(),
-    description: z.string(),
-  })
-  .superRefine((val, ctx) => {
-    if (val.when !== "agendar") return;
-    const parsed = parseScheduledAt(val.scheduleDate, val.scheduleTime);
-    if (!parsed) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["scheduleDate"],
-        message: "Informe uma data e hora válidas para o agendamento.",
-      });
-    } else if (parsed.getTime() <= Date.now()) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["scheduleTime"],
-        message: "Escolha uma data e hora no futuro.",
-      });
-    }
-  });
-
-type CreateOrderForm = z.infer<typeof createOrderSchema>;
-
-export default function CreateOrder() {
+export default function ConfirmCall() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
@@ -72,17 +37,22 @@ export default function CreateOrder() {
     serviceName?: string;
     priceCents?: string;
     allowsNegotiation?: string;
+    categoryId?: string;
   }>();
+
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(params.serviceId ?? null);
+  const [when, setWhen] = useState<"agora" | "agendar">("agora");
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
+  const [note, setNote] = useState("");
 
   const { data: addresses, isLoading: addressesLoading } = useAddresses();
   const { data: provider, isLoading: providerLoading } = useProvider(params.providerId ?? "");
   const services = provider?.services;
+  const createOrder = useCreateOrder();
 
-  // Seleciona o endereço padrão automaticamente quando a lista chega (ou se o
-  // endereço selecionado deixou de existir, ex.: acabou de ser removido).
   useEffect(() => {
     if (!addresses?.length) return;
     setSelectedAddressId((current) => {
@@ -99,64 +69,52 @@ export default function CreateOrder() {
     });
   }, [services]);
 
-  const { control, handleSubmit } = useForm<CreateOrderForm>({
-    resolver: zodResolver(createOrderSchema),
-    mode: "onBlur",
-    reValidateMode: "onChange",
-    defaultValues: {
-      when: "agora",
-      scheduleDate: "",
-      scheduleTime: "",
-      description: "",
-    },
-  });
-  const { field: whenField } = useController({ control, name: "when" });
-
-  const createOrder = useCreateOrder();
   const selectedService = services?.find((s) => s.id === selectedServiceId);
   const priceCents = selectedService?.priceCents ?? (params.priceCents ? Number(params.priceCents) : 0);
-  const serviceName = selectedService?.name ?? params.serviceName ?? "Serviço a combinar";
-  const providerName = provider?.name ?? params.providerName ?? "Prestador";
+  const feeCents = Math.round(priceCents * 0.08);
+  const totalCents = priceCents + feeCents;
+  const providerName = provider?.name ?? params.providerName ?? "Pessoa";
+  const selectedAddress = addresses?.find((a) => a.id === selectedAddressId);
+  const scheduled = when === "agendar";
+  const canNegotiate = scheduled && (provider?.allowsNegotiation || params.allowsNegotiation === "true");
 
-  const onValid = handleSubmit(async (data) => {
+  const onConfirm = async () => {
     setSubmitError(null);
     if (!params.providerId) {
-      setSubmitError("Prestador não informado.");
+      setSubmitError("Pessoa não informada.");
       return;
     }
-    const selectedAddress = addresses?.find((a) => a.id === selectedAddressId);
     if (!selectedAddress) {
-      setSubmitError("Selecione um endereço para continuar.");
-      return;
-    }
-    if (services && services.length > 0 && !selectedService) {
-      setSubmitError("Selecione o serviço que você deseja.");
+      setSubmitError("Escolha um endereço.");
       return;
     }
     let scheduledAt: string | undefined;
-    if (data.when === "agendar") {
-      const parsed = parseScheduledAt(data.scheduleDate, data.scheduleTime);
-      if (parsed) scheduledAt = parsed.toISOString();
+    if (scheduled) {
+      const parsed = parseScheduledAt(scheduleDate, scheduleTime);
+      if (!parsed || parsed.getTime() <= Date.now()) {
+        setSubmitError("Informe uma data e hora futuras.");
+        return;
+      }
+      scheduledAt = parsed.toISOString();
     }
     try {
       const order = await createOrder.mutateAsync({
         providerId: params.providerId,
         serviceId: selectedService?.id ?? params.serviceId,
-        description: data.description.trim() || undefined,
+        categoryId: params.categoryId,
+        description: note.trim() || undefined,
         scheduledAt,
         addressId: selectedAddress.id,
       });
-      if (params.allowsNegotiation === "true") {
-        // Prestador habilitou negociação (RF-D5) — vai pro detalhe do pedido em vez de
-        // pular direto pro pagamento, pra dar espaço a propor/receber um valor diferente.
+      if (canNegotiate) {
         router.replace({ pathname: "/client/order/[id]", params: { id: order.id } });
-      } else {
-        router.replace({ pathname: "/client/payment/[id]", params: { id: order.id } });
+        return;
       }
+      router.replace({ pathname: "/client/waiting/[id]", params: { id: order.id } } as never);
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Não foi possível criar o pedido.");
+      setSubmitError(e instanceof Error ? e.message : "Não foi possível enviar a chamada.");
     }
-  });
+  };
 
   return (
     <Screen>
@@ -164,7 +122,7 @@ export default function CreateOrder() {
         <Pressable onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="chevron-back" size={20} color="#fff" />
         </Pressable>
-        <Text style={styles.headerTitle}>Novo pedido</Text>
+        <Text style={styles.headerTitle}>Confirmar chamada</Text>
       </View>
 
       <ScrollView
@@ -172,168 +130,118 @@ export default function CreateOrder() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.label}>Prestador</Text>
-        <View style={styles.providerCard}>
-          <View style={styles.serviceIcon}>
-            <Ionicons name="flash" size={21} color={theme.colors.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.serviceName}>{providerName}</Text>
-            <Text style={styles.serviceSub}>{serviceName}</Text>
-          </View>
+        <View style={styles.card}>
+          <Text style={styles.kicker}>CHAMAR</Text>
+          <Text style={styles.name}>{providerName}</Text>
+          {providerLoading ? (
+            <ActivityIndicator color={theme.colors.primary} />
+          ) : services && services.length > 0 ? (
+            <View style={{ gap: 8, marginTop: 12 }}>
+              {services.map((service) => {
+                const selected = service.id === selectedServiceId;
+                return (
+                  <Pressable
+                    key={service.id}
+                    style={[styles.choice, selected && styles.choiceOn]}
+                    onPress={() => setSelectedServiceId(service.id)}
+                  >
+                    <Text style={styles.choiceLabel}>{service.name}</Text>
+                    <Text style={styles.choicePrice}>{moneyFromCents(service.priceCents)}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : (
+            <Text style={styles.muted}>Serviço a combinar</Text>
+          )}
         </View>
 
-        <Text style={styles.label}>Qual serviço?</Text>
-        {providerLoading ? (
-          <ActivityIndicator color={theme.colors.primary} style={styles.addressLoading} />
-        ) : services && services.length > 0 ? (
-          <View style={{ gap: 10, marginBottom: 20 }}>
-            {services.map((service) => {
-              const selected = service.id === selectedServiceId;
-              return (
-                <Pressable
-                  key={service.id}
-                  style={[styles.addressCard, selected && styles.addressCardActive]}
-                  onPress={() => setSelectedServiceId(service.id)}
-                >
-                  <View style={[styles.addressRadio, selected && styles.addressRadioActive]}>
-                    {selected && <View style={styles.addressRadioDot} />}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.addressLabel}>{service.name}</Text>
-                  </View>
-                  <Text style={styles.servicePrice}>{moneyFromCents(service.priceCents)}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : (
-          <Text style={[styles.addressEmpty, { marginBottom: 20 }]}>
-            Este prestador ainda não cadastrou serviços. O valor fica a combinar.
-          </Text>
-        )}
-
-        <Text style={styles.label}>Descreva o problema</Text>
-        <FormInput
-          control={control}
-          name="description"
-          placeholder="Ex.: preciso instalar 2 tomadas novas na cozinha."
-          multiline
-          containerStyle={styles.textAreaSpacing}
-        />
-
-        <Text style={styles.label}>Quando?</Text>
-        <View style={styles.whenRow}>
-          <Pressable
-            style={[styles.whenButton, whenField.value === "agora" && styles.whenButtonActive]}
-            onPress={() => whenField.onChange("agora")}
-          >
-            <Text style={[styles.whenText, whenField.value === "agora" && styles.whenTextActive]}>
-              Agora
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.whenButton, whenField.value === "agendar" && styles.whenButtonActive]}
-            onPress={() => whenField.onChange("agendar")}
-          >
-            <Text style={[styles.whenText, whenField.value === "agendar" && styles.whenTextActive]}>
-              Agendar
-            </Text>
-          </Pressable>
-        </View>
-
-        {whenField.value === "agendar" && (
-          <View style={styles.scheduleRow}>
-            <FormInput
-              control={control}
-              name="scheduleDate"
-              placeholder="DD/MM/AAAA"
-              keyboardType="number-pad"
-              maxLength={10}
-              parseValue={formatBirthday}
-              containerStyle={{ flex: 3 }}
-            />
-            <FormInput
-              control={control}
-              name="scheduleTime"
-              placeholder="HH:MM"
-              keyboardType="number-pad"
-              maxLength={5}
-              parseValue={formatTime}
-              containerStyle={{ flex: 2 }}
-            />
-          </View>
-        )}
-
-        <Text style={styles.label}>Endereço</Text>
+        <Text style={styles.label}>Onde</Text>
         {addressesLoading ? (
-          <ActivityIndicator color={theme.colors.primary} style={styles.addressLoading} />
-        ) : addresses && addresses.length > 0 ? (
-          <View style={{ gap: 10 }}>
+          <ActivityIndicator color={theme.colors.primary} />
+        ) : !addresses?.length ? (
+          <Pressable style={styles.choice} onPress={() => router.push("/client/address-form")}>
+            <Text style={styles.choiceLabel}>Adicionar endereço</Text>
+          </Pressable>
+        ) : (
+          <View style={{ gap: 8 }}>
             {addresses.map((address) => {
               const selected = address.id === selectedAddressId;
               return (
                 <Pressable
                   key={address.id}
-                  style={[styles.addressCard, selected && styles.addressCardActive]}
+                  style={[styles.choice, selected && styles.choiceOn]}
                   onPress={() => setSelectedAddressId(address.id)}
                 >
-                  <View style={[styles.addressRadio, selected && styles.addressRadioActive]}>
-                    {selected && <View style={styles.addressRadioDot} />}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <View style={styles.addressTitleRow}>
-                      <Text style={styles.addressLabel}>{address.label || "Endereço"}</Text>
-                      {address.isDefault && (
-                        <View style={styles.defaultBadge}>
-                          <Text style={styles.defaultBadgeText}>Padrão</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={styles.addressDetail} numberOfLines={2}>
-                      {address.street}
-                      {address.number ? `, ${address.number}` : ""} — {address.city}/{address.state}
-                    </Text>
-                  </View>
+                  <Text style={styles.choiceLabel}>{formatAddressLine(address)}</Text>
+                  <Text style={styles.muted}>
+                    {address.street}
+                    {address.number ? `, ${address.number}` : ""}
+                  </Text>
                 </Pressable>
               );
             })}
+            <Pressable onPress={() => router.push("/client/address-form")}>
+              <Text style={styles.link}>Adicionar outro endereço</Text>
+            </Pressable>
           </View>
-        ) : (
-          <Text style={styles.addressEmpty}>Você ainda não tem endereços cadastrados.</Text>
         )}
 
-        <Pressable
-          style={styles.addAddressButton}
-          onPress={() => router.push("/client/address-form" as never)}
-        >
-          <Ionicons name="add" size={18} color={theme.colors.primary} />
-          <Text style={styles.addAddressButtonText}>Adicionar novo endereço</Text>
-        </Pressable>
+        <Text style={styles.label}>Quando</Text>
+        <View style={styles.whenRow}>
+          <Pressable style={[styles.whenChip, when === "agora" && styles.whenChipOn]} onPress={() => setWhen("agora")}>
+            <Text style={[styles.whenText, when === "agora" && styles.whenTextOn]}>Agora</Text>
+          </Pressable>
+          <Pressable style={[styles.whenChip, scheduled && styles.whenChipOn]} onPress={() => setWhen("agendar")}>
+            <Text style={[styles.whenText, scheduled && styles.whenTextOn]}>Agendar</Text>
+          </Pressable>
+        </View>
+        {scheduled && (
+          <View style={styles.whenRow}>
+            <TextInput
+              style={styles.input}
+              value={scheduleDate}
+              onChangeText={setScheduleDate}
+              placeholder="DD/MM/AAAA"
+              placeholderTextColor={theme.colors.mutedForeground}
+            />
+            <TextInput
+              style={styles.input}
+              value={scheduleTime}
+              onChangeText={setScheduleTime}
+              placeholder="HH:MM"
+              placeholderTextColor={theme.colors.mutedForeground}
+            />
+          </View>
+        )}
 
-        {submitError && <FormErrorText style={styles.submitError}>{submitError}</FormErrorText>}
+        <Text style={styles.label}>Observação (opcional)</Text>
+        <TextInput
+          style={[styles.input, styles.note]}
+          value={note}
+          onChangeText={setNote}
+          placeholder="Ex.: interfone 12, vazamento na pia"
+          placeholderTextColor={theme.colors.mutedForeground}
+          multiline
+        />
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-        {priceCents > 0 && (
-          <View style={styles.estimateRow}>
-            <Text style={styles.estimateLabel}>Valor do serviço</Text>
-            <Text style={styles.estimateValue}>{moneyFromCents(priceCents)}</Text>
-          </View>
-        )}
+        <View>
+          <Text style={styles.footerLabel}>Total com taxa</Text>
+          <Text style={styles.footerPrice}>{moneyFromCents(totalCents)}</Text>
+        </View>
         <Pressable
-          style={({ pressed }) => [
-            styles.submit,
-            { opacity: pressed || createOrder.isPending ? 0.9 : 1 },
-          ]}
-          onPress={onValid}
+          style={[styles.callButton, createOrder.isPending && { opacity: 0.7 }]}
+          onPress={onConfirm}
           disabled={createOrder.isPending}
         >
-          <Text style={styles.submitText}>
-            {createOrder.isPending ? "Enviando..." : "Enviar pedido"}
+          <Text style={styles.callButtonText}>
+            {createOrder.isPending ? "Chamando..." : `Chamar ${providerName.split(" ")[0]}`}
           </Text>
         </Pressable>
       </View>
+      {submitError ? <Text style={[styles.error, { bottom: insets.bottom + 88 }]}>{submitError}</Text> : null}
     </Screen>
   );
 }
@@ -342,224 +250,153 @@ const styles = StyleSheet.create((theme) => ({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
-    paddingHorizontal: 24,
-    paddingBottom: 6,
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
   },
   headerTitle: {
-    fontSize: 19,
+    fontSize: 18,
     fontFamily: fonts.extraBold,
-    color: theme.colors.foreground,
+    color: "#fff",
   },
   content: {
-    paddingHorizontal: 24,
-    paddingTop: 22,
-    paddingBottom: 160,
+    paddingHorizontal: 16,
+    paddingBottom: 140,
+    gap: 8,
+  },
+  card: {
+    backgroundColor: "rgba(28,28,58,0.92)",
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 8,
+  },
+  kicker: {
+    fontSize: 11,
+    fontFamily: fonts.bold,
+    color: theme.colors.primary,
+  },
+  name: {
+    fontSize: 22,
+    fontFamily: fonts.extraBold,
+    color: "#fff",
+    marginTop: 4,
   },
   label: {
+    marginTop: 16,
+    marginBottom: 8,
     fontSize: 13,
     fontFamily: fonts.bold,
     color: theme.colors.mutedForeground,
-    marginBottom: 9,
-    marginTop: 4,
   },
-  providerCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 13,
-    backgroundColor: "rgba(28,28,58,0.85)",
+  choice: {
+    backgroundColor: "rgba(28,28,58,0.7)",
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 17,
+    borderColor: "transparent",
+    borderRadius: 16,
     padding: 14,
-    marginBottom: 20,
   },
-  serviceIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
-    backgroundColor: "rgba(255,102,0,0.15)",
-    alignItems: "center",
-    justifyContent: "center",
+  choiceOn: {
+    borderColor: theme.colors.primary,
   },
-  serviceName: {
-    fontSize: 15.5,
+  choiceLabel: {
+    fontSize: 15,
     fontFamily: fonts.bold,
     color: "#fff",
   },
-  serviceSub: {
-    fontSize: 12.5,
-    fontFamily: fonts.medium,
-    color: theme.colors.mutedForeground,
-  },
-  servicePrice: {
+  choicePrice: {
+    marginTop: 4,
     fontSize: 14,
     fontFamily: fonts.extraBold,
     color: theme.colors.primary,
   },
-  textAreaSpacing: {
-    marginBottom: 12,
-  },
-  addressLoading: {
-    marginVertical: 10,
-  },
-  addressCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 13,
-    backgroundColor: "rgba(28,28,58,0.6)",
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 16,
-    padding: 14,
-  },
-  addressCardActive: {
-    borderColor: theme.colors.primary,
-    backgroundColor: "rgba(28,28,58,0.85)",
-  },
-  addressRadio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.25)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addressRadioActive: {
-    borderColor: theme.colors.primary,
-  },
-  addressRadioDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: theme.colors.primary,
-  },
-  addressTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  addressLabel: {
-    fontSize: 14.5,
-    fontFamily: fonts.bold,
-    color: "#fff",
-  },
-  defaultBadge: {
-    backgroundColor: "rgba(255,102,0,0.16)",
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  defaultBadgeText: {
-    fontSize: 10.5,
-    fontFamily: fonts.bold,
-    color: theme.colors.primary,
-  },
-  addressDetail: {
-    fontSize: 12.5,
-    fontFamily: fonts.medium,
-    color: theme.colors.mutedForeground,
-    marginTop: 3,
-  },
-  addressEmpty: {
+  muted: {
     fontSize: 13,
     fontFamily: fonts.medium,
     color: theme.colors.mutedForeground,
+    marginTop: 4,
   },
-  addAddressButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    borderWidth: 1,
-    borderColor: theme.colors.primary,
-    borderStyle: "dashed",
-    borderRadius: 16,
-    paddingVertical: 14,
-    marginTop: 10,
-  },
-  addAddressButtonText: {
-    fontSize: 14,
+  link: {
+    fontSize: 13,
     fontFamily: fonts.bold,
     color: theme.colors.primary,
+    marginTop: 4,
   },
   whenRow: {
     flexDirection: "row",
     gap: 10,
-    marginBottom: 20,
   },
-  whenButton: {
+  whenChip: {
     flex: 1,
-    backgroundColor: "rgba(28,28,58,0.85)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
     borderRadius: 14,
-    paddingVertical: 13,
+    paddingVertical: 12,
     alignItems: "center",
+    backgroundColor: "rgba(28,28,58,0.7)",
   },
-  whenButtonActive: {
+  whenChipOn: {
     backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
   },
   whenText: {
     fontSize: 14,
-    fontFamily: fonts.semiBold,
-    color: "#c9c7e4",
-  },
-  whenTextActive: {
-    color: "#fff",
     fontFamily: fonts.bold,
+    color: theme.colors.mutedForeground,
   },
-  scheduleRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 20,
+  whenTextOn: {
+    color: "#fff",
   },
-  submitError: {
-    marginTop: 14,
+  input: {
+    flex: 1,
+    backgroundColor: "rgba(28,28,58,0.7)",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: "#fff",
+    fontFamily: fonts.medium,
+    fontSize: 14,
+  },
+  note: {
+    minHeight: 80,
+    textAlignVertical: "top",
   },
   footer: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(15,15,38,0.97)",
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-    paddingHorizontal: 24,
-    paddingTop: 14,
-  },
-  estimateRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    backgroundColor: "#14142e",
   },
-  estimateLabel: {
-    fontSize: 13,
+  footerLabel: {
+    fontSize: 11,
     fontFamily: fonts.semiBold,
     color: theme.colors.mutedForeground,
   },
-  estimateValue: {
-    fontSize: 16,
+  footerPrice: {
+    fontSize: 20,
     fontFamily: fonts.extraBold,
     color: "#fff",
   },
-  submit: {
+  callButton: {
+    flex: 1,
     backgroundColor: theme.colors.primary,
     borderRadius: 16,
-    paddingVertical: 17,
+    paddingVertical: 16,
     alignItems: "center",
-    shadowColor: theme.colors.primary,
-    shadowOpacity: 0.42,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8,
   },
-  submitText: {
-    fontSize: 17,
-    fontFamily: fonts.bold,
+  callButtonText: {
     color: "#fff",
+    fontSize: 16,
+    fontFamily: fonts.extraBold,
+  },
+  error: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    color: theme.colors.destructive,
+    fontFamily: fonts.medium,
+    textAlign: "center",
   },
 }));

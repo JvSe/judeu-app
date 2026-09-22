@@ -146,7 +146,7 @@ export default function ProviderProfile() {
         </View>
         <View style={{ flex: 1 }}>
           <PrimaryButton
-            label="Contratar agora"
+            label={`Chamar ${provider.name.split(" ")[0]}`}
             onPress={() => {
               const selected =
                 provider.services.find((s) => s.id === selectedServiceId) ?? provider.services[0];

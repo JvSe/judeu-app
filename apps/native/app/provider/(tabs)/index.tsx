@@ -30,14 +30,13 @@ import {
   shortTime,
 } from "@/lib/format";
 import {
-  useMyJobPostings,
   useMyProviderProfile,
   useNotifications,
   useOrders,
   useSetAvailability,
   useTransitionOrder,
 } from "@/lib/hooks";
-import { useCurrentLocation, useShareLocationWhileEnRoute } from "@/lib/location";
+import { useCurrentLocation, useShareIdleLocation, useShareLocationWhileEnRoute } from "@/lib/location";
 
 function orderTitle(order: Order): string {
   return order.service?.name ?? order.category?.name ?? order.description ?? "Serviço";
@@ -74,8 +73,6 @@ export default function ProviderDashboard() {
   const { theme } = useUnistyles();
   const { user } = useAuth();
   const { data: profile } = useMyProviderProfile();
-  const isCompany = profile?.isCompany === true;
-  const { data: myJobs = [] } = useMyJobPostings(isCompany);
   const { data: orders = [], isLoading } = useOrders("provider", { poll: true });
   const transition = useTransitionOrder();
   const setAvailability = useSetAvailability();
@@ -98,6 +95,7 @@ export default function ProviderDashboard() {
     (o) => o.status === "ACCEPTED" || o.status === "EN_ROUTE",
   );
   useShareLocationWhileEnRoute(enRouteOrder?.id);
+  useShareIdleLocation(Boolean(profile?.isAvailable));
 
   const prevStatusRef = useRef<Map<string, OrderStatus>>(new Map());
   useEffect(() => {
@@ -116,7 +114,7 @@ export default function ProviderDashboard() {
       { id, action },
       {
         onSuccess: (order) => {
-          if (action === "start_route") {
+          if (action === "accept" || action === "start_route") {
             router.push({ pathname: "/provider/delivery/[id]", params: { id: order.id } });
           }
         },
@@ -205,15 +203,6 @@ export default function ProviderDashboard() {
             </View>
             <View style={[styles.liveDot, !isAvailable && styles.liveDotOff]} />
           </GlassSurface>
-          <Pressable
-            onPress={() =>
-              router.push((isCompany ? "/provider/vaga" : "/jobs") as never)
-            }
-          >
-            <GlassSurface style={styles.iconButton}>
-              <Ionicons name="briefcase-outline" size={22} color="#fff" />
-            </GlassSurface>
-          </Pressable>
           <Pressable onPress={() => router.push("/provider/notifications" as never)}>
             <GlassSurface style={styles.iconButton}>
               <Ionicons name="notifications-outline" size={22} color="#fff" />
@@ -272,32 +261,6 @@ export default function ProviderDashboard() {
           </Text>
         </Pressable>
 
-        {isCompany && (
-          <Pressable
-            style={({ pressed }) => [styles.vagaCard, { opacity: pressed ? 0.92 : 1 }]}
-            onPress={() =>
-              router.push(myJobs.length > 0 ? "/provider/vaga" : "/provider/vaga/ai/chat")
-            }
-          >
-            <View style={styles.vagaIcon}>
-              <Ionicons name="briefcase" size={22} color="#fff" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.vagaTitle}>Publicar vaga</Text>
-              <Text style={styles.vagaSubtitle} numberOfLines={1}>
-                {myJobs.length > 0
-                  ? `${myJobs.length} vaga${myJobs.length === 1 ? "" : "s"} da empresa`
-                  : "Contrate pela sua empresa com a JudIA"}
-              </Text>
-            </View>
-            <Pressable
-              style={styles.vagaButton}
-              onPress={() => router.push("/provider/vaga/ai/chat")}
-            >
-              <Text style={styles.vagaButtonText}>Nova</Text>
-            </Pressable>
-          </Pressable>
-        )}
       </View>
 
       <ScrollView
@@ -326,7 +289,7 @@ export default function ProviderDashboard() {
         </View>
 
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Novos pedidos</Text>
+          <Text style={styles.sectionTitle}>Novas chamadas</Text>
           {newOrders.length > 0 ? (
             <View style={styles.newBadge}>
               <Text style={styles.newBadgeText}>{newOrders.length} novos</Text>
@@ -345,7 +308,7 @@ export default function ProviderDashboard() {
         {!isLoading && newOrders.length === 0 && (
           <View style={styles.emptyCard}>
             <Ionicons name="flash-outline" size={18} color={theme.colors.mutedForeground} />
-            <Text style={styles.emptyText}>Nenhum pedido novo no momento.</Text>
+            <Text style={styles.emptyText}>Nenhuma chamada nova no momento.</Text>
           </View>
         )}
 
@@ -356,7 +319,6 @@ export default function ProviderDashboard() {
             contentContainerStyle={styles.cardsRow}
           >
             {newOrders.map((order) => {
-              const paymentPaid = order.payment?.status === "PAID";
               const accepting =
                 transition.isPending && pendingOrder?.id === order.id && pendingOrder.action === "accept";
               const rejecting =
@@ -438,8 +400,8 @@ export default function ProviderDashboard() {
                       <SpinButton
                         controlled
                         isActive={accepting}
-                        disabled={transition.isPending || !paymentPaid}
-                        idleText={paymentPaid ? "Aceitar" : "Aguardando pagamento"}
+                        disabled={transition.isPending}
+                        idleText="Aceitar"
                         activeText="Aceitando..."
                         onPress={() => act(order.id, "accept")}
                         colors={{

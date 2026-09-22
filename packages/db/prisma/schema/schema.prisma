@@ -253,6 +253,10 @@ model ProviderProfile {
   baseLat         Float?
   baseLng         Float?
   serviceRadiusKm Float          @default(10)
+  // GPS ao vivo enquanto o prestador está online (pin no mapa do cliente).
+  lastLat         Float?
+  lastLng         Float?
+  lastLocationAt  DateTime?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 

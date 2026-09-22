@@ -112,7 +112,7 @@ export default function Notifications() {
         <View style={styles.prefsGroup}>
           {(
             [
-              { key: "notifyOrders" as const, icon: "cube-outline" as const, label: "Pedidos", detail: "Novo pedido, aceite, a caminho, conclusão" },
+              { key: "notifyOrders" as const, icon: "cube-outline" as const, label: "Chamadas", detail: "Nova chamada, aceite, a caminho, conclusão" },
               { key: "notifyMessages" as const, icon: "chatbubble-ellipses-outline" as const, label: "Mensagens", detail: "Chat com o prestador" },
             ]
           ).map((pref, index) => {

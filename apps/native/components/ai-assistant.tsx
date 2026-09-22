@@ -487,7 +487,17 @@ export function AiAssistant() {
                 <Pressable
                   key={p.id}
                   style={({ pressed }) => [styles.providerCard, { opacity: pressed ? 0.85 : 1 }]}
-                  onPress={() => router.push({ pathname: "/client/provider/[id]", params: { id: p.id } })}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/client/create-order",
+                      params: {
+                        providerId: p.id,
+                        providerName: p.name,
+                        allowsNegotiation: String(p.allowsNegotiation),
+                        ...(p.priceFromCents != null ? { priceCents: String(p.priceFromCents) } : {}),
+                      },
+                    })
+                  }
                 >
                   <Avatar initials={initialsOf(p.name)} color="#3a3a70" size={44} radius={14} />
                   <View style={{ flex: 1 }}>

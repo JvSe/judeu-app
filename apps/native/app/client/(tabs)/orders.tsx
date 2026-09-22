@@ -30,7 +30,7 @@ export default function Orders() {
   return (
     <Screen>
       <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
-        <Text style={styles.heading}>Meus pedidos</Text>
+        <Text style={styles.heading}>Minhas chamadas</Text>
         <View style={styles.segment}>
           <Pressable
             style={[styles.segmentItem, tab === "andamento" && styles.segmentItemActive]}
@@ -57,16 +57,19 @@ export default function Orders() {
         {tab === "andamento" && (
           <>
             {!isLoading && activeOrders.length === 0 && (
-              <Text style={styles.emptyText}>Você não tem pedidos em andamento.</Text>
+              <Text style={styles.emptyText}>Você não tem chamadas em andamento.</Text>
             )}
             {activeOrders.map((order) => {
               const enRoute = order.status === "EN_ROUTE" || order.status === "IN_PROGRESS";
+              const waiting = order.status === "CREATED";
+              const needsPay =
+                order.status === "ACCEPTED" &&
+                order.payment?.status !== "PAID" &&
+                order.payment?.method !== "CASH";
               const canTrackOnMap =
                 order.status === "EN_ROUTE" ||
                 order.status === "IN_PROGRESS" ||
-                (order.status === "ACCEPTED" &&
-                  order.tracking.providerLat != null &&
-                  order.tracking.providerLng != null);
+                (order.status === "ACCEPTED" && !needsPay);
               return (
                 <View
                   key={order.id}
@@ -115,18 +118,26 @@ export default function Orders() {
                       style={styles.primaryAction}
                       onPress={() =>
                         router.push(
-                          canTrackOnMap
-                            ? { pathname: "/client/tracking/[id]", params: { id: order.id } }
-                            : { pathname: "/client/order/[id]", params: { id: order.id } },
+                          waiting
+                            ? ({ pathname: "/client/waiting/[id]", params: { id: order.id } } as never)
+                            : needsPay
+                              ? { pathname: "/client/payment/[id]", params: { id: order.id } }
+                              : canTrackOnMap
+                                ? { pathname: "/client/tracking/[id]", params: { id: order.id } }
+                                : { pathname: "/client/order/[id]", params: { id: order.id } },
                         )
                       }
                     >
                       <Text style={styles.primaryActionText}>
-                        {canTrackOnMap
-                          ? order.status === "IN_PROGRESS"
-                            ? "Prestador no local"
-                            : "Acompanhar no mapa"
-                          : "Ver detalhes"}
+                        {waiting
+                          ? "Aguardando aceite"
+                          : needsPay
+                            ? "Pagar chamada"
+                            : canTrackOnMap
+                              ? order.status === "IN_PROGRESS"
+                                ? "No local"
+                                : "Acompanhar no mapa"
+                              : "Ver detalhes"}
                       </Text>
                     </Pressable>
                     {canTrackOnMap && (

@@ -1,7 +1,7 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useNavigation } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -14,35 +14,40 @@ import { RealMap } from "@/components/ui/real-map";
 import { Screen } from "@/components/ui/screen";
 import type { BottomSheetMethods } from "@/components/ui/templates/bottom-sheet/types";
 import { fonts } from "@/constants/fonts";
-import type { ProviderListItem } from "@/lib/api";
-import { avatarColor, initialsOf, priceFromCents } from "@/lib/format";
-import { useNotifications, useProviders } from "@/lib/hooks";
+import {
+  avatarColor,
+  confirmCallPath,
+  formatAddressLine,
+  initialsOf,
+  priceFromCents,
+} from "@/lib/format";
+import { useAddresses, useCategories, useNearbyProviders, useNotifications } from "@/lib/hooks";
 import { useCurrentLocation } from "@/lib/location";
-import { distanceKm } from "@/lib/nearby";
+import { providerPinPosition } from "@/lib/nearby";
 
 import { clientFloatingTabBarStyle } from "./_layout";
-
-function providerPosition(provider: ProviderListItem) {
-  if (provider.baseLat == null || provider.baseLng == null) return null;
-  return { lat: provider.baseLat, lng: provider.baseLng };
-}
 
 export default function ClientHome() {
   const navigation = useNavigation();
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
-  const { data: providers = [] } = useProviders();
   const myLocation = useCurrentLocation();
+  const { data: addresses = [] } = useAddresses();
+  const { data: categories = [] } = useCategories();
   const { data: notifications } = useNotifications();
   const hasUnread = (notifications?.unreadCount ?? 0) > 0;
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const defaultAddress = addresses.find((a) => a.isDefault) ?? addresses[0];
+  const origin = defaultAddress
+    ? { lat: defaultAddress.lat, lng: defaultAddress.lng }
+    : myLocation;
+  const { data: providers = [] } = useNearbyProviders(origin, {
+    categoryId: categoryId ?? undefined,
+  });
 
   const providerSheetRef = useRef<BottomSheetMethods>(null);
-  const tabBarRestoreTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
-    null,
-  );
+  const tabBarRestoreTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [tabBarHiddenForSheet, setTabBarHiddenForSheet] = useState(false);
 
   const clearTabBarRestoreTimeout = () => {
@@ -54,9 +59,7 @@ export default function ClientHome() {
 
   useEffect(() => {
     navigation.setOptions({
-      tabBarStyle: tabBarHiddenForSheet
-        ? { display: "none" }
-        : clientFloatingTabBarStyle,
+      tabBarStyle: tabBarHiddenForSheet ? { display: "none" } : clientFloatingTabBarStyle,
     });
     return () => {
       navigation.setOptions({ tabBarStyle: clientFloatingTabBarStyle });
@@ -85,24 +88,20 @@ export default function ClientHome() {
     setSelectedProviderId(null);
   };
 
-  // Ordena pela distância real até a localização base do prestador (mais
-  // perto primeiro).
-  const nearbyProviders = useMemo(() => {
-    if (!myLocation) return providers;
-    return [...providers].sort((a, b) => {
-      const posA = providerPosition(a);
-      const posB = providerPosition(b);
-      if (!posA || !posB) return 0;
-      return distanceKm(myLocation, posA) - distanceKm(myLocation, posB);
-    });
-  }, [providers, myLocation]);
+  const selected = providers.find((p) => p.id === selectedProviderId);
+  const locationLabel = defaultAddress
+    ? formatAddressLine(defaultAddress)
+    : myLocation
+      ? "Sua localização"
+      : "Definir endereço";
 
   const markers = [
     ...providers
-      .filter((p) => p.baseLat != null && p.baseLng != null)
-      .map((p, index) => ({
+      .map((p) => ({ p, pos: providerPinPosition(p) }))
+      .filter((x): x is { p: (typeof providers)[number]; pos: { lat: number; lng: number } } => x.pos != null)
+      .map(({ p, pos }, index) => ({
         id: p.id,
-        lngLat: [p.baseLng as number, p.baseLat as number] as [number, number],
+        lngLat: [pos.lng, pos.lat] as [number, number],
         render: () => (
           <ProviderMarker
             initials={initialsOf(p.name)}
@@ -111,50 +110,33 @@ export default function ClientHome() {
             highlighted={index === 0}
           />
         ),
-        onPress: () => {
-          openProviderSheet(p.id, 0);
-        },
+        onPress: () => openProviderSheet(p.id, 0),
       })),
-    ...(myLocation
-      ? [
-          {
-            id: "self",
-            lngLat: [myLocation.lng, myLocation.lat] as [number, number],
-            render: () => <SelfMarker />,
-          },
-        ]
+    ...(origin
+      ? [{ id: "self", lngLat: [origin.lng, origin.lat] as [number, number], render: () => <SelfMarker /> }]
       : []),
   ];
 
+  const nextAvailable = providers[0];
+
   return (
     <Screen>
-      <RealMap
-        markers={markers}
-        center={myLocation ? [myLocation.lng, myLocation.lat] : undefined}
-      />
+      <RealMap markers={markers} center={origin ? [origin.lng, origin.lat] : undefined} />
 
-      <View
-        style={[styles.overlay, { paddingTop: insets.top + 12 }]}
-        pointerEvents="box-none"
-      >
+      <View style={[styles.overlay, { paddingTop: insets.top + 12 }]} pointerEvents="box-none">
         <View style={styles.topBar}>
-          <GlassSurface style={styles.locationPill}>
-            <Ionicons name="location" size={16} color={theme.colors.primary} />
-            <View>
-              <Text style={styles.locationLabel}>SUA LOCALIZAÇÃO</Text>
-              <Text style={styles.locationValue}>
-                {myLocation ? "Sua localização" : "Localização indisponível"}
-              </Text>
-            </View>
-          </GlassSurface>
-          <Pressable onPress={() => router.push("/jobs" as never)}>
-            <GlassSurface style={styles.bellButton}>
-              <Ionicons name="briefcase-outline" size={22} color="#fff" />
+          <Pressable style={{ flex: 1 }} onPress={() => router.push("/client/addresses")}>
+            <GlassSurface style={styles.locationPill}>
+              <Ionicons name="location" size={16} color={theme.colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.locationLabel}>SUA LOCALIZAÇÃO</Text>
+                <Text style={styles.locationValue} numberOfLines={1}>
+                  {locationLabel}
+                </Text>
+              </View>
             </GlassSurface>
           </Pressable>
-          <Pressable
-            onPress={() => router.push("/client/notifications" as never)}
-          >
+          <Pressable onPress={() => router.push("/client/notifications" as never)}>
             <GlassSurface style={styles.bellButton}>
               <Ionicons name="notifications-outline" size={22} color="#fff" />
               {hasUnread && <View style={styles.bellDot} />}
@@ -163,83 +145,114 @@ export default function ClientHome() {
         </View>
 
         <Pressable
-          style={({ pressed }) => [
-            styles.searchBar,
-            { opacity: pressed ? 0.9 : 1 },
-          ]}
+          style={({ pressed }) => [styles.searchBar, { opacity: pressed ? 0.9 : 1 }]}
           onPress={() => router.push("/client/ai/chat" as never)}
         >
           <Ionicons name="search" size={22} color="#fff" />
           <Text style={styles.searchText}>Do que você precisa hoje?</Text>
         </Pressable>
-      </View>
 
-      <View style={styles.nearby}>
-        <View style={styles.nearbyHeader}>
-          <Text style={styles.nearbyTitle}>Perto de você</Text>
-          <Text style={styles.nearbyLink}>Ver mapa</Text>
-        </View>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.cardsRow}
+          contentContainerStyle={styles.chipsRow}
         >
-          {nearbyProviders.slice(0, 2).map((provider, index) => {
-            const position = providerPosition(provider);
-            const distanceLabel =
-              myLocation && position
-                ? `${distanceKm(myLocation, position).toFixed(1)} km`
-                : `${provider.reviews} avaliações`;
+          <Pressable
+            style={[styles.chip, !categoryId && styles.chipOn]}
+            onPress={() => setCategoryId(null)}
+          >
+            <Text style={[styles.chipText, !categoryId && styles.chipTextOn]}>Todas</Text>
+          </Pressable>
+          {categories.map((c) => {
+            const on = c.id === categoryId;
             return (
-              <Pressable
-                key={provider.id}
-                style={({ pressed }) => [
-                  styles.providerCard,
-                  { opacity: pressed ? 0.9 : 1 },
-                ]}
-                onPress={() => openProviderSheet(provider.id, 0)}
-              >
-                <View style={styles.providerHeader}>
-                  <Avatar
-                    initials={initialsOf(provider.name)}
-                    imageUri={provider.avatarUrl}
-                    color={avatarColor(index)}
-                    size={46}
-                    radius={14}
-                  />
-                  <View style={styles.providerInfo}>
-                    <Text style={styles.providerName} numberOfLines={1}>
-                      {provider.name}
-                    </Text>
-                    <Text style={styles.providerRole} numberOfLines={1}>
-                      {provider.companyName ? `${provider.companyName} · ` : ""}
-                      {provider.role}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.providerMeta}>
-                  <View style={styles.ratingChip}>
-                    <Text style={styles.ratingText}>★ {provider.rating}</Text>
-                  </View>
-                  <Text style={styles.distanceText}>{distanceLabel}</Text>
-                </View>
-                <View style={styles.providerFooter}>
-                  <Text style={styles.providerPrice}>
-                    {priceFromCents(provider.priceFromCents)}
-                  </Text>
-                  <View style={styles.viewButton}>
-                    <Text style={styles.viewButtonText}>Ver</Text>
-                  </View>
-                </View>
+              <Pressable key={c.id} style={[styles.chip, on && styles.chipOn]} onPress={() => setCategoryId(c.id)}>
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{c.name}</Text>
               </Pressable>
             );
           })}
         </ScrollView>
       </View>
 
+      <View style={styles.nearby}>
+        <View style={styles.nearbyHeader}>
+          <Text style={styles.nearbyTitle}>Pessoas perto de você</Text>
+          {categoryId && nextAvailable ? (
+            <Pressable
+              onPress={() =>
+                router.push(
+                  confirmCallPath({
+                    providerId: nextAvailable.id,
+                    providerName: nextAvailable.name,
+                    allowsNegotiation: nextAvailable.allowsNegotiation,
+                    priceCents: nextAvailable.priceFromCents ?? undefined,
+                    categoryId,
+                  }),
+                )
+              }
+            >
+              <Text style={styles.nearbyLink}>Chamar o próximo</Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.nearbyLink}>{providers.length} online</Text>
+          )}
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.cardsRow}
+        >
+          {providers.slice(0, 8).map((provider, index) => (
+            <Pressable
+              key={provider.id}
+              style={({ pressed }) => [styles.providerCard, { opacity: pressed ? 0.9 : 1 }]}
+              onPress={() => openProviderSheet(provider.id, 0)}
+            >
+              <View style={styles.providerHeader}>
+                <Avatar
+                  initials={initialsOf(provider.name)}
+                  imageUri={provider.avatarUrl}
+                  color={avatarColor(index)}
+                  size={46}
+                  radius={14}
+                />
+                <View style={styles.providerInfo}>
+                  <Text style={styles.providerName} numberOfLines={1}>
+                    {provider.name}
+                  </Text>
+                  <Text style={styles.providerRole} numberOfLines={1}>
+                    {provider.role}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.providerMeta}>
+                <View style={styles.ratingChip}>
+                  <Text style={styles.ratingText}>★ {provider.rating.toFixed(1)}</Text>
+                </View>
+                <Text style={styles.distanceText}>
+                  {provider.etaMin != null
+                    ? `~${provider.etaMin} min`
+                    : provider.distanceKm != null
+                      ? `${provider.distanceKm.toFixed(1)} km`
+                      : `${provider.reviews} aval.`}
+                </Text>
+              </View>
+              <View style={styles.providerFooter}>
+                <Text style={styles.providerPrice}>{priceFromCents(provider.priceFromCents)}</Text>
+                <View style={styles.viewButton}>
+                  <Text style={styles.viewButtonText}>Chamar</Text>
+                </View>
+              </View>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
+
       <ProviderSheet
         ref={providerSheetRef}
         providerId={selectedProviderId}
+        etaMin={selected?.etaMin}
+        categoryId={categoryId}
         onCloseStart={handleProviderSheetCloseStart}
         onClose={handleProviderSheetClose}
       />
@@ -262,7 +275,6 @@ const styles = StyleSheet.create((theme) => ({
     gap: 11,
   },
   locationPill: {
-    flex: 1,
     height: 50,
     borderRadius: 16,
     flexDirection: "row",
@@ -317,6 +329,30 @@ const styles = StyleSheet.create((theme) => ({
   searchText: {
     fontSize: 17,
     fontFamily: fonts.bold,
+    color: "#fff",
+  },
+  chipsRow: {
+    gap: 8,
+    paddingRight: 8,
+  },
+  chip: {
+    backgroundColor: "rgba(28,28,58,0.92)",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  chipOn: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  chipText: {
+    color: "#fff",
+    fontFamily: fonts.bold,
+    fontSize: 13,
+  },
+  chipTextOn: {
     color: "#fff",
   },
   nearby: {

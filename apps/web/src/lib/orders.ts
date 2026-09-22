@@ -1,4 +1,4 @@
-import type { OrderStatus, PaymentStatus, Prisma } from "@judeu/db";
+import type { OrderStatus, PaymentMethod, PaymentStatus, Prisma } from "@judeu/db";
 
 import { prisma } from "./db";
 import { haversineKm, routeBetween } from "./geo";
@@ -20,6 +20,8 @@ export const FALLBACK_LNG = -48.3336;
 // Raio (linha reta) considerado "chegou" na casa do cliente, pra liberar o
 // botão de iniciar serviço — não depende do Valhalla, que roda best-effort.
 const ARRIVAL_RADIUS_KM = 0.15;
+export const OFFER_TTL_MS = 60_000;
+const BUSY_ORDER_STATUSES = ["ACCEPTED", "EN_ROUTE", "IN_PROGRESS", "AWAITING_CONFIRMATION"] as const;
 
 function hasArrivedAtClient(
   providerLat: number | null,
@@ -61,7 +63,7 @@ const orderInclude = {
   provider: { include: { user: { select: { id: true, fullName: true, avatarUrl: true } } } },
   client: { select: { id: true, fullName: true, phone: true } },
   events: { orderBy: { createdAt: "asc" } },
-  payment: { select: { status: true } },
+  payment: { select: { status: true, method: true } },
 } satisfies Prisma.OrderInclude;
 
 type OrderRow = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
@@ -76,6 +78,7 @@ export type OrderDTO = {
   totalCents: number;
   cancelReason: string | null;
   createdAt: string;
+  offerExpiresAt: string;
   unreadMessages: number;
   service: { id: string; name: string } | null;
   category: { id: string; name: string } | null;
@@ -89,7 +92,7 @@ export type OrderDTO = {
     allowsNegotiation: boolean;
   } | null;
   client: { id: string; name: string; phone: string | null };
-  payment: { status: PaymentStatus } | null;
+  payment: { status: PaymentStatus; method: PaymentMethod } | null;
   address: {
     label: string | null;
     street: string;
@@ -123,6 +126,7 @@ function toDTO(o: OrderRow, unreadMessages = 0): OrderDTO {
     totalCents: o.totalCents,
     cancelReason: o.cancelReason,
     createdAt: o.createdAt.toISOString(),
+    offerExpiresAt: new Date(o.createdAt.getTime() + OFFER_TTL_MS).toISOString(),
     unreadMessages,
     service: o.service ? { id: o.service.id, name: o.service.name } : null,
     category: o.category ? { id: o.category.id, name: o.category.name } : null,
@@ -141,7 +145,7 @@ function toDTO(o: OrderRow, unreadMessages = 0): OrderDTO {
         }
       : null,
     client: { id: o.client.id, name: o.client.fullName, phone: o.client.phone },
-    payment: o.payment ? { status: o.payment.status } : null,
+    payment: o.payment ? { status: o.payment.status, method: o.payment.method } : null,
     address: {
       label: o.address.label,
       street: o.address.street,
@@ -214,9 +218,15 @@ export async function createOrder(
     where: { id: input.providerId },
     include: { services: true },
   });
-  if (!provider || provider.status !== "APPROVED") {
-    return { error: "Prestador indisponível", status: 400 };
+  if (!provider || provider.status !== "APPROVED" || !provider.isAvailable) {
+    return { error: "Essa pessoa não está disponível agora", status: 400 };
   }
+
+  const busy = await prisma.order.findFirst({
+    where: { providerId: provider.id, status: { in: [...BUSY_ORDER_STATUSES] } },
+    select: { id: true },
+  });
+  if (busy) return { error: "Essa pessoa já está em uma chamada", status: 409 };
 
   const address = await prisma.address.findUnique({ where: { id: input.addressId } });
   if (!address || address.userId !== clientId) {
@@ -248,21 +258,16 @@ export async function createOrder(
       totalCents,
       status: "CREATED",
       address: { connect: { id: address.id } },
-      events: { create: { status: "CREATED", note: "Pedido criado" } },
+      events: { create: { status: "CREATED", note: "Chamada enviada" } },
     },
     include: orderInclude,
   });
 
-  // Prestadores com negociação ligada precisam ver o pedido antes do pagamento
-  // pra poder propor outro valor; os demais só são avisados quando o pagamento
-  // for confirmado (ver notifyProviderIfNeeded em payments.ts).
-  if (provider.allowsNegotiation) {
-    void notifyUser(provider.userId, "ORDER", {
-      title: order.scheduledAt ? "Novo pedido agendado" : "Novo pedido",
-      body: order.service?.name ?? order.category?.name ?? "Você recebeu um novo pedido",
-      data: { type: "order", orderId: order.id, role: "provider" },
-    });
-  }
+  void notifyUser(provider.userId, "ORDER", {
+    title: order.scheduledAt ? "Nova chamada agendada" : "Nova chamada",
+    body: order.service?.name ?? order.category?.name ?? "Alguém está te chamando",
+    data: { type: "order", orderId: order.id, role: "provider" },
+  });
 
   return toDTO(order);
 }
@@ -281,20 +286,9 @@ async function unreadMessageCounts(
   return new Map(rows.map((r) => [r.orderId, r._count._all]));
 }
 
-// Enquanto o pedido está CREATED e sem pagamento confirmado, ele fica fora das
-// listagens — exceto para prestadores com negociação ligada, que precisam ver
-// o pedido antes do pagamento pra poder propor outro valor (RF-D5/F1).
-const HIDE_UNPAID_CREATED = {
-  OR: [
-    { status: { not: "CREATED" } },
-    { payment: { status: "PAID" } },
-    { provider: { allowsNegotiation: true } },
-  ],
-} satisfies Prisma.OrderWhereInput;
-
 export async function listClientOrders(clientId: string): Promise<OrderDTO[]> {
   const rows = await prisma.order.findMany({
-    where: { clientId, ...HIDE_UNPAID_CREATED },
+    where: { clientId },
     include: orderInclude,
     orderBy: { createdAt: "desc" },
   });
@@ -307,12 +301,7 @@ export async function listProviderOrders(userId: string): Promise<OrderDTO[]> {
   const profile = await prisma.providerProfile.findUnique({ where: { userId } });
   if (!profile) return [];
   const rows = await prisma.order.findMany({
-    where: {
-      providerId: profile.id,
-      ...(profile.allowsNegotiation
-        ? {}
-        : { OR: [{ status: { not: "CREATED" } }, { payment: { status: "PAID" } }] }),
-    },
+    where: { providerId: profile.id },
     include: orderInclude,
     orderBy: { createdAt: "desc" },
   });
@@ -361,13 +350,13 @@ export async function updateOrderLocation(
 }
 
 const ACTION_NOTES: Record<OrderAction, string> = {
-  accept: "Pedido aceito pelo prestador",
-  reject: "Pedido recusado pelo prestador",
+  accept: "Chamada aceita",
+  reject: "Chamada recusada",
   start_route: "Prestador a caminho",
   start_work: "Serviço em execução",
   complete: "Serviço marcado como concluído pelo prestador — aguardando confirmação do cliente",
   confirm_completion: "Cliente confirmou a conclusão do serviço",
-  cancel: "Pedido cancelado pelo cliente",
+  cancel: "Chamada cancelada",
 };
 
 export async function transitionOrder(
@@ -400,8 +389,11 @@ export async function transitionOrder(
   if (!rule.from.includes(order.status)) {
     return { error: `Transição inválida a partir de ${order.status}`, status: 409 };
   }
-  if (action === "accept" && order.payment?.status !== "PAID") {
-    return { error: "Pagamento do cliente ainda não foi confirmado", status: 409 };
+  if (action === "start_route") {
+    const paid = order.payment?.status === "PAID" || order.payment?.method === "CASH";
+    if (!paid) {
+      return { error: "Aguardando o cliente confirmar o pagamento", status: 409 };
+    }
   }
   if (action === "start_work" && !hasArrivedAtClient(order.providerLat, order.providerLng, order.address)) {
     return { error: "Você ainda não chegou ao local do cliente", status: 409 };
@@ -449,4 +441,55 @@ export async function transitionOrder(
   }
 
   return withRoute(updated, toDTO(updated));
+}
+
+export async function reassignOrder(
+  id: string,
+  clientId: string,
+  providerId: string,
+): Promise<OrderDTO | { error: string; status: number }> {
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: { provider: { select: { userId: true } } },
+  });
+  if (!order) return { error: "Chamada não encontrada", status: 404 };
+  if (order.clientId !== clientId) return { error: "Ação permitida apenas ao cliente", status: 403 };
+  if (order.status !== "CREATED") return { error: "Só é possível trocar a pessoa enquanto a chamada está aberta", status: 409 };
+  if (order.providerId === providerId) return { error: "Essa já é a pessoa da chamada", status: 400 };
+
+  const provider = await prisma.providerProfile.findUnique({ where: { id: providerId } });
+  if (!provider || provider.status !== "APPROVED" || !provider.isAvailable) {
+    return { error: "Essa pessoa não está disponível agora", status: 400 };
+  }
+  const busy = await prisma.order.findFirst({
+    where: { providerId: provider.id, status: { in: [...BUSY_ORDER_STATUSES] } },
+    select: { id: true },
+  });
+  if (busy) return { error: "Essa pessoa já está em uma chamada", status: 409 };
+
+  const previousUserId = order.provider?.userId;
+  const updated = await prisma.order.update({
+    where: { id },
+    data: {
+      provider: { connect: { id: provider.id } },
+      createdAt: new Date(),
+      events: { create: { status: "CREATED", note: "Chamada reenviada para outra pessoa" } },
+    },
+    include: orderInclude,
+  });
+
+  if (previousUserId) {
+    void notifyUser(previousUserId, "ORDER", {
+      title: "Chamada encerrada",
+      body: "O cliente chamou outra pessoa",
+      data: { type: "order", orderId: id, role: "provider" },
+    });
+  }
+  void notifyUser(provider.userId, "ORDER", {
+    title: "Nova chamada",
+    body: updated.service?.name ?? updated.category?.name ?? "Alguém está te chamando",
+    data: { type: "order", orderId: id, role: "provider" },
+  });
+
+  return toDTO(updated);
 }

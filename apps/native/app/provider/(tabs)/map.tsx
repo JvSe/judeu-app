@@ -1,15 +1,16 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { router } from "expo-router";
+import { useEffect, useState } from "react";
+import { Alert, Pressable, Text, Vibration, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import type { Order } from "@/lib/api";
 import { fonts } from "@/constants/fonts";
 import { initialsOf, moneyFromCents, shortTime } from "@/lib/format";
-import { useOrders, useTransitionOrder } from "@/lib/hooks";
-import { useCurrentLocation, useShareLocationWhileEnRoute, useWatchCurrentLocation } from "@/lib/location";
+import { useMyProviderProfile, useOrders, useSetAvailability, useTransitionOrder, useWallet } from "@/lib/hooks";
+import { useShareIdleLocation, useShareLocationWhileEnRoute, useWatchCurrentLocation } from "@/lib/location";
 import { Avatar } from "@/components/ui/avatar";
 import { ProviderMarker, SelfMarker } from "@/components/ui/map-marker";
 import { RealMap } from "@/components/ui/real-map";
@@ -28,14 +29,20 @@ function addressLine(order: Order): string {
 export default function ProviderMap() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
-  const [online, setOnline] = useState(true);
+  const { data: profile } = useMyProviderProfile();
+  const setAvailability = useSetAvailability();
+  const { data: wallet } = useWallet();
+  const online = Boolean(profile?.isAvailable);
   const { data: orders = [] } = useOrders("provider", { poll: true });
   const transition = useTransitionOrder();
   const [respondAction, setRespondAction] = useState<"accept" | "reject" | null>(null);
   const myLocation = useWatchCurrentLocation();
+  useShareIdleLocation(online);
 
   const newOrder = orders.find((o) => o.status === "CREATED");
-  const newOrderPaymentPaid = newOrder?.payment?.status === "PAID";
+  useEffect(() => {
+    if (newOrder && online) Vibration.vibrate([0, 400, 200, 400]);
+  }, [newOrder?.id, online]);
   const activeOrder = orders.find(
     (o) => o.status === "ACCEPTED" || o.status === "EN_ROUTE" || o.status === "IN_PROGRESS",
   );
@@ -50,6 +57,11 @@ export default function ProviderMap() {
     transition.mutate(
       { id, action },
       {
+        onSuccess: (order) => {
+          if (action === "accept") {
+            router.push({ pathname: "/provider/delivery/[id]", params: { id: order.id } });
+          }
+        },
         onError: (err) =>
           Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível completar a ação."),
         onSettled: () => setRespondAction(null),
@@ -103,7 +115,11 @@ export default function ProviderMap() {
       />
 
       <View style={[styles.topBar, { top: insets.top + 8 }]}>
-        <Pressable style={styles.onlinePill} onPress={() => setOnline((v) => !v)}>
+        <Pressable
+          style={styles.onlinePill}
+          onPress={() => setAvailability.mutate(!online)}
+          disabled={setAvailability.isPending}
+        >
           <View style={[styles.onlineDot, !online && styles.onlineDotOff]} />
           <Text style={[styles.onlineText, !online && styles.onlineTextOff]}>
             {online ? "Online" : "Offline"}
@@ -114,7 +130,9 @@ export default function ProviderMap() {
         </Pressable>
         <View style={styles.earningsPill}>
           <Ionicons name="logo-usd" size={15} color={theme.colors.primary} />
-          <Text style={styles.earningsPillText}>R$ 350 hoje</Text>
+          <Text style={styles.earningsPillText}>
+            {moneyFromCents(wallet?.daily.find((d) => d.isToday)?.totalCents ?? 0)} hoje
+          </Text>
         </View>
       </View>
 
@@ -165,8 +183,8 @@ export default function ProviderMap() {
               <SpinButton
                 controlled
                 isActive={respondAction === "accept" && transition.isPending}
-                disabled={transition.isPending || !newOrderPaymentPaid}
-                idleText={newOrderPaymentPaid ? "Aceitar chamada" : "Aguardando pagamento"}
+                disabled={transition.isPending}
+                idleText="Aceitar chamada"
                 activeText="Aceitando..."
                 onPress={() => act(newOrder.id, "accept")}
                 colors={{

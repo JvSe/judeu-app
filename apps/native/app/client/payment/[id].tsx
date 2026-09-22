@@ -15,9 +15,10 @@ import type { PaymentMethodOption, PixDisplay } from "@/lib/api";
 import { PrimaryButton } from "@/components/ui/primary-button";
 import { Screen } from "@/components/ui/screen";
 
-const paymentMethods: { id: PaymentMethodOption; label: string; icon: "flash" | "card-outline"; tone: "success" | "neutral" }[] = [
+const paymentMethods: { id: PaymentMethodOption; label: string; icon: "flash" | "card-outline" | "cash-outline"; tone: "success" | "neutral" }[] = [
   { id: "PIX", label: "Pix", icon: "flash", tone: "success" },
   { id: "CARD", label: "Cartão de crédito", icon: "card-outline", tone: "neutral" },
+  { id: "CASH", label: "Dinheiro no local", icon: "cash-outline", tone: "neutral" },
 ];
 
 export default function Payment() {
@@ -34,7 +35,7 @@ export default function Payment() {
   const { data: payment } = useOrderPayment(id);
   const createPayment = useCreatePayment();
 
-  const goToOrder = () => router.replace({ pathname: "/client/order/[id]", params: { id } });
+  const goToOrder = () => router.replace({ pathname: "/client/tracking/[id]", params: { id } });
 
   useEffect(() => {
     if (payment?.status === "PAID") goToOrder();
@@ -55,6 +56,11 @@ export default function Payment() {
     setErrorMsg(null);
     try {
       const result = await createPayment.mutateAsync({ orderId: order.id, method });
+
+      if (method === "CASH") {
+        goToOrder();
+        return;
+      }
 
       if (method === "PIX") {
         setPix(result.pix ?? null);
@@ -175,7 +181,9 @@ export default function Payment() {
             label={
               createPayment.isPending
                 ? "Processando…"
-                : `Confirmar e pagar ${moneyFromCents(order.totalCents)}`
+                : method === "CASH"
+                  ? "Confirmar pagamento em dinheiro"
+                  : `Confirmar e pagar ${moneyFromCents(order.totalCents)}`
             }
             onPress={handleConfirm}
             disabled={createPayment.isPending}

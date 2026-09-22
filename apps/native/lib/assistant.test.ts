@@ -70,6 +70,7 @@ function makeOrder(categoryName: string | null): Order {
     totalCents: 0,
     cancelReason: null,
     createdAt: "2026-01-01T00:00:00.000Z",
+    offerExpiresAt: "2026-01-01T00:01:00.000Z",
     unreadMessages: 0,
     service: null,
     category: categoryName ? { id: "cat1", name: categoryName } : null,
@@ -215,21 +216,19 @@ describe("buildSystemPrompt", () => {
 
   it("mantém as instruções principais de tool-calling e anti-alucinação", () => {
     const prompt = buildSystemPrompt([]);
-    expect(prompt).toContain("chame a ferramenta buscar_prestadores");
-    expect(prompt).toContain("chame a ferramenta buscar_vagas");
+    expect(prompt).toContain("buscar_prestadores");
     expect(prompt).toContain("NUNCA invente prestadores, vagas, empresas, nomes, notas, salários ou preços");
   });
 
-  it("sem empresa, não libera montar_vaga e pede pra esclarecer a intenção", () => {
+  it("sem empresa, não fala de vagas de emprego", () => {
     const prompt = buildSystemPrompt([], {
       firstName: "Ana",
       city: null,
       topCategories: [],
       canPublishJobs: false,
     });
-    expect(prompt).toContain("NÃO chame montar_vaga");
-    expect(prompt).toContain("NÃO chute a ferramenta");
-    expect(prompt).not.toContain("Esta pessoa é empresa e PODE publicar vagas");
+    expect(prompt).toContain("Não fale de vagas de emprego");
+    expect(prompt).not.toContain("Esta pessoa é empresa");
   });
 
   it("com empresa, libera montar_vaga e marca o perfil no contexto", () => {
@@ -360,15 +359,15 @@ describe("parseToolCall", () => {
 });
 
 describe("buildAssistantTools", () => {
-  it("sempre inclui busca de prestador e de vagas", () => {
+  it("no chat do cliente só busca pessoas", () => {
     const tools = buildAssistantTools(CATEGORIES);
     const names = tools.map((t) => (t as { function: { name: string } }).function.name);
-    expect(names).toEqual([SEARCH_TOOL_NAME, JOBS_SEARCH_TOOL_NAME]);
+    expect(names).toEqual([SEARCH_TOOL_NAME]);
   });
 
   it("só inclui montar_vaga quando a pessoa é empresa", () => {
     const tools = buildAssistantTools(CATEGORIES, { canPublishJobs: true });
     const names = tools.map((t) => (t as { function: { name: string } }).function.name);
-    expect(names).toEqual([SEARCH_TOOL_NAME, JOBS_SEARCH_TOOL_NAME, JOB_TOOL_NAME]);
+    expect(names).toEqual([SEARCH_TOOL_NAME, JOB_TOOL_NAME]);
   });
 });

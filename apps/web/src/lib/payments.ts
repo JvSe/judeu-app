@@ -99,6 +99,7 @@ export async function createOrUpdatePayment(
       create: { orderId, method: "CASH", status: "PENDING", amountCents },
       update: { method: "CASH", status: "PENDING", gatewayRef: null },
     });
+    await notifyCanStart(orderId, "O cliente vai pagar em dinheiro no local");
     return { payment: toDTO(payment) };
   }
 
@@ -174,24 +175,21 @@ export async function getPayment(
   return { payment: toDTO(payment) };
 }
 
-// Prestadores com negociação ligada já são avisados na criação do pedido (pra
-// poder propor outro valor antes do pagamento); os demais só agora, quando o
-// pedido passa a existir pra eles nas listagens (ver HIDE_UNPAID_CREATED em orders.ts).
-async function notifyProviderIfNeeded(orderId: string) {
+async function notifyCanStart(orderId: string, body: string) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: {
-      provider: { select: { userId: true, allowsNegotiation: true } },
-      service: { select: { name: true } },
-      category: { select: { name: true } },
-    },
+    include: { provider: { select: { userId: true } } },
   });
-  if (!order?.provider || order.provider.allowsNegotiation) return;
+  if (!order?.provider) return;
   void notifyUser(order.provider.userId, "ORDER", {
-    title: order.scheduledAt ? "Novo pedido agendado" : "Novo pedido",
-    body: order.service?.name ?? order.category?.name ?? "Você recebeu um novo pedido",
+    title: "Pode iniciar o trajeto",
+    body,
     data: { type: "order", orderId: order.id, role: "provider" },
   });
+}
+
+async function notifyProviderIfNeeded(orderId: string) {
+  await notifyCanStart(orderId, "Pagamento confirmado");
 }
 
 export async function markPaidByGatewayRef(gatewayRef: string) {

@@ -46,6 +46,30 @@ export function useProviders(categoryId?: string) {
   });
 }
 
+export function useNearbyProviders(
+  origin: { lat: number; lng: number } | null,
+  opts: { categoryId?: string; excludeProviderId?: string } = {},
+) {
+  return useQuery({
+    queryKey: [
+      "providers-nearby",
+      origin?.lat,
+      origin?.lng,
+      opts.categoryId ?? "all",
+      opts.excludeProviderId ?? "",
+    ],
+    queryFn: () =>
+      catalogApi.nearby({
+        lat: origin!.lat,
+        lng: origin!.lng,
+        categoryId: opts.categoryId,
+        excludeProviderId: opts.excludeProviderId,
+      }),
+    enabled: origin != null,
+    refetchInterval: 15_000,
+  });
+}
+
 // Busca do catálogo (aba Buscar). Termos com menos de 2 caracteres não vão à rede.
 export function useCatalogSearch(query: string) {
   const q = query.trim();
@@ -90,7 +114,10 @@ export function useCreateOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateOrderInput) => ordersApi.create(input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["orders"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["providers-nearby"] });
+    },
   });
 }
 
@@ -279,6 +306,26 @@ export function useSetAvailability() {
   return useMutation({
     mutationFn: (isAvailable: boolean) => providerProfileApi.setAvailability(isAvailable),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["provider-profile", "me"] }),
+  });
+}
+
+export function useUpdateProviderLocation() {
+  return useMutation({
+    mutationFn: ({ lat, lng }: { lat: number; lng: number }) =>
+      providerProfileApi.updateLocation(lat, lng),
+  });
+}
+
+export function useReassignOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, providerId }: { id: string; providerId: string }) =>
+      ordersApi.reassign(id, providerId),
+    onSuccess: (order) => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["order", order.id] });
+      qc.invalidateQueries({ queryKey: ["providers-nearby"] });
+    },
   });
 }
 
