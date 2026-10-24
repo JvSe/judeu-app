@@ -7,8 +7,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { fonts } from "@/constants/fonts";
-import { initialsOf, priceFromCents } from "@/lib/format";
-import { useProvider, useProviderReviews } from "@/lib/hooks";
+import { confirmCallPath, initialsOf, priceFromCents } from "@/lib/format";
+import { useProvider } from "@/lib/hooks";
 import { Avatar } from "@/components/ui/avatar";
 import { PrimaryButton } from "@/components/ui/primary-button";
 import { StatCard } from "@/components/ui/stat-card";
@@ -17,16 +17,17 @@ import type { BottomSheetMethods } from "@/components/ui/templates/bottom-sheet/
 
 type ProviderSheetProps = {
   providerId: string | null;
+  etaMin?: number | null;
+  categoryId?: string | null;
   onCloseStart?: () => void;
   onClose: () => void;
 };
 
 export const ProviderSheet = forwardRef<BottomSheetMethods, ProviderSheetProps>(
-  ({ providerId, onCloseStart, onClose }, ref) => {
+  ({ providerId, etaMin, categoryId, onCloseStart, onClose }, ref) => {
     const insets = useSafeAreaInsets();
     const { theme } = useUnistyles();
     const { data: provider, isLoading } = useProvider(providerId ?? "");
-    const { data: reviews = [] } = useProviderReviews(providerId ?? "");
     const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
 
     useEffect(() => {
@@ -36,7 +37,7 @@ export const ProviderSheet = forwardRef<BottomSheetMethods, ProviderSheetProps>(
     return (
       <BottomSheet
         ref={ref}
-        snapPoints={["60%", "92%"]}
+        snapPoints={["58%"]}
         backgroundColor={theme.colors.background}
         onCloseStart={onCloseStart}
         onClose={onClose}
@@ -76,64 +77,52 @@ export const ProviderSheet = forwardRef<BottomSheetMethods, ProviderSheetProps>(
             <View style={[styles.availabilityChip, !provider.isAvailable && styles.availabilityChipOff]}>
               <View style={[styles.availabilityDot, !provider.isAvailable && styles.availabilityDotOff]} />
               <Text style={[styles.availabilityText, !provider.isAvailable && styles.availabilityTextOff]}>
-                {provider.isAvailable ? "Disponível agora" : "Indisponível no momento"}
+                {etaMin != null
+                  ? `Chega em ~${etaMin} min`
+                  : provider.isAvailable
+                    ? "Disponível agora"
+                    : "Indisponível no momento"}
               </Text>
             </View>
 
             <View style={styles.statsRow}>
               <StatCard value={provider.rating.toFixed(1)} label={`★ ${provider.reviews} aval.`} />
-              <StatCard value={`${provider.yearsExperience} anos`} label="experiência" />
-              <StatCard value={`${provider.services.length}`} label="serviços" />
+              <StatCard
+                value={etaMin != null ? `~${etaMin} min` : `${provider.yearsExperience}a`}
+                label={etaMin != null ? "chegada" : "experiência"}
+              />
             </View>
 
-            <Text style={styles.sectionTitle}>Serviços</Text>
-            <View style={{ gap: 10 }}>
-              {provider.services.map((service) => {
-                const selected = service.id === (selectedServiceId ?? provider.services[0]?.id);
-                return (
-                  <Pressable
-                    key={service.id}
-                    style={[styles.serviceRow, selected && styles.serviceRowSelected]}
-                    onPress={() => setSelectedServiceId(service.id)}
-                  >
-                    <View style={[styles.serviceRadio, selected && styles.serviceRadioSelected]}>
-                      {selected && <View style={styles.serviceRadioDot} />}
-                    </View>
-                    <Text style={styles.serviceName}>{service.name}</Text>
-                    <Text style={styles.servicePrice}>{priceFromCents(service.priceCents)}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <Text style={styles.sectionTitle}>Avaliações</Text>
-            {reviews.length === 0 ? (
-              <Text style={styles.emptyReviews}>Ainda não há avaliações para este prestador.</Text>
-            ) : (
-              <View style={{ gap: 10 }}>
-                {reviews.map((review) => (
-                  <View key={review.id} style={styles.reviewCard}>
-                    <View style={styles.reviewHeader}>
-                      <Avatar initials={initialsOf(review.author.name)} color="#3a3a70" size={34} radius={11} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.reviewAuthor}>{review.author.name}</Text>
-                        <View style={styles.reviewStars}>
-                          {[1, 2, 3, 4, 5].map((v) => (
-                            <Ionicons
-                              key={v}
-                              name={v <= review.rating ? "star" : "star-outline"}
-                              size={12}
-                              color="#FF9a2e"
-                            />
-                          ))}
-                        </View>
+            {provider.services.length > 0 && (
+              <View style={{ gap: 10, marginTop: 18 }}>
+                {provider.services.slice(0, 3).map((service) => {
+                  const selected = service.id === (selectedServiceId ?? provider.services[0]?.id);
+                  return (
+                    <Pressable
+                      key={service.id}
+                      style={[styles.serviceRow, selected && styles.serviceRowSelected]}
+                      onPress={() => setSelectedServiceId(service.id)}
+                    >
+                      <View style={[styles.serviceRadio, selected && styles.serviceRadioSelected]}>
+                        {selected && <View style={styles.serviceRadioDot} />}
                       </View>
-                    </View>
-                    {review.comment && <Text style={styles.reviewComment}>{review.comment}</Text>}
-                  </View>
-                ))}
+                      <Text style={styles.serviceName}>{service.name}</Text>
+                      <Text style={styles.servicePrice}>{priceFromCents(service.priceCents)}</Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             )}
+
+            <Pressable
+              style={styles.profileLink}
+              onPress={() => {
+                onClose();
+                router.push({ pathname: "/client/provider/[id]", params: { id: provider.id } });
+              }}
+            >
+              <Text style={styles.profileLinkText}>Ver perfil e avaliações</Text>
+            </Pressable>
 
             <View style={styles.footer}>
               <View>
@@ -149,26 +138,26 @@ export const ProviderSheet = forwardRef<BottomSheetMethods, ProviderSheetProps>(
               </View>
               <View style={{ flex: 1 }}>
                 <PrimaryButton
-                  label="Contratar agora"
+                  label={`Chamar ${provider.name.split(" ")[0]}`}
                   onPress={() => {
                     const selected =
                       provider.services.find((s) => s.id === selectedServiceId) ?? provider.services[0];
                     onClose();
-                    router.push({
-                      pathname: "/client/create-order",
-                      params: {
+                    router.push(
+                      confirmCallPath({
                         providerId: provider.id,
                         providerName: provider.name,
-                        allowsNegotiation: String(provider.allowsNegotiation),
+                        allowsNegotiation: provider.allowsNegotiation,
+                        categoryId: categoryId ?? undefined,
                         ...(selected
                           ? {
                               serviceId: selected.id,
                               serviceName: selected.name,
-                              priceCents: String(selected.priceCents),
+                              priceCents: selected.priceCents,
                             }
                           : {}),
-                      },
-                    });
+                      }),
+                    );
                   }}
                 />
               </View>
@@ -253,13 +242,6 @@ const styles = StyleSheet.create((theme) => ({
     gap: 10,
     marginTop: 18,
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontFamily: fonts.extraBold,
-    color: theme.colors.foreground,
-    marginTop: 24,
-    marginBottom: 12,
-  },
   serviceRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -304,43 +286,20 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fonts.extraBold,
     color: theme.colors.primary,
   },
-  emptyReviews: {
+  profileLink: {
+    alignSelf: "flex-start",
+    marginTop: 16,
+  },
+  profileLinkText: {
     fontSize: 13.5,
-    fontFamily: fonts.medium,
-    color: theme.colors.mutedForeground,
-  },
-  reviewCard: {
-    backgroundColor: "rgba(28,28,58,0.7)",
-    borderRadius: 16,
-    padding: 15,
-  },
-  reviewHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 11,
-  },
-  reviewAuthor: {
-    fontSize: 14,
     fontFamily: fonts.bold,
-    color: "#e8e8f5",
-  },
-  reviewStars: {
-    flexDirection: "row",
-    gap: 2,
-    marginTop: 3,
-  },
-  reviewComment: {
-    fontSize: 13.5,
-    fontFamily: fonts.medium,
-    color: "#c9c7e4",
-    lineHeight: 19,
-    marginTop: 11,
+    color: theme.colors.primary,
   },
   footer: {
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
-    marginTop: 26,
+    marginTop: 22,
   },
   footerLabel: {
     fontSize: 11.5,

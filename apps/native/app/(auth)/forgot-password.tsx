@@ -81,7 +81,7 @@ export default function ForgotPassword() {
           autoCapitalize="none"
           autoComplete="email"
           editable={!formState.isSubmitting}
-          onSubmitEditing={onValid}
+          onSubmitEditing={() => void onValid()}
           containerStyle={styles.fieldSpacing}
         />
 
@@ -94,7 +94,7 @@ export default function ForgotPassword() {
             styles.submit,
             { opacity: pressed || formState.isSubmitting ? 0.9 : 1 },
           ]}
-          onPress={onValid}
+          onPress={() => void onValid()}
           disabled={formState.isSubmitting}
         >
           {formState.isSubmitting ? (

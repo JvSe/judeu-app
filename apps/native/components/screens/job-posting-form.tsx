@@ -213,7 +213,7 @@ export function JobPostingForm({
 
       <Pressable
         style={({ pressed }) => [styles.confirmButton, { opacity: pressed || submitting ? 0.9 : 1 }]}
-        onPress={onValid}
+        onPress={() => void onValid()}
         disabled={submitting}
       >
         {submitting ? (

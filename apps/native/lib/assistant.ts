@@ -2,7 +2,8 @@
 //
 // Arquitetura híbrida: o modelo Qwen3 roda no aparelho e conduz a conversa.
 // Quando a intenção fica clara, chama UMA tool alinhada ao que o Judeu oferece:
-//   - buscar_prestadores → serviço pontual (catálogo real)
+//   - buscar_prestadores → chamar profissional de uma categoria (catálogo real)
+//   - pedir_ajuda        → solicitação aberta (qualquer pessoa perto pode atender)
 //   - buscar_vagas       → emprego (vagas reais)
 //   - montar_vaga        → empresa publicando vaga (rascunho pra revisão humana)
 // A tool NÃO é resolvida pelo modelo — o app consulta o backend e devolve dado
@@ -34,11 +35,25 @@ import { TIME_RE } from "@/lib/format";
 export const AI_MODEL = QWEN3_1_7B_QUANTIZED;
 
 export const SEARCH_TOOL_NAME = "buscar_prestadores";
+export const HELP_REQUEST_TOOL_NAME = "pedir_ajuda";
 export const JOBS_SEARCH_TOOL_NAME = "buscar_vagas";
 
 // Argumentos que o modelo preenche ao chamar cada tool.
 export type SearchArgs = { categoria: string; termo?: string };
+export type HelpRequestArgs = {
+  descricao: string;
+  categoria?: string;
+  valor_reais?: number;
+};
 export type JobSearchArgs = { categoria?: string; termo?: string; contrato?: string };
+
+export const HELP_REQUEST_MIN_CHARS = 8;
+
+export type HelpRequestDraft = {
+  description: string;
+  categoryId?: string;
+  priceCents?: number;
+};
 
 export type AssistantCapabilities = { canPublishJobs: boolean };
 
@@ -136,29 +151,26 @@ export function buildSystemPrompt(
   }
   if (canPublish) contextLines.push("Perfil: empresa (pode publicar vagas)");
   return [
-    "Você é o JudIA, assistente do Judeu — app de serviços locais e vagas de emprego em Palmas, Tocantins.",
-    "A plataforma oferece só isto. Identifique o que a pessoa realmente quer e aja nisso, sem inventar outro produto:",
-    "1. CONTRATAR SERVIÇO — alguém pra resolver um problema agora (faxina, encanador, frete, beleza…). Ferramenta: buscar_prestadores.",
-    "2. PROCURAR EMPREGO — candidatar-se a vaga CLT, PJ, freelance ou temporário. Ferramenta: buscar_vagas.",
-    "3. PUBLICAR VAGA — empresa contratando funcionário com escala e contrato. Ferramenta: montar_vaga.",
+    "Você é o JudIA, assistente do Judeu — app para chamar pessoas perto de você em Palmas, Tocantins.",
+    "Antes de agir, classifique a intenção em UM destes casos:",
+    "A) SERVIÇO CONVENCIONAL — ofício da lista (reparos, limpeza, frete/mudança, beleza). Tool: buscar_prestadores.",
+    "B) AJUDA DIFERENTE / RECADO — não é um ofício da lista: buscar e deixar algo, copiadora, compra, fila, favor, 'preciso de alguém' genérico, tarefa A→B. Tool: pedir_ajuda.",
+    "C) EMPREGO — procurar vaga. Só se a pessoa pedir emprego; caso contrário ignore.",
+    "Regra de ouro: se NÃO for claramente um ofício da lista, trate como B (pedir_ajuda). Nunca encaixe à força em frete/reparos só para ter categoria.",
+    "Sinais de B: 'buscar', 'pegar', 'deixar', 'levar', 'entregar', 'recado', 'favor', 'alguém pra', dois locais, documentos, farmácia, banco, mercado, 'qualquer um'.",
+    "Sinais de A: vazamento, elétrica, encanamento, faxina, diarista, mudança de móveis, corte, unha, barbeiro.",
     ...formatPersonalization(contextLines),
     "Fale em português do Brasil, humano e direto. Varie cumprimento e pergunta; não pareça roteiro nem formulário.",
     "Reconheça em poucas palavras o que a pessoa disse — empatia curta quando fizer sentido — e só então pergunte ou aja.",
     "Se a intenção já estiver clara, chame a ferramenta na hora, sem interrogatório.",
-    "Se puder ser mais de uma coisa (ex.: \"preciso de limpeza\" pode ser serviço pontual, emprego ou vaga pra publicar), NÃO chute a ferramenta. Faça UMA pergunta curta, no tom de quem quer acertar, mostrando só as opções que ainda fazem sentido.",
-    "Exemplos de tom (varie, não copie): \"Beleza — você quer alguém pra resolver isso agora, ou está procurando uma vaga nessa área?\" / \"Entendi. É pra chamar um profissional pontual ou pra contratar alguém na empresa?\"",
-    "No máximo duas perguntas no total. Depois, siga pelo caminho mais razoável e confirme em uma frase.",
-    "Assim que identificar que é um serviço pontual, chame a ferramenta buscar_prestadores com a categoria adequada.",
-    "Assim que identificar que está procurando emprego, chame a ferramenta buscar_vagas.",
+    "No máximo duas perguntas. Depois chame a ferramenta certa.",
+    "Em pedir_ajuda, a 'descricao' deve ser uma frase completa do que fazer. Não peça endereço agora — o app só pede locais depois que alguém aceitar (ou os dois combinam no chat).",
     canPublish
-      ? "Esta pessoa é empresa e PODE publicar vagas. Quando quiser contratar funcionário e você tiver categoria, título, descrição, contrato, salário (valor ou a combinar) e a escala (dias e HH:mm), chame montar_vaga. Não invente campo que ela não falou — pergunte, no máximo dois de cada vez."
-      : "Esta pessoa NÃO é empresa neste app. NÃO chame montar_vaga. Se parecer que quer publicar vaga, explique com naturalidade que isso é para empresas cadastradas e pergunte se na verdade precisa de um prestador agora ou se está procurando emprego.",
-    "NUNCA invente prestadores, vagas, empresas, nomes, notas, salários ou preços — use SEMPRE a ferramenta para trazer dados reais.",
-    "Use SOMENTE as categorias da lista abaixo. Elas são tudo o que o Judeu atende hoje.",
-    "Se o que a pessoa precisa não corresponder a nenhuma delas, NÃO chame a ferramenta: diga com franqueza que o Judeu ainda não atende isso e cite as categorias que existem.",
-    "Não force um pedido dentro de uma categoria parecida só para conseguir buscar.",
+      ? "Esta pessoa é empresa. Só chame montar_vaga se ela quiser publicar uma vaga de emprego (não um serviço pontual)."
+      : "Não fale de vagas de emprego. Se pedirem emprego, diga que aqui o fluxo é pedir ajuda ou chamar alguém agora.",
+    "NUNCA invente prestadores, vagas, empresas, nomes, notas, salários ou preços — use SEMPRE a ferramenta para dados reais de catálogo.",
     "",
-    "Categorias disponíveis (use o identificador antes dos dois-pontos como valor de 'categoria'):",
+    "Categorias de ofício (só para buscar_prestadores / caso A; use o identificador antes dos dois-pontos):",
     lista,
   ].join("\n");
 }
@@ -177,8 +189,9 @@ export function buildSearchTool(categories: Category[]): object {
     function: {
       name: SEARCH_TOOL_NAME,
       description:
-        "Busca prestadores de serviço reais cadastrados no Judeu, filtrando por categoria. " +
-        "Chame quando a pessoa quiser contratar um serviço pontual (não emprego). Não invente prestadores.",
+        "Busca profissionais de OFÍCIO convencional no Judeu (reparos, limpeza, frete/mudança, beleza). " +
+        "Chame só quando o pedido for claramente um desses ofícios. " +
+        "Se for recado, buscar/deixar, favor ou pedido genérico, use pedir_ajuda. Não invente prestadores.",
       parameters: {
         type: "object",
         properties: {
@@ -196,6 +209,64 @@ export function buildSearchTool(categories: Category[]): object {
         required: ["categoria"],
       },
     },
+  };
+}
+
+export function buildHelpRequestTool(categories: Category[]): object {
+  const slugs = categories.length
+    ? categories.map((c) => c.slug)
+    : ["reparos", "limpeza", "frete", "beleza"];
+  const descricao = categories.length
+    ? categories.map((c) => `${c.slug} (${c.name})`).join(", ")
+    : "reparos, limpeza, frete, beleza";
+  return {
+    type: "function",
+    function: {
+      name: HELP_REQUEST_TOOL_NAME,
+      description:
+        "Abre solicitação de ajuda DIFERENTE de ofício convencional (reparos/limpeza/frete/beleza). " +
+        "Use quando for recado, buscar/deixar, favor, copiadora, farmácia, fila, ou pedido genérico de 'alguém'. " +
+        "NÃO use para eletricista, diarista, mudança de móveis ou beleza — nesses casos use buscar_prestadores. " +
+        "Não invente endereços — o cliente só define locais depois do aceite (ou combina no chat).",
+      parameters: {
+        type: "object",
+        properties: {
+          descricao: {
+            type: "string",
+            description:
+              "O que a pessoa precisa, em uma ou duas frases claras (ex.: 'Buscar documentos na copiadora do centro e deixar no meu trabalho').",
+          },
+          categoria: {
+            type: "string",
+            enum: slugs,
+            description: `Categoria opcional se aproximar de um ofício. Opções: ${descricao}.`,
+          },
+          valor_reais: {
+            type: "number",
+            description: "Quanto a pessoa oferececeu pagar, em reais, se ela citou um valor. Opcional.",
+          },
+        },
+        required: ["descricao"],
+      },
+    },
+  };
+}
+
+export function parseHelpRequestFromTool(
+  args: HelpRequestArgs,
+  categories: Category[],
+): HelpRequestDraft | null {
+  const description = args.descricao?.trim() ?? "";
+  if (description.length < HELP_REQUEST_MIN_CHARS) return null;
+  const categoryId = args.categoria ? resolveCategoryId(categories, args.categoria) : undefined;
+  let priceCents: number | undefined;
+  if (typeof args.valor_reais === "number" && Number.isFinite(args.valor_reais) && args.valor_reais > 0) {
+    priceCents = Math.round(args.valor_reais * 100);
+  }
+  return {
+    description,
+    ...(categoryId ? { categoryId } : {}),
+    ...(priceCents != null ? { priceCents } : {}),
   };
 }
 
@@ -241,7 +312,7 @@ export function buildAssistantTools(
   categories: Category[],
   capabilities: AssistantCapabilities = { canPublishJobs: false },
 ): object[] {
-  const tools = [buildSearchTool(categories), buildJobsSearchTool(categories)];
+  const tools = [buildSearchTool(categories), buildHelpRequestTool(categories)];
   if (capabilities.canPublishJobs) tools.push(buildJobTool(categories));
   return tools;
 }

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { PLATFORM_FEE_RATE, TRANSITIONS } from "./orders";
+import {
+  isInsideServiceRadius,
+  OFFER_TTL_MS,
+  OPEN_REQUEST_TTL_MS,
+  PLATFORM_FEE_RATE,
+  TRANSITIONS,
+} from "./orders";
 
 describe("PLATFORM_FEE_RATE", () => {
   it("é 8%", () => {
@@ -55,5 +61,25 @@ describe("TRANSITIONS (máquina de estados do pedido)", () => {
       ["confirm_completion", TRANSITIONS.confirm_completion],
       ["cancel", TRANSITIONS.cancel],
     ]);
+  });
+});
+
+describe("isInsideServiceRadius", () => {
+  const origin = { lat: -10.1841, lng: -48.3336 };
+
+  it("sem origem não entra no raio", () => {
+    expect(isInsideServiceRadius(null, 10, origin)).toBe(false);
+  });
+
+  it("o próprio ponto está dentro; um ponto longe não", () => {
+    expect(isInsideServiceRadius(origin, 10, origin)).toBe(true);
+    expect(isInsideServiceRadius(origin, 10, { lat: -23.55, lng: -46.63 })).toBe(false);
+  });
+});
+
+describe("oferta vs solicitação aberta", () => {
+  it("chamada dirigida expira em 60s; solicitação aberta fica no ar por 4h", () => {
+    expect(OFFER_TTL_MS).toBe(60_000);
+    expect(OPEN_REQUEST_TTL_MS).toBe(4 * 60 * 60 * 1000);
   });
 });

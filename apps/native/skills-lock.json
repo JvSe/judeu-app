@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "expo-upgrade": {
+      "source": "expo/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/expo/skills/expo-upgrade/SKILL.md",
+      "computedHash": "919fd44ea539d9c8d0057edfb092d9602444d7f4ea6302f227caf56684fd6993"
+    },
     "using-reacticx": {
       "source": "rit3zh/reacticx",
       "sourceType": "github",

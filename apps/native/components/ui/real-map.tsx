@@ -7,11 +7,12 @@ import { useUnistyles } from "react-native-unistyles";
 import { MapBackdrop } from "@/components/ui/map-backdrop";
 
 // OpenFreeMap: tiles vetoriais grátis, sem chave, uso ilimitado (MIT).
-// https://openfreemap.org — atribuição já incluída pelo controle nativo do MapLibre.
-const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/dark";
+// https://openfreemap.org — logo e botão de informação ficam fora da interface.
+const MAP_STYLE_DARK = "https://tiles.openfreemap.org/styles/dark";
+const MAP_STYLE_LIGHT = "https://tiles.openfreemap.org/styles/liberty";
 
 // Centro de Palmas/TO — mesmo fallback usado no backend quando não há posição real.
-const PALMAS_CENTER: [number, number] = [-48.3336, -10.1841];
+export const PALMAS_CENTER: [number, number] = [-48.3336, -10.1841];
 
 type MapMarkerSpec = {
   id: string;
@@ -27,14 +28,27 @@ type RealMapProps = {
   zoom?: number;
   /** [west, south, east, north] — quando presente, a câmera enquadra os dois pontos. */
   bounds?: [number, number, number, number];
+  /** Estilo claro (liberty) ou escuro — default dark. */
+  variant?: "dark" | "light";
+  /** Força a câmera a reaplicar o centro (ex.: botão "minha localização"). */
+  cameraKey?: number | string;
 };
 
-export const RealMap = ({ markers = [], route, center, bounds, zoom = 14 }: RealMapProps) => {
+export const RealMap = ({
+  markers = [],
+  route,
+  center,
+  bounds,
+  zoom = 14,
+  variant = "dark",
+  cameraKey = 0,
+}: RealMapProps) => {
   const { theme } = useUnistyles();
+  const mapStyle = variant === "light" ? MAP_STYLE_LIGHT : MAP_STYLE_DARK;
 
   // Degradação graciosa: sem o style.json (ex.: sem rede na primeira carga), mantém
   // o backdrop decorativo em vez de uma tela de mapa quebrada.
-  if (!MAP_STYLE_URL) {
+  if (!mapStyle) {
     return <MapBackdrop />;
   }
 
@@ -51,14 +65,15 @@ export const RealMap = ({ markers = [], route, center, bounds, zoom = 14 }: Real
       : null;
 
   return (
-    <Map mapStyle={MAP_STYLE_URL} style={{ flex: 1 }}>
+    <Map mapStyle={mapStyle} style={{ flex: 1 }} attribution={false} logo={false}>
       {bounds ? (
         <Camera
+          key={`bounds-${cameraKey}`}
           bounds={bounds}
           padding={{ top: 120, bottom: 260, left: 60, right: 60 }}
         />
       ) : (
-        <Camera center={center ?? PALMAS_CENTER} zoom={zoom} />
+        <Camera key={`center-${cameraKey}`} center={center ?? PALMAS_CENTER} zoom={zoom} />
       )}
 
       {routeGeoJson && (

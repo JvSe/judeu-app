@@ -233,6 +233,9 @@ model ProviderProfile {
   yearsExperience Int            @default(0)
   status          ProviderStatus @default(PENDING)
   isAvailable     Boolean        @default(false)
+  // Conta de cliente que atende ajudas abertas, sem ofício nem tabela de preço.
+  // Não entra no catálogo de prestadores profissionais.
+  isHelper        Boolean        @default(false)
   // Perfil de pessoa jurídica (empresa) em vez de profissional autônomo.
   isCompany       Boolean        @default(false)
   // Razão social/nome fantasia (isCompany=true) — exibido como dado secundário; o nome
@@ -253,6 +256,10 @@ model ProviderProfile {
   baseLat         Float?
   baseLng         Float?
   serviceRadiusKm Float          @default(10)
+  // GPS ao vivo enquanto o prestador está online (pin no mapa do cliente).
+  lastLat         Float?
+  lastLng         Float?
+  lastLocationAt  DateTime?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
@@ -331,8 +338,9 @@ model Address {
   isDefault    Boolean  @default(false)
   createdAt    DateTime @default(now())
 
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orders Order[]
+  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dropoffOrders Order[] @relation("OrderDropoff")
+  pickupOrders  Order[] @relation("OrderPickup")
 
   @@index([userId])
   @@map("address")
@@ -349,6 +357,11 @@ model Order {
   serviceId       String?
   categoryId      String?
   addressId       String
+  pickupAddressId String?
+  // true = pedido no ar, qualquer prestador perto pode atender; false = chamada dirigida a uma pessoa.
+  isOpenRequest   Boolean     @default(false)
+  // Solicitação aberta: cliente marcou locais (ou optou por combinar no chat) e pode seguir o trajeto.
+  detailsReady    Boolean     @default(false)
   description     String?
   status          OrderStatus @default(CREATED)
   scheduledAt     DateTime? // null = "agora"; preenchido = agendado
@@ -370,8 +383,9 @@ model Order {
   client   User             @relation("ClientOrders", fields: [clientId], references: [id])
   provider ProviderProfile? @relation("ProviderOrders", fields: [providerId], references: [id])
   service  Service?         @relation(fields: [serviceId], references: [id])
-  category Category?        @relation(fields: [categoryId], references: [id])
-  address  Address          @relation(fields: [addressId], references: [id])
+  category      Category? @relation(fields: [categoryId], references: [id])
+  address       Address   @relation("OrderDropoff", fields: [addressId], references: [id])
+  pickupAddress Address?  @relation("OrderPickup", fields: [pickupAddressId], references: [id])
   events   OrderEvent[]
   messages Message[]
   payment  Payment?
@@ -382,6 +396,8 @@ model Order {
   @@index([clientId])
   @@index([providerId])
   @@index([status])
+  @@index([isOpenRequest, status])
+  @@index([pickupAddressId])
   @@map("order")
 }
 

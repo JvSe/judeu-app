@@ -37,7 +37,7 @@ export function moneyFromCents(cents: number): string {
 
 // Rótulo em pt-BR de cada estado do pedido.
 const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
-  CREATED: "Aguardando",
+  CREATED: "Aguardando aceite",
   ACCEPTED: "Aceito",
   EN_ROUTE: "A caminho",
   IN_PROGRESS: "Em execução",
@@ -53,6 +53,59 @@ export function orderStatusLabel(status: OrderStatus): string {
 // Um pedido "em andamento" ainda não terminou nem foi cancelado.
 export function isOrderActive(status: OrderStatus): boolean {
   return status !== "COMPLETED" && status !== "CANCELLED";
+}
+
+export function formatAddressLine(addr: {
+  label?: string | null;
+  street: string;
+  number?: string | null;
+  neighborhood?: string | null;
+  city?: string;
+}): string {
+  if (addr.label) return addr.label;
+  const street = `${addr.street}${addr.number ? `, ${addr.number}` : ""}`;
+  if (addr.neighborhood) return `${street} · ${addr.neighborhood}`;
+  return street;
+}
+
+export function confirmCallPath(params: {
+  providerId: string;
+  providerName?: string;
+  serviceId?: string;
+  serviceName?: string;
+  priceCents?: number | string;
+  allowsNegotiation?: boolean | string;
+  categoryId?: string;
+  description?: string;
+}) {
+  return {
+    pathname: "/client/create-order" as const,
+    params: {
+      providerId: params.providerId,
+      ...(params.providerName ? { providerName: params.providerName } : {}),
+      ...(params.allowsNegotiation != null
+        ? { allowsNegotiation: String(params.allowsNegotiation) }
+        : {}),
+      ...(params.serviceId ? { serviceId: params.serviceId } : {}),
+      ...(params.serviceName ? { serviceName: params.serviceName } : {}),
+      ...(params.priceCents != null ? { priceCents: String(params.priceCents) } : {}),
+      ...(params.categoryId ? { categoryId: params.categoryId } : {}),
+      ...(params.description ? { description: params.description } : {}),
+    },
+  };
+}
+
+export function confirmRequestPath(
+  params: { description?: string; categoryId?: string; priceCents?: number | string } = {},
+) {
+  return {
+    pathname: "/client/create-order" as const,
+    params: {
+      ...(params.description ? { description: params.description } : {}),
+      ...(params.categoryId ? { categoryId: params.categoryId } : {}),
+      ...(params.priceCents != null ? { priceCents: String(params.priceCents) } : {}),
+    },
+  };
 }
 
 // Hora curta a partir de um ISO ("14:02").

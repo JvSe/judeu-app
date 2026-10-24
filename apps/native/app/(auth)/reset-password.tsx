@@ -124,7 +124,7 @@ export default function ResetPassword() {
           secureTextEntry={!showPassword}
           autoCapitalize="none"
           editable={!formState.isSubmitting}
-          onSubmitEditing={onValid}
+          onSubmitEditing={() => void onValid()}
           containerStyle={styles.fieldSpacing}
         />
 
@@ -137,7 +137,7 @@ export default function ResetPassword() {
             styles.submit,
             { opacity: pressed || formState.isSubmitting ? 0.9 : 1 },
           ]}
-          onPress={onValid}
+          onPress={() => void onValid()}
           disabled={formState.isSubmitting}
         >
           {formState.isSubmitting ? (

@@ -61,7 +61,8 @@ function ProviderRow({ provider }: { provider: AdminProviderDTO }) {
           {provider.isCompany && (
             <>Responsável: {provider.responsibleName ?? "não informado"} · </>
           )}
-          {provider.email} · {provider.headline ?? "sem cadastro profissional"} ·{" "}
+          {provider.email} · {provider.isHelper ? "atende ajudas · " : ""}
+          {provider.headline ?? "sem cadastro profissional"} ·{" "}
           {provider.categoryNames.join(", ") || "sem categoria"} · {provider.serviceCount}{" "}
           serviço(s) · {provider.hasDocument ? "documento enviado" : "sem documento"}
         </CardDescription>

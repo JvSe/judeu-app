@@ -29,6 +29,11 @@ export default function ClientLayout() {
       <Stack.Screen name="chat/[id]" />
       <Stack.Screen name="ai" />
       <Stack.Screen name="create-order" />
+      <Stack.Screen name="helper-signup" />
+      <Stack.Screen name="attend/[id]" />
+      <Stack.Screen name="attend-rating/[id]" />
+      <Stack.Screen name="waiting/[id]" />
+      <Stack.Screen name="arrange/[id]" />
       <Stack.Screen name="order/[id]" />
       <Stack.Screen name="propose/[id]" />
       <Stack.Screen name="rating/[id]" />

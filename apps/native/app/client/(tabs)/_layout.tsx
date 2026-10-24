@@ -53,14 +53,13 @@ export default function ClientTabLayout() {
       <Tabs.Screen
         name="explore"
         options={{
-          title: "Buscar",
-          tabBarIcon: ({ color }) => <TabBarIcon name="search" color={color} />,
+          href: null,
         }}
       />
       <Tabs.Screen
         name="orders"
         options={{
-          title: "Pedidos",
+          title: "Chamadas",
           tabBarIcon: ({ color }) => <TabBarIcon name="receipt-outline" color={color} />,
           tabBarBadge: unreadMessages > 0 ? unreadMessages : undefined,
           tabBarBadgeStyle: {

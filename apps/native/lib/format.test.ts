@@ -46,7 +46,7 @@ describe("moneyFromCents", () => {
 
 describe("orderStatusLabel / isOrderActive", () => {
   it("traduz todos os status do pedido", () => {
-    expect(orderStatusLabel("CREATED")).toBe("Aguardando");
+    expect(orderStatusLabel("CREATED")).toBe("Aguardando aceite");
     expect(orderStatusLabel("COMPLETED")).toBe("Concluído");
     expect(orderStatusLabel("CANCELLED")).toBe("Cancelado");
   });

@@ -260,8 +260,13 @@ export type ProviderListItem = {
   priceFromCents: number | null;
   baseLat: number | null;
   baseLng: number | null;
+  lastLat: number | null;
+  lastLng: number | null;
+  serviceRadiusKm: number;
   isAvailable: boolean;
   allowsNegotiation: boolean;
+  distanceKm: number | null;
+  etaMin: number | null;
 };
 
 export type ProviderDetail = ProviderListItem & {
@@ -285,6 +290,17 @@ export const catalogApi = {
     const qs = categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : "";
     return apiFetch<{ providers: ProviderListItem[] }>(`/api/providers${qs}`).then((r) => r.providers);
   },
+  nearby(opts: { lat: number; lng: number; categoryId?: string; excludeProviderId?: string }) {
+    const qs = new URLSearchParams({
+      lat: String(opts.lat),
+      lng: String(opts.lng),
+    });
+    if (opts.categoryId) qs.set("categoryId", opts.categoryId);
+    if (opts.excludeProviderId) qs.set("excludeProviderId", opts.excludeProviderId);
+    return apiFetch<{ providers: ProviderListItem[] }>(`/api/providers/nearby?${qs}`).then(
+      (r) => r.providers,
+    );
+  },
   provider(id: string) {
     return apiFetch<{ provider: ProviderDetail }>(`/api/providers/${id}`).then((r) => r.provider);
   },
@@ -300,6 +316,7 @@ export type MyProviderProfile = {
   baseLat: number | null;
   baseLng: number | null;
   isAvailable: boolean;
+  isHelper: boolean;
   allowsNegotiation: boolean;
   isCompany: boolean;
   companyName: string | null;
@@ -348,6 +365,27 @@ export const providerProfileApi = {
       body: { isAvailable },
     }).then((r) => r.profile);
   },
+  registerHelper(input: {
+    fullName: string;
+    phone: string;
+    bio?: string;
+    acceptedTerms: true;
+    lat?: number;
+    lng?: number;
+  }) {
+    return apiFetch<{
+      user: AppUser;
+      profile: MyProviderProfile;
+      accessToken: string;
+      refreshToken: string;
+    }>("/api/providers/me/helper", { method: "POST", body: input });
+  },
+  updateLocation(lat: number, lng: number) {
+    return apiFetch<{ profile: MyProviderProfile }>("/api/providers/me/location", {
+      method: "POST",
+      body: { lat, lng },
+    }).then((r) => r.profile);
+  },
 };
 
 // ---- Pedidos (ciclo de vida + máquina de estados) ----
@@ -390,6 +428,9 @@ export type Order = {
   totalCents: number;
   cancelReason: string | null;
   createdAt: string;
+  offerExpiresAt: string;
+  isOpenRequest: boolean;
+  detailsReady: boolean;
   unreadMessages: number;
   service: { id: string; name: string } | null;
   category: { id: string; name: string } | null;
@@ -403,8 +444,9 @@ export type Order = {
     allowsNegotiation: boolean;
   } | null;
   client: { id: string; name: string; phone: string | null };
-  payment: { status: "PENDING" | "PAID" | "REFUNDED" | "FAILED" } | null;
+  payment: { status: "PENDING" | "PAID" | "REFUNDED" | "FAILED"; method: PaymentMethodOption } | null;
   address: OrderAddress;
+  pickupAddress: OrderAddress | null;
   events: { status: OrderStatus; note: string | null; createdAt: string }[];
   tracking: {
     providerLat: number | null;
@@ -418,12 +460,20 @@ export type Order = {
 };
 
 export type CreateOrderInput = {
-  providerId: string;
+  providerId?: string;
   serviceId?: string;
   categoryId?: string;
   description?: string;
   scheduledAt?: string;
-  addressId: string;
+  addressId?: string;
+  pickupAddressId?: string;
+  priceCents?: number;
+};
+
+export type ArrangeOrderInput = {
+  addressId?: string;
+  pickupAddressId?: string | null;
+  detailsReady?: boolean;
 };
 
 export const ordersApi = {
@@ -438,6 +488,12 @@ export const ordersApi = {
       (r) => r.order,
     );
   },
+  arrange(id: string, input: ArrangeOrderInput) {
+    return apiFetch<{ order: Order }>(`/api/orders/${id}/arrange`, {
+      method: "PATCH",
+      body: input,
+    }).then((r) => r.order);
+  },
   transition(id: string, action: OrderAction, note?: string) {
     return apiFetch<{ order: Order }>(`/api/orders/${id}/transition`, {
       method: "POST",
@@ -448,6 +504,12 @@ export const ordersApi = {
     return apiFetch<{ order: Order }>(`/api/orders/${id}/location`, {
       method: "POST",
       body: { lat, lng },
+    }).then((r) => r.order);
+  },
+  reassign(id: string, providerId: string) {
+    return apiFetch<{ order: Order }>(`/api/orders/${id}/reassign`, {
+      method: "POST",
+      body: { providerId },
     }).then((r) => r.order);
   },
 };

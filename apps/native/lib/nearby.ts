@@ -14,3 +14,18 @@ export function distanceKm(a: LatLng, b: LatLng): number {
 
   return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h));
 }
+
+export function providerPinPosition(provider: {
+  lastLat: number | null;
+  lastLng: number | null;
+  baseLat: number | null;
+  baseLng: number | null;
+}): LatLng | null {
+  if (provider.lastLat != null && provider.lastLng != null) {
+    return { lat: provider.lastLat, lng: provider.lastLng };
+  }
+  if (provider.baseLat != null && provider.baseLng != null) {
+    return { lat: provider.baseLat, lng: provider.baseLng };
+  }
+  return null;
+}

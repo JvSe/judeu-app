@@ -10,14 +10,22 @@ export function OPTIONS() {
   return handleOptions();
 }
 
-const createSchema = z.object({
-  providerId: z.string().min(1),
-  serviceId: z.string().min(1).optional(),
-  categoryId: z.string().min(1).optional(),
-  description: z.string().max(1000).optional(),
-  scheduledAt: z.string().datetime().optional(),
-  addressId: z.string().min(1),
-});
+const createSchema = z
+  .object({
+    providerId: z.string().min(1).optional(),
+    serviceId: z.string().min(1).optional(),
+    categoryId: z.string().min(1).optional(),
+    description: z.string().max(1000).optional(),
+    scheduledAt: z.string().datetime().optional(),
+    addressId: z.string().min(1).optional(),
+    pickupAddressId: z.string().min(1).optional(),
+    priceCents: z.number().int().min(0).max(1_000_000).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.providerId && !data.addressId) {
+      ctx.addIssue({ code: "custom", message: "addressId obrigatório", path: ["addressId"] });
+    }
+  });
 
 // GET /api/orders?as=client|provider — lista os pedidos do usuário no papel escolhido.
 export async function GET(req: Request) {
@@ -29,7 +37,7 @@ export async function GET(req: Request) {
   return json({ orders });
 }
 
-// POST /api/orders — cliente cria um pedido direcionado a um prestador.
+// POST /api/orders — cria contrato dirigido (com providerId) ou solicitação aberta.
 export async function POST(req: Request) {
   const claims = await requireAuth(req);
   if (!claims) return error("Não autenticado", 401);

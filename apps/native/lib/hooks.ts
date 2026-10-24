@@ -25,6 +25,7 @@ import type {
   CreateProposalInput,
   CreateReviewInput,
   CreateSupportTicketInput,
+  ArrangeOrderInput,
   JobFilters,
   JobStatusValue,
   NotificationPreferences,
@@ -43,6 +44,30 @@ export function useProviders(categoryId?: string) {
   return useQuery({
     queryKey: ["providers", categoryId ?? "all"],
     queryFn: () => catalogApi.providers(categoryId),
+  });
+}
+
+export function useNearbyProviders(
+  origin: { lat: number; lng: number } | null,
+  opts: { categoryId?: string; excludeProviderId?: string } = {},
+) {
+  return useQuery({
+    queryKey: [
+      "providers-nearby",
+      origin?.lat,
+      origin?.lng,
+      opts.categoryId ?? "all",
+      opts.excludeProviderId ?? "",
+    ],
+    queryFn: () =>
+      catalogApi.nearby({
+        lat: origin!.lat,
+        lng: origin!.lng,
+        categoryId: opts.categoryId,
+        excludeProviderId: opts.excludeProviderId,
+      }),
+    enabled: origin != null,
+    refetchInterval: 15_000,
   });
 }
 
@@ -66,11 +91,15 @@ export function useProvider(id: string) {
 
 // ---- Pedidos ----
 // `poll` liga refetch curto (só em foco) — usado onde o badge de chat não lido precisa se atualizar sozinho.
-export function useOrders(as: "client" | "provider" = "client", opts: { poll?: boolean } = {}) {
+export function useOrders(
+  as: "client" | "provider" = "client",
+  opts: { poll?: boolean; enabled?: boolean } = {},
+) {
   const isFocused = useIsFocused();
   return useQuery({
     queryKey: ["orders", as],
     queryFn: () => ordersApi.list(as),
+    enabled: opts.enabled !== false,
     refetchInterval: opts.poll && isFocused ? 8000 : false,
   });
 }
@@ -90,7 +119,22 @@ export function useCreateOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateOrderInput) => ordersApi.create(input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["orders"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["providers-nearby"] });
+    },
+  });
+}
+
+export function useArrangeOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...input }: { id: string } & ArrangeOrderInput) =>
+      ordersApi.arrange(id, input),
+    onSuccess: (order) => {
+      qc.setQueryData(["order", order.id], order);
+      qc.invalidateQueries({ queryKey: ["orders"] });
+    },
   });
 }
 
@@ -279,6 +323,26 @@ export function useSetAvailability() {
   return useMutation({
     mutationFn: (isAvailable: boolean) => providerProfileApi.setAvailability(isAvailable),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["provider-profile", "me"] }),
+  });
+}
+
+export function useUpdateProviderLocation() {
+  return useMutation({
+    mutationFn: ({ lat, lng }: { lat: number; lng: number }) =>
+      providerProfileApi.updateLocation(lat, lng),
+  });
+}
+
+export function useReassignOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, providerId }: { id: string; providerId: string }) =>
+      ordersApi.reassign(id, providerId),
+    onSuccess: (order) => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["order", order.id] });
+      qc.invalidateQueries({ queryKey: ["providers-nearby"] });
+    },
   });
 }
 

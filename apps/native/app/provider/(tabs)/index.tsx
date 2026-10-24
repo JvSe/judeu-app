@@ -30,26 +30,30 @@ import {
   shortTime,
 } from "@/lib/format";
 import {
-  useMyJobPostings,
   useMyProviderProfile,
   useNotifications,
   useOrders,
   useSetAvailability,
   useTransitionOrder,
 } from "@/lib/hooks";
-import { useCurrentLocation, useShareLocationWhileEnRoute } from "@/lib/location";
+import { useCurrentLocation, useShareIdleLocation, useShareLocationWhileEnRoute } from "@/lib/location";
 
 function orderTitle(order: Order): string {
+  if (order.isOpenRequest && order.description) return order.description;
   return order.service?.name ?? order.category?.name ?? order.description ?? "Serviço";
+}
+
+function addressLine(order: Order): string {
+  const drop = `${order.address.street}${order.address.number ? `, ${order.address.number}` : ""}${order.address.neighborhood ? ` · ${order.address.neighborhood}` : ""} · ${order.address.city}`;
+  if (order.pickupAddress) {
+    const pick = `${order.pickupAddress.street}${order.pickupAddress.number ? `, ${order.pickupAddress.number}` : ""}`;
+    return `${pick} → ${drop}`;
+  }
+  return drop;
 }
 
 function firstNameOf(fullName: string | undefined): string {
   return fullName?.trim().split(/\s+/)[0] || "Prestador";
-}
-
-function addressLine(order: Order): string {
-  const { street, number, neighborhood, city } = order.address;
-  return `${street}${number ? `, ${number}` : ""}${neighborhood ? ` · ${neighborhood}` : ""} · ${city}`;
 }
 
 // Próxima ação do prestador para um pedido já aceito. Em EN_ROUTE, só libera
@@ -57,6 +61,9 @@ function addressLine(order: Order): string {
 function nextAction(order: Order): { action: OrderAction; label: string; disabled?: boolean } | null {
   switch (order.status) {
     case "ACCEPTED":
+      if (order.isOpenRequest && !order.detailsReady) {
+        return { action: "start_route", label: "Aguardando detalhes...", disabled: true };
+      }
       return { action: "start_route", label: "Iniciar trajeto" };
     case "EN_ROUTE":
       return order.tracking.arrived
@@ -74,8 +81,6 @@ export default function ProviderDashboard() {
   const { theme } = useUnistyles();
   const { user } = useAuth();
   const { data: profile } = useMyProviderProfile();
-  const isCompany = profile?.isCompany === true;
-  const { data: myJobs = [] } = useMyJobPostings(isCompany);
   const { data: orders = [], isLoading } = useOrders("provider", { poll: true });
   const transition = useTransitionOrder();
   const setAvailability = useSetAvailability();
@@ -95,9 +100,10 @@ export default function ProviderDashboard() {
   const completedOrders = orders.filter((o) => o.status === "COMPLETED");
 
   const enRouteOrder = activeOrders.find(
-    (o) => o.status === "ACCEPTED" || o.status === "EN_ROUTE",
+    (o) => o.status === "ACCEPTED" || o.status === "EN_ROUTE" || o.status === "IN_PROGRESS",
   );
   useShareLocationWhileEnRoute(enRouteOrder?.id);
+  useShareIdleLocation(Boolean(profile?.isAvailable));
 
   const prevStatusRef = useRef<Map<string, OrderStatus>>(new Map());
   useEffect(() => {
@@ -116,7 +122,7 @@ export default function ProviderDashboard() {
       { id, action },
       {
         onSuccess: (order) => {
-          if (action === "start_route") {
+          if (action === "accept" || action === "start_route") {
             router.push({ pathname: "/provider/delivery/[id]", params: { id: order.id } });
           }
         },
@@ -205,15 +211,6 @@ export default function ProviderDashboard() {
             </View>
             <View style={[styles.liveDot, !isAvailable && styles.liveDotOff]} />
           </GlassSurface>
-          <Pressable
-            onPress={() =>
-              router.push((isCompany ? "/provider/vaga" : "/jobs") as never)
-            }
-          >
-            <GlassSurface style={styles.iconButton}>
-              <Ionicons name="briefcase-outline" size={22} color="#fff" />
-            </GlassSurface>
-          </Pressable>
           <Pressable onPress={() => router.push("/provider/notifications" as never)}>
             <GlassSurface style={styles.iconButton}>
               <Ionicons name="notifications-outline" size={22} color="#fff" />
@@ -272,32 +269,6 @@ export default function ProviderDashboard() {
           </Text>
         </Pressable>
 
-        {isCompany && (
-          <Pressable
-            style={({ pressed }) => [styles.vagaCard, { opacity: pressed ? 0.92 : 1 }]}
-            onPress={() =>
-              router.push(myJobs.length > 0 ? "/provider/vaga" : "/provider/vaga/ai/chat")
-            }
-          >
-            <View style={styles.vagaIcon}>
-              <Ionicons name="briefcase" size={22} color="#fff" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.vagaTitle}>Publicar vaga</Text>
-              <Text style={styles.vagaSubtitle} numberOfLines={1}>
-                {myJobs.length > 0
-                  ? `${myJobs.length} vaga${myJobs.length === 1 ? "" : "s"} da empresa`
-                  : "Contrate pela sua empresa com a JudIA"}
-              </Text>
-            </View>
-            <Pressable
-              style={styles.vagaButton}
-              onPress={() => router.push("/provider/vaga/ai/chat")}
-            >
-              <Text style={styles.vagaButtonText}>Nova</Text>
-            </Pressable>
-          </Pressable>
-        )}
       </View>
 
       <ScrollView
@@ -326,7 +297,7 @@ export default function ProviderDashboard() {
         </View>
 
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Novos pedidos</Text>
+          <Text style={styles.sectionTitle}>Novas chamadas</Text>
           {newOrders.length > 0 ? (
             <View style={styles.newBadge}>
               <Text style={styles.newBadgeText}>{newOrders.length} novos</Text>
@@ -345,7 +316,7 @@ export default function ProviderDashboard() {
         {!isLoading && newOrders.length === 0 && (
           <View style={styles.emptyCard}>
             <Ionicons name="flash-outline" size={18} color={theme.colors.mutedForeground} />
-            <Text style={styles.emptyText}>Nenhum pedido novo no momento.</Text>
+            <Text style={styles.emptyText}>Nenhuma chamada nova no momento.</Text>
           </View>
         )}
 
@@ -356,7 +327,6 @@ export default function ProviderDashboard() {
             contentContainerStyle={styles.cardsRow}
           >
             {newOrders.map((order) => {
-              const paymentPaid = order.payment?.status === "PAID";
               const accepting =
                 transition.isPending && pendingOrder?.id === order.id && pendingOrder.action === "accept";
               const rejecting =
@@ -417,30 +387,32 @@ export default function ProviderDashboard() {
                   )}
 
                   <View style={styles.jobActions}>
-                    <SpinButton
-                      controlled
-                      isActive={rejecting}
-                      disabled={transition.isPending}
-                      idleText="Recusar"
-                      activeText="Recusando..."
-                      onPress={() => act(order.id, "reject")}
-                      colors={{
-                        idle: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
-                        active: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
-                      }}
-                      buttonStyle={{ paddingHorizontal: 16, paddingVertical: 11, borderRadius: 13, fontSize: 13.5 }}
-                      spinnerConfig={{
-                        color: theme.colors.mutedForeground,
-                        containerBackground: "rgba(255,255,255,0.06)",
-                      }}
-                    />
+                    {!order.isOpenRequest ? (
+                      <SpinButton
+                        controlled
+                        isActive={rejecting}
+                        disabled={transition.isPending}
+                        idleText="Recusar"
+                        activeText="Recusando..."
+                        onPress={() => act(order.id, "reject")}
+                        colors={{
+                          idle: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
+                          active: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
+                        }}
+                        buttonStyle={{ paddingHorizontal: 16, paddingVertical: 11, borderRadius: 13, fontSize: 13.5 }}
+                        spinnerConfig={{
+                          color: theme.colors.mutedForeground,
+                          containerBackground: "rgba(255,255,255,0.06)",
+                        }}
+                      />
+                    ) : null}
                     <View style={{ flex: 1 }}>
                       <SpinButton
                         controlled
                         isActive={accepting}
-                        disabled={transition.isPending || !paymentPaid}
-                        idleText={paymentPaid ? "Aceitar" : "Aguardando pagamento"}
-                        activeText="Aceitando..."
+                        disabled={transition.isPending}
+                        idleText={order.isOpenRequest ? "Atender" : "Aceitar"}
+                        activeText={order.isOpenRequest ? "Pegando..." : "Aceitando..."}
                         onPress={() => act(order.id, "accept")}
                         colors={{
                           idle: { background: theme.colors.primary, text: "#fff" },

@@ -2,420 +2,427 @@ import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useNavigation } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Alert, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
-import { ProviderSheet } from "@/components/provider-sheet";
+import { AttendFab } from "@/components/attend-fab";
+import { AttendRadar } from "@/components/attend-radar";
+import { HelpSheet } from "@/components/help-sheet";
 import { Avatar } from "@/components/ui/avatar";
-import { GlassSurface } from "@/components/ui/glass-surface";
-import { ProviderMarker, SelfMarker } from "@/components/ui/map-marker";
+import { HelpMarker, SelfMarker } from "@/components/ui/map-marker";
 import { RealMap } from "@/components/ui/real-map";
 import { Screen } from "@/components/ui/screen";
+import SpinButton from "@/components/ui/spin-button";
 import type { BottomSheetMethods } from "@/components/ui/templates/bottom-sheet/types";
 import { fonts } from "@/constants/fonts";
-import type { ProviderListItem } from "@/lib/api";
-import { avatarColor, initialsOf, priceFromCents } from "@/lib/format";
-import { useNotifications, useProviders } from "@/lib/hooks";
-import { useCurrentLocation } from "@/lib/location";
+import type { Order, OrderAction, OrderStatus } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { formatAddressLine, initialsOf, moneyFromCents } from "@/lib/format";
+import { useAttendButtonVisibility } from "@/lib/attend-button";
+import { useHelperMode } from "@/lib/helper-mode";
+import { useAddresses, useNotifications, useOrders, useTransitionOrder } from "@/lib/hooks";
+import { useCurrentLocation, useShareIdleLocation, useShareLocationWhileEnRoute } from "@/lib/location";
 import { distanceKm } from "@/lib/nearby";
 
 import { clientFloatingTabBarStyle } from "./_layout";
 
-function providerPosition(provider: ProviderListItem) {
-  if (provider.baseLat == null || provider.baseLng == null) return null;
-  return { lat: provider.baseLat, lng: provider.baseLng };
+const ACTIVE: OrderStatus[] = ["ACCEPTED", "EN_ROUTE", "IN_PROGRESS", "AWAITING_CONFIRMATION"];
+
+function helpTitle(order: Order): string {
+  return order.description?.trim() || order.category?.name || "Ajuda";
+}
+
+function helperNextAction(order: Order): { action: OrderAction; label: string; disabled?: boolean } | null {
+  const paid = order.payment?.status === "PAID" || order.payment?.method === "CASH";
+  switch (order.status) {
+    case "ACCEPTED":
+      if (order.isOpenRequest && !order.detailsReady) {
+        return { action: "start_route", label: "Aguardando a pessoa", disabled: true };
+      }
+      if (!paid) return { action: "start_route", label: "Aguardando pagamento", disabled: true };
+      return { action: "start_route", label: "Iniciar caminho" };
+    case "EN_ROUTE":
+      return order.tracking.arrived
+        ? { action: "start_work", label: "Cheguei, começar" }
+        : { action: "start_work", label: "Aguardando chegada", disabled: true };
+    case "IN_PROGRESS":
+      return { action: "complete", label: "Terminei" };
+    case "AWAITING_CONFIRMATION":
+      return { action: "complete", label: "Aguardando confirmação", disabled: true };
+    default:
+      return null;
+  }
 }
 
 export default function ClientHome() {
   const navigation = useNavigation();
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
-  const { data: providers = [] } = useProviders();
+  const { user } = useAuth();
+  const helper = useHelperMode();
+  const attendButton = useAttendButtonVisibility();
   const myLocation = useCurrentLocation();
+  const { data: addresses = [] } = useAddresses();
   const { data: notifications } = useNotifications();
   const hasUnread = (notifications?.unreadCount ?? 0) > 0;
+  const canPollHelps = user?.role === "BOTH";
+  const { data: helperOrders = [] } = useOrders("provider", { poll: canPollHelps, enabled: canPollHelps });
+  const transition = useTransitionOrder();
 
-  const providerSheetRef = useRef<BottomSheetMethods>(null);
-  const tabBarRestoreTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
-    null,
-  );
-  const [tabBarHiddenForSheet, setTabBarHiddenForSheet] = useState(false);
+  const defaultAddress = addresses.find((a) => a.isDefault) ?? addresses[0];
+  const origin = myLocation ?? (defaultAddress ? { lat: defaultAddress.lat, lng: defaultAddress.lng } : null);
 
-  const clearTabBarRestoreTimeout = () => {
-    if (tabBarRestoreTimeoutRef.current) {
-      clearTimeout(tabBarRestoreTimeoutRef.current);
-      tabBarRestoreTimeoutRef.current = null;
+  const [selectedHelpId, setSelectedHelpId] = useState<string | null>(null);
+  const [cameraKey, setCameraKey] = useState(0);
+  const helpSheetRef = useRef<BottomSheetMethods>(null);
+
+  useShareIdleLocation(helper.isOn);
+
+  const activeOrder = helperOrders.find((order) => ACTIVE.includes(order.status));
+  useShareLocationWhileEnRoute(
+    activeOrder && activeOrder.status !== "AWAITING_CONFIRMATION" ? activeOrder.id : undefined,
+  );
+
+  const prevStatusRef = useRef<Map<string, OrderStatus>>(new Map());
+  useEffect(() => {
+    for (const order of helperOrders) {
+      const prev = prevStatusRef.current.get(order.id);
+      if (prev === "AWAITING_CONFIRMATION" && order.status === "COMPLETED") {
+        router.push({ pathname: "/client/attend-rating/[id]", params: { id: order.id } });
+      }
     }
-  };
+    prevStatusRef.current = new Map(helperOrders.map((order) => [order.id, order.status]));
+  }, [helperOrders]);
 
   useEffect(() => {
-    navigation.setOptions({
-      tabBarStyle: tabBarHiddenForSheet
-        ? { display: "none" }
-        : clientFloatingTabBarStyle,
-    });
+    navigation.setOptions({ tabBarStyle: { display: "none" } });
     return () => {
       navigation.setOptions({ tabBarStyle: clientFloatingTabBarStyle });
-      clearTabBarRestoreTimeout();
     };
-  }, [navigation, tabBarHiddenForSheet]);
+  }, [navigation]);
 
-  const openProviderSheet = (providerId: string, snapIndex: number) => {
-    clearTabBarRestoreTimeout();
-    setSelectedProviderId(providerId);
-    setTabBarHiddenForSheet(true);
-    providerSheetRef.current?.snapToIndex(snapIndex);
+  const locationCity = defaultAddress?.city ?? "Sua região";
+  const locationStreet = defaultAddress
+    ? formatAddressLine(defaultAddress)
+    : myLocation
+      ? "Sua localização"
+      : "Definir endereço";
+
+  const openHelps = useMemo(
+    () =>
+      helper.isOn
+        ? helperOrders.filter((order) => order.status === "CREATED" && order.isOpenRequest && !order.provider)
+        : [],
+    [helper.isOn, helperOrders],
+  );
+
+  const selectedHelp = openHelps.find((order) => order.id === selectedHelpId) ?? null;
+  const selectedDistance =
+    selectedHelp && origin
+      ? distanceKm(origin, { lat: selectedHelp.address.lat, lng: selectedHelp.address.lng })
+      : null;
+  const selectedMinutes = selectedHelp
+    ? Math.max(0, Math.round((Date.now() - new Date(selectedHelp.createdAt).getTime()) / 60000))
+    : null;
+
+  const openHelp = (order: Order) => {
+    setSelectedHelpId(order.id);
+    helpSheetRef.current?.snapToIndex(0);
   };
-
-  const handleProviderSheetCloseStart = () => {
-    clearTabBarRestoreTimeout();
-    tabBarRestoreTimeoutRef.current = setTimeout(() => {
-      setTabBarHiddenForSheet(false);
-      tabBarRestoreTimeoutRef.current = null;
-    }, 150);
-  };
-
-  const handleProviderSheetClose = () => {
-    clearTabBarRestoreTimeout();
-    setTabBarHiddenForSheet(false);
-    setSelectedProviderId(null);
-  };
-
-  // Ordena pela distância real até a localização base do prestador (mais
-  // perto primeiro).
-  const nearbyProviders = useMemo(() => {
-    if (!myLocation) return providers;
-    return [...providers].sort((a, b) => {
-      const posA = providerPosition(a);
-      const posB = providerPosition(b);
-      if (!posA || !posB) return 0;
-      return distanceKm(myLocation, posA) - distanceKm(myLocation, posB);
-    });
-  }, [providers, myLocation]);
 
   const markers = [
-    ...providers
-      .filter((p) => p.baseLat != null && p.baseLng != null)
-      .map((p, index) => ({
-        id: p.id,
-        lngLat: [p.baseLng as number, p.baseLat as number] as [number, number],
-        render: () => (
-          <ProviderMarker
-            initials={initialsOf(p.name)}
-            color={index === 0 ? "#FF6600" : "#3a3a70"}
-            imageUri={p.avatarUrl}
-            highlighted={index === 0}
-          />
-        ),
-        onPress: () => {
-          openProviderSheet(p.id, 0);
-        },
-      })),
-    ...(myLocation
+    ...openHelps.map((order) => ({
+      id: order.id,
+      lngLat: [order.address.lng, order.address.lat] as [number, number],
+      render: () => <HelpMarker highlighted={order.id === selectedHelpId} />,
+      onPress: () => openHelp(order),
+    })),
+    ...(origin
       ? [
           {
             id: "self",
-            lngLat: [myLocation.lng, myLocation.lat] as [number, number],
-            render: () => <SelfMarker />,
+            lngLat: [origin.lng, origin.lat] as [number, number],
+            render: () => <SelfMarker color={theme.colors.primary} />,
           },
         ]
       : []),
   ];
 
+  const acceptHelp = () => {
+    if (!selectedHelp) return;
+    transition.mutate(
+      { id: selectedHelp.id, action: "accept" },
+      {
+        onSuccess: (order) => {
+          setSelectedHelpId(null);
+          helpSheetRef.current?.close();
+          router.push({ pathname: "/client/attend/[id]", params: { id: order.id } });
+        },
+        onError: (err) =>
+          Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível atender agora."),
+      },
+    );
+  };
+
+  const runActive = () => {
+    if (!activeOrder) return;
+    const next = helperNextAction(activeOrder);
+    if (!next) return;
+    if (next.disabled) {
+      if (activeOrder.status === "ACCEPTED" || activeOrder.status === "EN_ROUTE") {
+        router.push({ pathname: "/client/attend/[id]", params: { id: activeOrder.id } });
+      }
+      return;
+    }
+    transition.mutate(
+      { id: activeOrder.id, action: next.action },
+      {
+        onSuccess: (order) => {
+          if (next.action === "start_route") {
+            router.push({ pathname: "/client/attend/[id]", params: { id: order.id } });
+          }
+        },
+        onError: (err) =>
+          Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível continuar."),
+      },
+    );
+  };
+
+  const next = activeOrder ? helperNextAction(activeOrder) : null;
+  const attending = helper.isOn || helper.arming || activeOrder != null;
+
   return (
     <Screen>
       <RealMap
         markers={markers}
-        center={myLocation ? [myLocation.lng, myLocation.lat] : undefined}
+        center={origin ? [origin.lng, origin.lat] : undefined}
+        variant="dark"
+        cameraKey={cameraKey}
+        zoom={14}
       />
+      {(helper.isOn || helper.arming) && !activeOrder && <AttendRadar />}
 
-      <View
-        style={[styles.overlay, { paddingTop: insets.top + 12 }]}
-        pointerEvents="box-none"
-      >
-        <View style={styles.topBar}>
-          <GlassSurface style={styles.locationPill}>
-            <Ionicons name="location" size={16} color={theme.colors.primary} />
-            <View>
-              <Text style={styles.locationLabel}>SUA LOCALIZAÇÃO</Text>
-              <Text style={styles.locationValue}>
-                {myLocation ? "Sua localização" : "Localização indisponível"}
-              </Text>
+      <View style={[styles.topArea, { paddingTop: insets.top + 10 }]} pointerEvents="box-none">
+        <View style={styles.headerRow}>
+          <Pressable onPress={() => router.push("/client/profile" as never)}>
+            <Avatar
+              initials={initialsOf(user?.fullName ?? "?")}
+              imageUri={user?.avatarUrl}
+              color={theme.colors.primary}
+              size={44}
+            />
+          </Pressable>
+
+          <Pressable style={styles.locationBlock} onPress={() => router.push("/client/addresses")}>
+            <View style={styles.locationLabelRow}>
+              <Ionicons name="location" size={12} color={theme.colors.primary} />
+              <Text style={styles.locationLabel}>Sua localização</Text>
             </View>
-          </GlassSurface>
-          <Pressable onPress={() => router.push("/jobs" as never)}>
-            <GlassSurface style={styles.bellButton}>
-              <Ionicons name="briefcase-outline" size={22} color="#fff" />
-            </GlassSurface>
+            <Text style={styles.locationValue} numberOfLines={1}>
+              {defaultAddress ? `${locationCity}, ${locationStreet}` : locationStreet}
+            </Text>
           </Pressable>
-          <Pressable
-            onPress={() => router.push("/client/notifications" as never)}
-          >
-            <GlassSurface style={styles.bellButton}>
-              <Ionicons name="notifications-outline" size={22} color="#fff" />
-              {hasUnread && <View style={styles.bellDot} />}
-            </GlassSurface>
+
+          <Pressable onPress={() => router.push("/client/notifications" as never)}>
+            <View style={styles.bellButton}>
+              <Ionicons name="notifications-outline" size={20} color={theme.colors.foreground} />
+              {hasUnread && <View style={[styles.bellDot, { backgroundColor: theme.colors.primary }]} />}
+            </View>
           </Pressable>
         </View>
+      </View>
 
-        <Pressable
-          style={({ pressed }) => [
-            styles.searchBar,
-            { opacity: pressed ? 0.9 : 1 },
-          ]}
-          onPress={() => router.push("/client/ai/chat" as never)}
-        >
-          <Ionicons name="search" size={22} color="#fff" />
-          <Text style={styles.searchText}>Do que você precisa hoje?</Text>
+      <View style={[styles.bottomArea, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
+        {helper.isOn && openHelps.length === 0 && !activeOrder && (
+          <View style={styles.emptyHint}>
+            <Text style={styles.emptyHintText}>
+              Nenhuma ajuda perto de você agora. Deixe o modo ligado.
+            </Text>
+          </View>
+        )}
+
+        {activeOrder && next && (
+          <View style={styles.activeCard}>
+            <Text style={styles.activeKicker}>Sua ajuda</Text>
+            <Text style={styles.activeTitle} numberOfLines={2}>
+              {helpTitle(activeOrder)}
+            </Text>
+            <Text style={styles.activeMeta}>{moneyFromCents(activeOrder.priceCents)}</Text>
+            <SpinButton
+              controlled
+              isActive={transition.isPending && !selectedHelp}
+              disabled={transition.isPending}
+              idleText={next.label}
+              activeText="Aguarde..."
+              onPress={runActive}
+              colors={{
+                idle: {
+                  background: next.disabled ? "rgba(255,255,255,0.08)" : theme.colors.primary,
+                  text: "#fff",
+                },
+                active: { background: theme.colors.primary, text: "#fff" },
+              }}
+              buttonStyle={{ paddingVertical: 13, borderRadius: 14, fontSize: 15 }}
+              spinnerConfig={{ color: "#fff", containerBackground: theme.colors.primary }}
+            />
+          </View>
+        )}
+
+        {attendButton.ready && !attendButton.hidden && (
+          <AttendFab active={helper.isOn} pending={helper.pending} onPress={helper.toggle} />
+        )}
+
+        <Pressable style={styles.locateBtn} onPress={() => origin && setCameraKey((k) => k + 1)}>
+          <Ionicons name="locate" size={22} color={theme.colors.primary} />
         </Pressable>
+
+        {!attending && (
+          <Pressable
+            style={({ pressed }) => [styles.searchBtn, { opacity: pressed ? 0.88 : 1 }]}
+            onPress={() => router.push("/client/create-order" as never)}
+          >
+            <Ionicons name="hand-left" size={20} color={theme.colors.primaryForeground} />
+            <Text style={styles.searchBtnText}>Pedir ajuda</Text>
+          </Pressable>
+        )}
       </View>
 
-      <View style={styles.nearby}>
-        <View style={styles.nearbyHeader}>
-          <Text style={styles.nearbyTitle}>Perto de você</Text>
-          <Text style={styles.nearbyLink}>Ver mapa</Text>
-        </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.cardsRow}
-        >
-          {nearbyProviders.slice(0, 2).map((provider, index) => {
-            const position = providerPosition(provider);
-            const distanceLabel =
-              myLocation && position
-                ? `${distanceKm(myLocation, position).toFixed(1)} km`
-                : `${provider.reviews} avaliações`;
-            return (
-              <Pressable
-                key={provider.id}
-                style={({ pressed }) => [
-                  styles.providerCard,
-                  { opacity: pressed ? 0.9 : 1 },
-                ]}
-                onPress={() => openProviderSheet(provider.id, 0)}
-              >
-                <View style={styles.providerHeader}>
-                  <Avatar
-                    initials={initialsOf(provider.name)}
-                    imageUri={provider.avatarUrl}
-                    color={avatarColor(index)}
-                    size={46}
-                    radius={14}
-                  />
-                  <View style={styles.providerInfo}>
-                    <Text style={styles.providerName} numberOfLines={1}>
-                      {provider.name}
-                    </Text>
-                    <Text style={styles.providerRole} numberOfLines={1}>
-                      {provider.companyName ? `${provider.companyName} · ` : ""}
-                      {provider.role}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.providerMeta}>
-                  <View style={styles.ratingChip}>
-                    <Text style={styles.ratingText}>★ {provider.rating}</Text>
-                  </View>
-                  <Text style={styles.distanceText}>{distanceLabel}</Text>
-                </View>
-                <View style={styles.providerFooter}>
-                  <Text style={styles.providerPrice}>
-                    {priceFromCents(provider.priceFromCents)}
-                  </Text>
-                  <View style={styles.viewButton}>
-                    <Text style={styles.viewButtonText}>Ver</Text>
-                  </View>
-                </View>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      <ProviderSheet
-        ref={providerSheetRef}
-        providerId={selectedProviderId}
-        onCloseStart={handleProviderSheetCloseStart}
-        onClose={handleProviderSheetClose}
+      <HelpSheet
+        ref={helpSheetRef}
+        order={selectedHelp}
+        distanceKm={selectedDistance}
+        minutesAgo={selectedMinutes}
+        accepting={transition.isPending && selectedHelp != null}
+        blockedLabel={activeOrder ? "Termine a ajuda atual" : null}
+        onAccept={acceptHelp}
+        onClose={() => setSelectedHelpId(null)}
       />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
-  overlay: {
+  topArea: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 16,
-    gap: 13,
+    gap: 12,
   },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 11,
+  locationBlock: { flex: 1, alignItems: "center" },
+  locationLabelRow: { flexDirection: "row", alignItems: "center", gap: 3 },
+  locationLabel: {
+    fontSize: 11.5,
+    fontFamily: fonts.semiBold,
+    color: theme.colors.mutedForeground,
   },
-  locationPill: {
-    flex: 1,
-    height: 50,
-    borderRadius: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
-    paddingHorizontal: 15,
+  locationValue: {
+    marginTop: 1,
+    fontSize: 15,
+    fontFamily: fonts.extraBold,
+    color: theme.colors.foreground,
+    maxWidth: "100%",
   },
   bellButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: theme.colors.secondary,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
   bellDot: {
     position: "absolute",
-    top: 13,
-    right: 13,
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: theme.colors.primary,
+    top: 11,
+    right: 12,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     borderWidth: 1.5,
-    borderColor: "#14142e",
+    borderColor: theme.colors.secondary,
   },
-  locationLabel: {
-    fontSize: 10.5,
-    color: theme.colors.mutedForeground,
-    fontFamily: fonts.bold,
-    lineHeight: 12,
-  },
-  locationValue: {
-    fontSize: 14,
-    color: "#fff",
-    fontFamily: fonts.bold,
-    marginTop: 2,
-  },
-  searchBar: {
-    backgroundColor: theme.colors.primary,
-    borderRadius: 20,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 13,
-    shadowColor: theme.colors.primary,
-    shadowOpacity: 0.4,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 6,
-  },
-  searchText: {
-    fontSize: 17,
-    fontFamily: fonts.bold,
-    color: "#fff",
-  },
-  nearby: {
+  bottomArea: {
     position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 108,
-  },
-  nearbyHeader: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    marginBottom: 12,
-    paddingHorizontal: 16,
-  },
-  nearbyTitle: {
-    fontSize: 20,
-    fontFamily: fonts.extraBold,
-    color: "#fff",
-  },
-  nearbyLink: {
-    fontSize: 13,
-    fontFamily: fonts.bold,
-    color: theme.colors.primary,
-  },
-  cardsRow: {
+    left: 20,
+    right: 20,
+    bottom: 0,
+    alignItems: "flex-end",
     gap: 12,
-    paddingHorizontal: 16,
   },
-  providerCard: {
-    width: 220,
-    backgroundColor: "rgba(28,28,58,0.92)",
+  emptyHint: {
+    alignSelf: "stretch",
+    backgroundColor: "rgba(20,20,44,0.92)",
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    borderRadius: theme.borderRadius.xxl,
-    padding: 15,
+    borderColor: theme.colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
-  providerHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 11,
+  emptyHintText: {
+    fontSize: 13.5,
+    fontFamily: fonts.semiBold,
+    color: theme.colors.foreground,
+    textAlign: "center",
+    lineHeight: 19,
   },
-  providerInfo: {
-    flex: 1,
-    flexShrink: 1,
+  activeCard: {
+    alignSelf: "stretch",
+    backgroundColor: theme.colors.background,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: 14,
+    gap: 6,
   },
-  providerName: {
-    fontSize: 15,
+  activeKicker: {
+    fontSize: 11,
     fontFamily: fonts.bold,
-    color: "#fff",
-  },
-  providerRole: {
-    fontSize: 12,
-    fontFamily: fonts.semiBold,
-    color: theme.colors.mutedForeground,
-    marginTop: 1,
-  },
-  providerMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 13,
-  },
-  ratingChip: {
-    backgroundColor: "rgba(255,102,0,0.16)",
-    borderRadius: 9,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
-  ratingText: {
     color: theme.colors.primary,
-    fontSize: 12,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  activeTitle: {
+    fontSize: 16,
     fontFamily: fonts.extraBold,
+    color: theme.colors.foreground,
   },
-  distanceText: {
+  activeMeta: {
+    fontSize: 14,
+    fontFamily: fonts.bold,
     color: theme.colors.mutedForeground,
-    fontSize: 12.5,
-    fontFamily: fonts.semiBold,
+    marginBottom: 4,
   },
-  providerFooter: {
+  locateBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: theme.colors.secondary,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  searchBtn: {
+    alignSelf: "stretch",
+    height: 56,
+    borderRadius: 28,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 14,
-  },
-  providerPrice: {
-    fontSize: 17,
-    fontFamily: fonts.extraBold,
-    color: "#fff",
-  },
-  viewButton: {
+    justifyContent: "center",
+    gap: 10,
     backgroundColor: theme.colors.primary,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
   },
-  viewButtonText: {
-    color: "#fff",
-    fontSize: 13,
+  searchBtnText: {
+    color: theme.colors.primaryForeground,
+    fontSize: 16,
     fontFamily: fonts.bold,
   },
 }));

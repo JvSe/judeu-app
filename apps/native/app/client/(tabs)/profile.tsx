@@ -10,6 +10,8 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { fonts } from "@/constants/fonts";
 import { useAuth } from "@/lib/auth-context";
 import { initialsOf } from "@/lib/format";
+import { useAttendButtonVisibility } from "@/lib/attend-button";
+import { useHelperMode } from "@/lib/helper-mode";
 import { useClientStats } from "@/lib/hooks";
 import { Avatar } from "@/components/ui/avatar";
 import { Screen } from "@/components/ui/screen";
@@ -30,6 +32,8 @@ export default function ClientProfile() {
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
   const { data: stats } = useClientStats();
+  const helper = useHelperMode();
+  const attendButton = useAttendButtonVisibility();
 
   const memberSince = user?.createdAt ? new Date(user.createdAt).getFullYear() : null;
 
@@ -84,6 +88,51 @@ export default function ClientProfile() {
           </View>
 
           <View style={styles.menu}>
+            <Pressable
+              style={({ pressed }) => [styles.menuRow, { opacity: pressed ? 0.7 : 1 }]}
+              onPress={helper.toggle}
+              disabled={helper.pending}
+            >
+              <View style={styles.menuIcon}>
+                <Ionicons name="hand-left-outline" size={19} color={theme.colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.menuTitle}>
+                  {helper.pending
+                    ? "Atualizando..."
+                    : helper.isOn
+                      ? "Procurando ajudas perto de você"
+                      : "Atender ajudas"}
+                </Text>
+                <Text style={styles.menuHint}>Receba pedidos de ajuda perto de você</Text>
+              </View>
+              <View style={[styles.switchTrack, helper.isOn && styles.switchTrackOn]}>
+                <View style={[styles.switchKnob, helper.isOn && styles.switchKnobOn]} />
+              </View>
+            </Pressable>
+            {attendButton.ready && (
+              <>
+                <View style={styles.divider} />
+                <Pressable
+                  style={({ pressed }) => [styles.menuRow, { opacity: pressed ? 0.7 : 1 }]}
+                  onPress={() => {
+                    void (attendButton.hidden ? attendButton.show() : attendButton.hide()).catch(() => undefined);
+                  }}
+                >
+                  <View style={styles.menuIcon}>
+                    <Ionicons
+                      name={attendButton.hidden ? "eye-outline" : "eye-off-outline"}
+                      size={19}
+                      color={theme.colors.primary}
+                    />
+                  </View>
+                  <Text style={styles.menuLabel}>
+                    {attendButton.hidden ? "Mostrar botão no mapa" : "Ocultar botão"}
+                  </Text>
+                </Pressable>
+              </>
+            )}
+            <View style={styles.divider} />
             {menu.map((item, index) => (
               <Fragment key={item.id}>
                 {index > 0 && <View style={styles.divider} />}
@@ -229,6 +278,33 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fonts.semiBold,
     color: theme.colors.foreground,
   },
+  menuTitle: {
+    fontSize: 15,
+    fontFamily: fonts.semiBold,
+    color: theme.colors.foreground,
+  },
+  menuHint: {
+    marginTop: 2,
+    fontSize: 12,
+    fontFamily: fonts.medium,
+    color: theme.colors.mutedForeground,
+  },
+  switchTrack: {
+    width: 44,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  switchTrackOn: { backgroundColor: theme.colors.primary },
+  switchKnob: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#fff",
+  },
+  switchKnobOn: { alignSelf: "flex-end" },
   divider: {
     height: 1,
     backgroundColor: "rgba(255,255,255,0.05)",

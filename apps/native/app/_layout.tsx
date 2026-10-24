@@ -17,7 +17,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useUnistyles } from "react-native-unistyles";
 import notifee, { EventType } from "react-native-notify-kit";
 
-import { AuthProvider } from "@/lib/auth-context";
+import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { pathForNotification } from "@/lib/notifications";
 import { QueryProvider } from "@/lib/query";
 import { initAssistant } from "@/lib/assistant";
@@ -47,9 +47,32 @@ export const unstable_settings = {
   initialRouteName: "index",
 };
 
+function NotificationNavigation() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const home = user?.role === "PROVIDER" ? "provider" : "client";
+
+  useEffect(() => {
+    return notifee.onForegroundEvent(({ type, detail }) => {
+      if (type !== EventType.PRESS) return;
+      const path = pathForNotification(detail.notification?.data ?? {}, { home });
+      if (path) router.push(path as never);
+    });
+  }, [router, home]);
+
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const path = pathForNotification(response.notification.request.content.data ?? {}, { home });
+      if (path) router.push(path as never);
+    });
+    return () => sub.remove();
+  }, [router, home]);
+
+  return null;
+}
+
 export default function RootLayout() {
   const { theme } = useUnistyles();
-  const router = useRouter();
   const [fontsLoaded] = useFonts({
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
@@ -78,24 +101,6 @@ export default function RootLayout() {
     return () => sub.remove();
   }, []);
 
-  // Tap em notificação exibida pelo notifee (primeiro plano).
-  useEffect(() => {
-    return notifee.onForegroundEvent(({ type, detail }) => {
-      if (type !== EventType.PRESS) return;
-      const path = pathForNotification(detail.notification?.data ?? {});
-      if (path) router.push(path as never);
-    });
-  }, [router]);
-
-  // Tap em notificação exibida pelo SO (background/killed) — segue via expo-notifications.
-  useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      const path = pathForNotification(response.notification.request.content.data ?? {});
-      if (path) router.push(path as never);
-    });
-    return () => sub.remove();
-  }, [router]);
-
   if (!fontsLoaded) {
     return null;
   }
@@ -105,6 +110,7 @@ export default function RootLayout() {
       <StripeProvider publishableKey={env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ""}>
         <QueryProvider>
           <AuthProvider>
+            <NotificationNavigation />
             <Stack
               screenOptions={{
                 headerShown: false,

@@ -204,7 +204,7 @@ export function ProposeForm({ role }: { role: "client" | "provider" }) {
                 styles.submit,
                 { opacity: pressed || createProposal.isPending ? 0.9 : 1 },
               ]}
-              onPress={onValid}
+              onPress={() => void onValid()}
               disabled={createProposal.isPending}
             >
               <Text style={styles.submitText}>

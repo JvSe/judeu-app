@@ -32,6 +32,15 @@ describe("pathForNotification", () => {
     );
   });
 
+  it("quem atende pelo app do cliente abre o caminho de lá", () => {
+    expect(
+      pathForNotification({ type: "order", orderId: "abc", role: "provider" }, { home: "client" }),
+    ).toBe("/client/attend/abc");
+    expect(
+      pathForNotification({ type: "chat", orderId: "abc", role: "provider" }, { home: "client" }),
+    ).toBe("/client/chat/abc");
+  });
+
   it("sem type reconhecido não navega", () => {
     expect(pathForNotification({ orderId: "abc", role: "client" })).toBeNull();
   });

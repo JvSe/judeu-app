@@ -108,6 +108,102 @@ export const newRequests = [
   },
 ];
 
+/** Centro de Palmas/TO — mesmo fallback do mapa. */
+const PALMAS = { lat: -10.1841, lng: -48.3336 };
+
+export type ActivatedHelpStatus = "searching" | "matched" | "en_route";
+
+export type ActivatedHelp = {
+  id: string;
+  title: string;
+  category: string;
+  status: ActivatedHelpStatus;
+  distanceKm: number;
+  minutesAgo: number;
+  lat: number;
+  lng: number;
+  clientName: string;
+};
+
+type ActivatedHelpSeed = Omit<ActivatedHelp, "lat" | "lng"> & {
+  /** Deslocamento em graus a partir da origem do usuário. */
+  dLat: number;
+  dLng: number;
+};
+
+const ACTIVATED_HELP_SEEDS: ActivatedHelpSeed[] = [
+  {
+    id: "help-1",
+    title: "Troca de chuveiro",
+    category: "Reparos",
+    status: "searching",
+    distanceKm: 0.4,
+    minutesAgo: 3,
+    dLat: 0.0032,
+    dLng: -0.0021,
+    clientName: "Ana Paula",
+  },
+  {
+    id: "help-2",
+    title: "Limpeza pós-obra",
+    category: "Limpeza",
+    status: "matched",
+    distanceKm: 0.9,
+    minutesAgo: 12,
+    dLat: -0.0024,
+    dLng: 0.0038,
+    clientName: "Bruno Costa",
+  },
+  {
+    id: "help-3",
+    title: "Frete de sofá",
+    category: "Frete",
+    status: "en_route",
+    distanceKm: 1.3,
+    minutesAgo: 18,
+    dLat: 0.0011,
+    dLng: 0.0045,
+    clientName: "Carla Dias",
+  },
+  {
+    id: "help-4",
+    title: "Instalação de tomada",
+    category: "Reparos",
+    status: "searching",
+    distanceKm: 0.6,
+    minutesAgo: 7,
+    dLat: -0.0038,
+    dLng: -0.0016,
+    clientName: "Diego Alves",
+  },
+  {
+    id: "help-5",
+    title: "Corte e escova",
+    category: "Beleza",
+    status: "matched",
+    distanceKm: 1.1,
+    minutesAgo: 22,
+    dLat: 0.0046,
+    dLng: 0.0012,
+    clientName: "Elena Rocha",
+  },
+];
+
+/** Gera ajudas acionadas ao redor da origem (fallback: Palmas). */
+export function getActivatedHelpsAround(
+  origin: { lat: number; lng: number } | null | undefined,
+): ActivatedHelp[] {
+  const base = origin ?? PALMAS;
+  return ACTIVATED_HELP_SEEDS.map(({ dLat, dLng, ...rest }) => ({
+    ...rest,
+    lat: base.lat + dLat,
+    lng: base.lng + dLng,
+  }));
+}
+
+/** Snapshot estático (Palmas) — útil em previews/testes. */
+export const activatedHelps = getActivatedHelpsAround(PALMAS);
+
 export type OrderStatus = "a-caminho" | "agendado";
 
 export const activeOrders = [
