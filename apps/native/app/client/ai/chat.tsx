@@ -34,7 +34,7 @@ export default function AiChat() {
       {available ? (
         <AiAssistant />
       ) : (
-        // Sem runtime nativo do ExecuTorch (Expo Go / web): manda para a busca por categoria.
+        // Sem runtime nativo do ExecuTorch (Expo Go / web): volta ao mapa.
         <View style={styles.unavailable}>
           <Ionicons
             name="sparkles-outline"
@@ -50,10 +50,10 @@ export default function AiChat() {
               styles.unavailableButton,
               { opacity: pressed ? 0.9 : 1 },
             ]}
-            onPress={() => router.replace("/client/explore")}
+            onPress={() => router.replace("/client")}
           >
             <Text style={styles.unavailableButtonText}>
-              Buscar por categoria
+              Escolher no mapa
             </Text>
           </Pressable>
         </View>

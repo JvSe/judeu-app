@@ -35,7 +35,13 @@ export default function Payment() {
   const { data: payment } = useOrderPayment(id);
   const createPayment = useCreatePayment();
 
-  const goToOrder = () => router.replace({ pathname: "/client/tracking/[id]", params: { id } });
+  const goToOrder = () => {
+    if (order?.isOpenRequest && !order.detailsReady) {
+      router.replace({ pathname: "/client/arrange/[id]", params: { id } } as never);
+      return;
+    }
+    router.replace({ pathname: "/client/tracking/[id]", params: { id } });
+  };
 
   useEffect(() => {
     if (payment?.status === "PAID") goToOrder();

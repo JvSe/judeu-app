@@ -1,5 +1,6 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { useEffect } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,14 +23,22 @@ const STEPS: { status: OrderStatus; label: string }[] = [
   { status: "IN_PROGRESS", label: "Chegou" },
 ];
 
-function statusMessage(status: OrderStatus, providerFirstName: string): string {
+function statusMessage(
+  status: OrderStatus,
+  providerFirstName: string,
+  hasPickup: boolean,
+): string {
   switch (status) {
     case "ACCEPTED":
       return `${providerFirstName} aceitou o pedido`;
     case "EN_ROUTE":
-      return `${providerFirstName} está a caminho`;
+      return hasPickup
+        ? `${providerFirstName} está indo buscar`
+        : `${providerFirstName} está a caminho`;
     case "IN_PROGRESS":
-      return `${providerFirstName} está no local`;
+      return hasPickup
+        ? `${providerFirstName} está a caminho de você`
+        : `${providerFirstName} está no local`;
     case "COMPLETED":
       return "Serviço concluído";
     default:
@@ -43,6 +52,13 @@ export default function Tracking() {
   const { theme } = useUnistyles();
   const { data: order, isLoading } = useOrder(id, { poll: true });
   const myLocation = useCurrentLocation();
+
+  useEffect(() => {
+    if (!order) return;
+    if (order.isOpenRequest && order.status === "ACCEPTED" && !order.detailsReady) {
+      router.replace({ pathname: "/client/arrange/[id]", params: { id: order.id } } as never);
+    }
+  }, [order]);
 
   if (isLoading || !order) {
     return (
@@ -131,7 +147,9 @@ export default function Tracking() {
         </IconButton>
         <View style={styles.statusPill}>
           <View style={styles.statusDot} />
-          <Text style={styles.statusText}>{statusMessage(order.status, providerFirstName)}</Text>
+          <Text style={styles.statusText}>
+            {statusMessage(order.status, providerFirstName, !!order.pickupAddress)}
+          </Text>
         </View>
       </View>
 

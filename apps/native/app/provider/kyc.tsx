@@ -376,7 +376,7 @@ export default function ProviderKyc() {
         </View>
         <Pressable
           style={({ pressed }) => [styles.submit, { opacity: pressed || submitting ? 0.9 : 1 }]}
-          onPress={onValid}
+          onPress={() => void onValid()}
           disabled={submitting}
         >
           {submitting ? (

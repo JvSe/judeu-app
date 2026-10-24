@@ -24,5 +24,6 @@ export async function POST(req: Request) {
   if (!parsed.success) return error("Dados inválidos", 422);
 
   const profile = await setProviderAvailability(claims.sub, parsed.data.isAvailable);
+  if ("error" in profile) return error(profile.error, profile.status);
   return json({ profile });
 }

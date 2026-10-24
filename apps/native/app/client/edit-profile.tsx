@@ -153,7 +153,7 @@ export default function EditProfile() {
             styles.submit,
             { opacity: pressed || updateProfile.isPending ? 0.9 : 1 },
           ]}
-          onPress={onValid}
+          onPress={() => void onValid()}
           disabled={updateProfile.isPending}
         >
           {updateProfile.isPending ? (

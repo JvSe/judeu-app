@@ -25,6 +25,7 @@ import type {
   CreateProposalInput,
   CreateReviewInput,
   CreateSupportTicketInput,
+  ArrangeOrderInput,
   JobFilters,
   JobStatusValue,
   NotificationPreferences,
@@ -90,11 +91,15 @@ export function useProvider(id: string) {
 
 // ---- Pedidos ----
 // `poll` liga refetch curto (só em foco) — usado onde o badge de chat não lido precisa se atualizar sozinho.
-export function useOrders(as: "client" | "provider" = "client", opts: { poll?: boolean } = {}) {
+export function useOrders(
+  as: "client" | "provider" = "client",
+  opts: { poll?: boolean; enabled?: boolean } = {},
+) {
   const isFocused = useIsFocused();
   return useQuery({
     queryKey: ["orders", as],
     queryFn: () => ordersApi.list(as),
+    enabled: opts.enabled !== false,
     refetchInterval: opts.poll && isFocused ? 8000 : false,
   });
 }
@@ -117,6 +122,18 @@ export function useCreateOrder() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["orders"] });
       qc.invalidateQueries({ queryKey: ["providers-nearby"] });
+    },
+  });
+}
+
+export function useArrangeOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...input }: { id: string } & ArrangeOrderInput) =>
+      ordersApi.arrange(id, input),
+    onSuccess: (order) => {
+      qc.setQueryData(["order", order.id], order);
+      qc.invalidateQueries({ queryKey: ["orders"] });
     },
   });
 }

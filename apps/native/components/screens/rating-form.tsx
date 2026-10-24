@@ -48,11 +48,23 @@ type RatingForm = z.infer<typeof ratingSchema>;
 
 // Avaliação pós-serviço (RF-G1) — compartilhada entre cliente e prestador, cada
 // um avaliando o outro lado do pedido concluído. `role` decide de quem é a tela.
-export function RatingForm({ role }: { role: "client" | "provider" }) {
+export function RatingForm({
+  role,
+  homeRoute: homeRouteOverride,
+  backLabel: backLabelOverride,
+}: {
+  role: "client" | "provider";
+  homeRoute?: string;
+  backLabel?: string;
+}) {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { tags, question, homeRoute, backLabel } = ROLE_CONFIG[role];
+  const config = ROLE_CONFIG[role];
+  const tags = config.tags;
+  const question = config.question;
+  const homeRoute = homeRouteOverride ?? config.homeRoute;
+  const backLabel = backLabelOverride ?? config.backLabel;
 
   const { data: order, isLoading } = useOrder(id);
   const { data: myReview, isLoading: loadingReview } = useMyReview(id);
@@ -192,7 +204,7 @@ export function RatingForm({ role }: { role: "client" | "provider" }) {
                 styles.submit,
                 { opacity: pressed || createReview.isPending ? 0.9 : 1 },
               ]}
-              onPress={onValid}
+              onPress={() => void onValid()}
               disabled={createReview.isPending}
             >
               <Text style={styles.submitText}>

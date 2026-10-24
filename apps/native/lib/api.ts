@@ -316,6 +316,7 @@ export type MyProviderProfile = {
   baseLat: number | null;
   baseLng: number | null;
   isAvailable: boolean;
+  isHelper: boolean;
   allowsNegotiation: boolean;
   isCompany: boolean;
   companyName: string | null;
@@ -363,6 +364,21 @@ export const providerProfileApi = {
       method: "POST",
       body: { isAvailable },
     }).then((r) => r.profile);
+  },
+  registerHelper(input: {
+    fullName: string;
+    phone: string;
+    bio?: string;
+    acceptedTerms: true;
+    lat?: number;
+    lng?: number;
+  }) {
+    return apiFetch<{
+      user: AppUser;
+      profile: MyProviderProfile;
+      accessToken: string;
+      refreshToken: string;
+    }>("/api/providers/me/helper", { method: "POST", body: input });
   },
   updateLocation(lat: number, lng: number) {
     return apiFetch<{ profile: MyProviderProfile }>("/api/providers/me/location", {
@@ -413,6 +429,8 @@ export type Order = {
   cancelReason: string | null;
   createdAt: string;
   offerExpiresAt: string;
+  isOpenRequest: boolean;
+  detailsReady: boolean;
   unreadMessages: number;
   service: { id: string; name: string } | null;
   category: { id: string; name: string } | null;
@@ -428,6 +446,7 @@ export type Order = {
   client: { id: string; name: string; phone: string | null };
   payment: { status: "PENDING" | "PAID" | "REFUNDED" | "FAILED"; method: PaymentMethodOption } | null;
   address: OrderAddress;
+  pickupAddress: OrderAddress | null;
   events: { status: OrderStatus; note: string | null; createdAt: string }[];
   tracking: {
     providerLat: number | null;
@@ -441,12 +460,20 @@ export type Order = {
 };
 
 export type CreateOrderInput = {
-  providerId: string;
+  providerId?: string;
   serviceId?: string;
   categoryId?: string;
   description?: string;
   scheduledAt?: string;
-  addressId: string;
+  addressId?: string;
+  pickupAddressId?: string;
+  priceCents?: number;
+};
+
+export type ArrangeOrderInput = {
+  addressId?: string;
+  pickupAddressId?: string | null;
+  detailsReady?: boolean;
 };
 
 export const ordersApi = {
@@ -460,6 +487,12 @@ export const ordersApi = {
     return apiFetch<{ order: Order }>("/api/orders", { method: "POST", body: input }).then(
       (r) => r.order,
     );
+  },
+  arrange(id: string, input: ArrangeOrderInput) {
+    return apiFetch<{ order: Order }>(`/api/orders/${id}/arrange`, {
+      method: "PATCH",
+      body: input,
+    }).then((r) => r.order);
   },
   transition(id: string, action: OrderAction, note?: string) {
     return apiFetch<{ order: Order }>(`/api/orders/${id}/transition`, {

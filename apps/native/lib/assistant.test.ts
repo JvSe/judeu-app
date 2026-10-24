@@ -19,8 +19,10 @@ import {
   buildSystemPrompt,
   deriveClientPersonalization,
   deriveCompanyPersonalization,
+  HELP_REQUEST_TOOL_NAME,
   JOB_TOOL_NAME,
   JOBS_SEARCH_TOOL_NAME,
+  parseHelpRequestFromTool,
   parseJobDraftFromTool,
   parseToolCall,
   parseToolCallArgs,
@@ -71,6 +73,8 @@ function makeOrder(categoryName: string | null): Order {
     cancelReason: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     offerExpiresAt: "2026-01-01T00:01:00.000Z",
+    isOpenRequest: false,
+    detailsReady: true,
     unreadMessages: 0,
     service: null,
     category: categoryName ? { id: "cat1", name: categoryName } : null,
@@ -78,6 +82,7 @@ function makeOrder(categoryName: string | null): Order {
     client: { id: "u1", name: "Cliente", phone: null },
     payment: null,
     address: {} as Order["address"],
+    pickupAddress: null,
     events: [],
     tracking: {
       providerLat: null,
@@ -217,7 +222,10 @@ describe("buildSystemPrompt", () => {
   it("mantém as instruções principais de tool-calling e anti-alucinação", () => {
     const prompt = buildSystemPrompt([]);
     expect(prompt).toContain("buscar_prestadores");
-    expect(prompt).toContain("NUNCA invente prestadores, vagas, empresas, nomes, notas, salários ou preços");
+    expect(prompt).toContain("pedir_ajuda");
+    expect(prompt).toContain("AJUDA DIFERENTE");
+    expect(prompt).toContain("SERVIÇO CONVENCIONAL");
+    expect(prompt).toContain("NUNCA invente prestadores");
   });
 
   it("sem empresa, não fala de vagas de emprego", () => {
@@ -359,15 +367,37 @@ describe("parseToolCall", () => {
 });
 
 describe("buildAssistantTools", () => {
-  it("no chat do cliente só busca pessoas", () => {
+  it("no chat do cliente busca pessoas e pede ajuda", () => {
     const tools = buildAssistantTools(CATEGORIES);
     const names = tools.map((t) => (t as { function: { name: string } }).function.name);
-    expect(names).toEqual([SEARCH_TOOL_NAME]);
+    expect(names).toEqual([SEARCH_TOOL_NAME, HELP_REQUEST_TOOL_NAME]);
   });
 
   it("só inclui montar_vaga quando a pessoa é empresa", () => {
     const tools = buildAssistantTools(CATEGORIES, { canPublishJobs: true });
     const names = tools.map((t) => (t as { function: { name: string } }).function.name);
-    expect(names).toEqual([SEARCH_TOOL_NAME, JOB_TOOL_NAME]);
+    expect(names).toEqual([SEARCH_TOOL_NAME, HELP_REQUEST_TOOL_NAME, JOB_TOOL_NAME]);
+  });
+});
+
+describe("parseHelpRequestFromTool", () => {
+  it("monta rascunho com descrição e categoria opcional", () => {
+    const draft = parseHelpRequestFromTool(
+      {
+        descricao: "Buscar documentos na copiadora e deixar no trabalho",
+        categoria: "frete",
+        valor_reais: 30,
+      },
+      CATEGORIES,
+    );
+    expect(draft).toEqual({
+      description: "Buscar documentos na copiadora e deixar no trabalho",
+      categoryId: "cat-frete",
+      priceCents: 3000,
+    });
+  });
+
+  it("descrição curta demais devolve null", () => {
+    expect(parseHelpRequestFromTool({ descricao: "ajuda" }, CATEGORIES)).toBeNull();
   });
 });

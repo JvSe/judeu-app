@@ -10,11 +10,7 @@ import React, {
   cloneElement,
   Children,
 } from "react";
-import {
-  GestureDetector,
-  Gesture,
-  type PanGesture,
-} from "react-native-gesture-handler";
+import { GestureDetector, Gesture } from "react-native-gesture-handler";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -72,6 +68,7 @@ const BottomSheetComponent = forwardRef<BottomSheetMethods, BottomSheetProps>(
       borderRadius = 24,
       contentContainerStyle,
       enableDynamicSizing = false,
+      onContentScroll,
     },
     ref,
   ) => {
@@ -236,14 +233,25 @@ const BottomSheetComponent = forwardRef<BottomSheetMethods, BottomSheetProps>(
       updateScrollEnabled,
     ]);
 
-    const onScroll = useAnimatedScrollHandler({
-      onScroll: (event) => {
-        "worklet";
-        scrollY.value = event.contentOffset.y;
+    const onScroll = useAnimatedScrollHandler(
+      {
+        onScroll: (event) => {
+          "worklet";
+          scrollY.value = event.contentOffset.y;
+          if (onContentScroll) {
+            scheduleOnRN<[number, number, number], void>(
+              onContentScroll,
+              event.contentOffset.y,
+              event.layoutMeasurement.height,
+              event.contentSize.height,
+            );
+          }
+        },
       },
-    });
+      [onContentScroll],
+    );
 
-    const handlePanGesture = useMemo<PanGesture>(
+    const handlePanGesture = useMemo(
       () =>
         Gesture.Pan()
           .onBegin(() => {

@@ -9,7 +9,11 @@ export type NotificationData = {
   role?: "client" | "provider" | "candidate";
 };
 
-export function pathForNotification(data: NotificationData): string | null {
+export function pathForNotification(
+  data: NotificationData,
+  opts?: { home?: "client" | "provider" },
+): string | null {
+  const clientShell = opts?.home === "client";
   if (data.type === "job") {
     if (!data.jobId) return null;
     return data.role === "provider"
@@ -18,15 +22,18 @@ export function pathForNotification(data: NotificationData): string | null {
   }
   if (data.type === "support") {
     if (!data.ticketId) return null;
+    if (data.role === "provider" && clientShell) return `/client/support-ticket/${data.ticketId}`;
     return data.role === "provider"
       ? `/provider/support-ticket/${data.ticketId}`
       : `/client/support-ticket/${data.ticketId}`;
   }
   if (!data.orderId) return null;
   if (data.type === "chat") {
+    if (data.role === "provider" && clientShell) return `/client/chat/${data.orderId}`;
     return data.role === "provider" ? `/provider/chat/${data.orderId}` : `/client/chat/${data.orderId}`;
   }
   if (data.type === "order") {
+    if (data.role === "provider" && clientShell) return `/client/attend/${data.orderId}`;
     return data.role === "provider"
       ? `/provider/delivery/${data.orderId}`
       : `/client/tracking/${data.orderId}`;

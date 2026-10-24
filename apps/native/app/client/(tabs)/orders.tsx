@@ -15,6 +15,7 @@ import { Screen } from "@/components/ui/screen";
 
 // Título legível do pedido a partir dos campos disponíveis.
 function orderTitle(order: Order): string {
+  if (order.isOpenRequest && order.description) return order.description;
   return order.service?.name ?? order.category?.name ?? order.description ?? "Serviço";
 }
 

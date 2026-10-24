@@ -1,6 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type ComponentRef } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -25,8 +25,10 @@ import {
   buildAssistantTools,
   buildSystemPrompt,
   deriveClientPersonalization,
+  HELP_REQUEST_TOOL_NAME,
   JOB_TOOL_NAME,
   JOBS_SEARCH_TOOL_NAME,
+  parseHelpRequestFromTool,
   parseJobDraftFromTool,
   parseToolCall,
   resolveCategoryId,
@@ -34,10 +36,12 @@ import {
   sanitizeReply,
   SEARCH_TOOL_NAME,
   type ClientPersonalization,
+  type HelpRequestArgs,
   type JobDraftArgs,
   type JobSearchArgs,
   type SearchArgs,
 } from "@/lib/assistant";
+import { confirmRequestPath } from "@/lib/format";
 import { setJobDraft } from "@/lib/job-draft";
 import { Avatar } from "@/components/ui/avatar";
 
@@ -56,7 +60,7 @@ type JobSearchOutcome = {
 };
 
 const FALLBACK_REPLY =
-  "Não entendi bem. Você precisa de um serviço agora, está procurando emprego, ou quer publicar uma vaga?";
+  "Não entendi bem. Você quer pedir uma ajuda (recado, buscar algo), chamar um profissional, ou está procurando emprego?";
 
 // Quantas mensagens da conversa acompanham cada geração. `generate` não aplica
 // a janela deslizante que o `sendMessage` da lib usa, então limitamos aqui para
@@ -89,7 +93,7 @@ export function AiAssistant() {
   // que nos deixa fazer o segundo turno com o resultado da busca.
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
 
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const categoriesRef = useRef<Category[]>(categories);
   categoriesRef.current = categories;
   // Contexto do usuário (nome, cidade, categorias mais buscadas): sempre
@@ -270,6 +274,41 @@ export function AiAssistant() {
         return;
       }
 
+      if (call.name === HELP_REQUEST_TOOL_NAME) {
+        clearResults();
+        const draft = parseHelpRequestFromTool(
+          call.arguments as HelpRequestArgs,
+          categoriesRef.current,
+        );
+        if (!draft) {
+          setMessages([
+            ...withUser,
+            {
+              role: "assistant",
+              content:
+                "Me conta com um pouco mais de detalhe o que você precisa — o quê fazer, e se tem local de busca e de entrega.",
+            },
+          ]);
+          return;
+        }
+        setMessages([
+          ...withUser,
+          {
+            role: "assistant",
+            content:
+              "Fechei o pedido. Confirma os endereços e publica pra alguém perto atender.",
+          },
+        ]);
+        router.push(
+          confirmRequestPath({
+            description: draft.description,
+            categoryId: draft.categoryId,
+            priceCents: draft.priceCents,
+          }) as never,
+        );
+        return;
+      }
+
       if (call.name === JOBS_SEARCH_TOOL_NAME) {
         clearResults();
         const outcome = await runJobSearch(call.arguments as JobSearchArgs);
@@ -426,9 +465,8 @@ export function AiAssistant() {
             </View>
             <Text style={styles.introTitle}>Como posso te ajudar?</Text>
             <Text style={styles.introSub}>
-              Me conta do seu jeito. Pode ser um serviço pra resolver agora, uma vaga de emprego
-              ou, se você é empresa, publicar uma vaga. Eu te ajudo a chegar no que você
-              realmente precisa.
+              Me conta do seu jeito. Se for um ofício (reparos, limpeza…), eu mostro quem está perto.
+              Se for um recado ou ajuda diferente, eu monto a solicitação aberta.
             </Text>
             <View style={styles.chipsRow}>
               {categories.map((c) => (

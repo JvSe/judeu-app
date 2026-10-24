@@ -94,6 +94,7 @@ export default function WaitingCall() {
 
   const cancelled = order.status === "CANCELLED";
   const waiting = order.status === "CREATED";
+  const openWait = order.isOpenRequest && !order.provider;
 
   return (
     <Screen>
@@ -107,7 +108,33 @@ export default function WaitingCall() {
 
       <View style={[styles.sheet, { paddingBottom: insets.bottom + 20 }]}>
         <View style={styles.grabber} />
-        {waiting && !expired && (
+        {waiting && openWait ? (
+          <>
+            <Text style={styles.status}>Aguardando alguém perto atender…</Text>
+            <Text style={styles.meta}>
+              {order.description ?? "Solicitação"} · {order.totalCents > 0 ? moneyFromCents(order.totalCents) : "a combinar"}
+            </Text>
+            <Pressable
+              style={styles.cancel}
+              onPress={() =>
+                Alert.alert("Cancelar solicitação", "Quer mesmo cancelar?", [
+                  { text: "Não" },
+                  {
+                    text: "Cancelar",
+                    style: "destructive",
+                    onPress: () =>
+                      transition.mutate(
+                        { id: order.id, action: "cancel" },
+                        { onSuccess: () => router.replace("/client") },
+                      ),
+                  },
+                ])
+              }
+            >
+              <Text style={styles.cancelText}>Cancelar solicitação</Text>
+            </Pressable>
+          </>
+        ) : waiting && !expired ? (
           <>
             <Text style={styles.status}>Aguardando {order.provider?.name?.split(" ")[0]} aceitar…</Text>
             <Text style={styles.timer}>{remainingSec}s</Text>
@@ -134,9 +161,9 @@ export default function WaitingCall() {
               <Text style={styles.cancelText}>Cancelar chamada</Text>
             </Pressable>
           </>
-        )}
+        ) : null}
 
-        {(expired && waiting) || cancelled ? (
+        {!openWait && ((expired && waiting) || cancelled) ? (
           <>
             <Text style={styles.status}>
               {cancelled ? "Essa pessoa recusou." : "Essa pessoa não respondeu."}

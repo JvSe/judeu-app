@@ -18,12 +18,17 @@ import { Screen } from "@/components/ui/screen";
 import SpinButton from "@/components/ui/spin-button";
 
 function orderTitle(order: Order): string {
+  if (order.isOpenRequest && order.description) return order.description;
   return order.service?.name ?? order.category?.name ?? order.description ?? "Serviço";
 }
 
 function addressLine(order: Order): string {
-  const { street, number, neighborhood, city, state } = order.address;
-  return `${street}${number ? `, ${number}` : ""}${neighborhood ? ` · ${neighborhood}` : ""} · ${city}/${state}`;
+  const drop = `${order.address.street}${order.address.number ? `, ${order.address.number}` : ""}${order.address.neighborhood ? ` · ${order.address.neighborhood}` : ""} · ${order.address.city}/${order.address.state}`;
+  if (order.pickupAddress) {
+    const pick = `${order.pickupAddress.street}${order.pickupAddress.number ? `, ${order.pickupAddress.number}` : ""}`;
+    return `${pick} → ${drop}`;
+  }
+  return drop;
 }
 
 export default function ProviderMap() {
@@ -47,7 +52,9 @@ export default function ProviderMap() {
     (o) => o.status === "ACCEPTED" || o.status === "EN_ROUTE" || o.status === "IN_PROGRESS",
   );
   useShareLocationWhileEnRoute(
-    activeOrder?.status === "ACCEPTED" || activeOrder?.status === "EN_ROUTE"
+    activeOrder?.status === "ACCEPTED" ||
+      activeOrder?.status === "EN_ROUTE" ||
+      activeOrder?.status === "IN_PROGRESS"
       ? activeOrder.id
       : undefined,
   );
@@ -163,29 +170,31 @@ export default function ProviderMap() {
           </View>
 
           <View style={styles.actions}>
-            <View style={{ width: 110 }}>
-              <SpinButton
-                controlled
-                isActive={respondAction === "reject" && transition.isPending}
-                disabled={transition.isPending}
-                idleText="Recusar"
-                activeText="Recusando..."
-                onPress={() => act(newOrder.id, "reject")}
-                colors={{
-                  idle: { background: "rgba(255,255,255,0.07)", text: "#c9c7e4" },
-                  active: { background: "rgba(255,255,255,0.07)", text: "#c9c7e4" },
-                }}
-                buttonStyle={{ paddingHorizontal: 0, paddingVertical: 16, borderRadius: 15, fontSize: 15 }}
-                spinnerConfig={{ color: "#c9c7e4", containerBackground: "rgba(255,255,255,0.07)" }}
-              />
-            </View>
+            {!newOrder.isOpenRequest ? (
+              <View style={{ width: 110 }}>
+                <SpinButton
+                  controlled
+                  isActive={respondAction === "reject" && transition.isPending}
+                  disabled={transition.isPending}
+                  idleText="Recusar"
+                  activeText="Recusando..."
+                  onPress={() => act(newOrder.id, "reject")}
+                  colors={{
+                    idle: { background: "rgba(255,255,255,0.07)", text: "#c9c7e4" },
+                    active: { background: "rgba(255,255,255,0.07)", text: "#c9c7e4" },
+                  }}
+                  buttonStyle={{ paddingHorizontal: 0, paddingVertical: 16, borderRadius: 15, fontSize: 15 }}
+                  spinnerConfig={{ color: "#c9c7e4", containerBackground: "rgba(255,255,255,0.07)" }}
+                />
+              </View>
+            ) : null}
             <View style={{ flex: 1 }}>
               <SpinButton
                 controlled
                 isActive={respondAction === "accept" && transition.isPending}
                 disabled={transition.isPending}
-                idleText="Aceitar chamada"
-                activeText="Aceitando..."
+                idleText={newOrder.isOpenRequest ? "Atender" : "Aceitar chamada"}
+                activeText={newOrder.isOpenRequest ? "Pegando..." : "Aceitando..."}
                 onPress={() => act(newOrder.id, "accept")}
                 colors={{
                   idle: { background: theme.colors.primary, text: "#fff" },

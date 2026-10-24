@@ -219,7 +219,7 @@ export default function AddressForm() {
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         <Pressable
           style={({ pressed }) => [styles.submit, { opacity: pressed || submitting ? 0.9 : 1 }]}
-          onPress={onValid}
+          onPress={() => void onValid()}
           disabled={submitting}
         >
           {submitting ? (

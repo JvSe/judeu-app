@@ -1,6 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type ComponentRef } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -53,7 +53,7 @@ export function VagaAssistant() {
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
 
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const categoriesRef = useRef<Category[]>(categories);
   categoriesRef.current = categories;
   // Contexto do usuário (nome, categoria de vaga mais publicada): sempre

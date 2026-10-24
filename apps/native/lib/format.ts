@@ -76,6 +76,7 @@ export function confirmCallPath(params: {
   priceCents?: number | string;
   allowsNegotiation?: boolean | string;
   categoryId?: string;
+  description?: string;
 }) {
   return {
     pathname: "/client/create-order" as const,
@@ -89,6 +90,20 @@ export function confirmCallPath(params: {
       ...(params.serviceName ? { serviceName: params.serviceName } : {}),
       ...(params.priceCents != null ? { priceCents: String(params.priceCents) } : {}),
       ...(params.categoryId ? { categoryId: params.categoryId } : {}),
+      ...(params.description ? { description: params.description } : {}),
+    },
+  };
+}
+
+export function confirmRequestPath(
+  params: { description?: string; categoryId?: string; priceCents?: number | string } = {},
+) {
+  return {
+    pathname: "/client/create-order" as const,
+    params: {
+      ...(params.description ? { description: params.description } : {}),
+      ...(params.categoryId ? { categoryId: params.categoryId } : {}),
+      ...(params.priceCents != null ? { priceCents: String(params.priceCents) } : {}),
     },
   };
 }

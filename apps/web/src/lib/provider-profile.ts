@@ -1,5 +1,6 @@
 import { prisma } from "./db";
 import { uploadKycDocument } from "./storage";
+import { publicUser, type PublicUser } from "./user";
 
 // ---------------------------------------------------------------------------
 // Onboarding profissional do prestador + KYC (RF-B1/B2/B3): cadastro de
@@ -18,6 +19,7 @@ export type MyProviderProfileDTO = {
   baseLat: number | null;
   baseLng: number | null;
   isAvailable: boolean;
+  isHelper: boolean;
   allowsNegotiation: boolean;
   isCompany: boolean;
   companyName: string | null;
@@ -51,6 +53,7 @@ function toDTO(p: {
   baseLat: number | null;
   baseLng: number | null;
   isAvailable: boolean;
+  isHelper: boolean;
   allowsNegotiation: boolean;
   isCompany: boolean;
   companyName: string | null;
@@ -68,6 +71,7 @@ function toDTO(p: {
     baseLat: p.baseLat,
     baseLng: p.baseLng,
     isAvailable: p.isAvailable,
+    isHelper: p.isHelper,
     allowsNegotiation: p.allowsNegotiation,
     isCompany: p.isCompany,
     companyName: p.companyName,
@@ -108,6 +112,7 @@ export async function upsertMyProviderProfile(
         baseLat: input.baseLat,
         baseLng: input.baseLng,
         allowsNegotiation: input.allowsNegotiation ?? false,
+        isHelper: false,
         isCompany: input.isCompany ?? false,
         companyName: input.isCompany ? input.companyName : null,
         responsibleName: input.isCompany ? input.responsibleName : null,
@@ -121,6 +126,7 @@ export async function upsertMyProviderProfile(
         baseLat: input.baseLat,
         baseLng: input.baseLng,
         allowsNegotiation: input.allowsNegotiation ?? false,
+        isHelper: false,
         isCompany: input.isCompany ?? false,
         companyName: input.isCompany ? input.companyName : null,
         responsibleName: input.isCompany ? input.responsibleName : null,
@@ -175,7 +181,11 @@ export async function setProviderDocument(
 export async function setProviderAvailability(
   userId: string,
   isAvailable: boolean,
-): Promise<MyProviderProfileDTO> {
+): Promise<MyProviderProfileDTO | { error: string; status: number }> {
+  const existing = await prisma.providerProfile.findUnique({ where: { userId } });
+  if (isAvailable && existing?.status === "BLOCKED") {
+    return { error: "Cadastro bloqueado. Fale com o suporte.", status: 403 };
+  }
   const profile = await prisma.providerProfile.upsert({
     where: { userId },
     update: { isAvailable },
@@ -183,6 +193,80 @@ export async function setProviderAvailability(
     include: profileInclude,
   });
   return toDTO(profile);
+}
+
+export type RegisterHelperInput = {
+  fullName: string;
+  phone: string;
+  bio?: string;
+  lat?: number;
+  lng?: number;
+};
+
+// Cadastro curto para a conta de cliente atender ajudas abertas. Não pede
+// ofício nem preço. Sobe o papel para BOTH para os endpoints de disponibilidade
+// aceitarem o token novo.
+export async function registerHelper(
+  userId: string,
+  input: RegisterHelperInput,
+): Promise<{ user: PublicUser; profile: MyProviderProfileDTO } | { error: string; status: number }> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || user.deletedAt) return { error: "Conta não encontrada", status: 404 };
+  if (user.role === "PROVIDER") {
+    return { error: "Você já atende como prestador. Use a área de quem trabalha.", status: 409 };
+  }
+
+  const existing = await prisma.providerProfile.findUnique({ where: { userId } });
+  if (existing && !existing.isHelper) {
+    return { error: "Você já tem cadastro de prestador. Use a área de quem trabalha.", status: 409 };
+  }
+  if (existing?.status === "BLOCKED") {
+    return { error: "Cadastro bloqueado. Fale com o suporte.", status: 403 };
+  }
+
+  const hasCoords = input.lat != null && input.lng != null;
+  const coords = hasCoords
+    ? {
+        baseLat: input.lat,
+        baseLng: input.lng,
+        lastLat: input.lat,
+        lastLng: input.lng,
+        lastLocationAt: new Date(),
+      }
+    : {};
+
+  const profile = await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        fullName: input.fullName.trim(),
+        phone: input.phone.trim(),
+        role: "BOTH",
+      },
+    });
+    return tx.providerProfile.upsert({
+      where: { userId },
+      create: {
+        userId,
+        isHelper: true,
+        status: "APPROVED",
+        isAvailable: false,
+        headline: "Ajuda perto de você",
+        bio: input.bio?.trim() || null,
+        ...coords,
+      },
+      update: {
+        isHelper: true,
+        headline: "Ajuda perto de você",
+        bio: input.bio?.trim() || null,
+        ...coords,
+      },
+      include: profileInclude,
+    });
+  });
+
+  const updated = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  return { user: publicUser(updated), profile: toDTO(profile) };
 }
 
 export async function updateProviderLocation(
@@ -212,6 +296,7 @@ export type AdminProviderDTO = {
   headline: string | null;
   yearsExperience: number;
   isCompany: boolean;
+  isHelper: boolean;
   companyName: string | null;
   responsibleName: string | null;
   hasDocument: boolean;
@@ -238,6 +323,7 @@ export async function listAllProviderProfiles(): Promise<AdminProviderDTO[]> {
     headline: p.headline,
     yearsExperience: p.yearsExperience,
     isCompany: p.isCompany,
+    isHelper: p.isHelper,
     companyName: p.companyName,
     responsibleName: p.responsibleName,
     hasDocument: !!p.documentUrl,

@@ -103,7 +103,7 @@ export default function Signup() {
         <Pressable onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="chevron-back" size={20} color="#fff" />
         </Pressable>
-        <Text style={styles.step}>Passo 1 de 2</Text>
+        <Text style={styles.step}>Nova conta</Text>
       </View>
 
       <ScrollView
@@ -113,7 +113,7 @@ export default function Signup() {
       >
         <Text style={styles.title}>Criar sua conta</Text>
         <Text style={styles.subtitle}>
-          Leva menos de 1 minuto. Depois você escolhe se quer contratar ou trabalhar.
+          Leva menos de 1 minuto.
         </Text>
 
         {fields.map((f) => (
@@ -165,7 +165,7 @@ export default function Signup() {
             styles.submit,
             { opacity: pressed || formState.isSubmitting ? 0.9 : 1 },
           ]}
-          onPress={onValid}
+          onPress={() => void onValid()}
           disabled={formState.isSubmitting}
         >
           {formState.isSubmitting ? (

@@ -104,20 +104,18 @@ function hashResetCode(userId: string, code: string): string {
   return createHash("sha256").update(`${userId}:${code}`).digest("hex");
 }
 
-// Emite o código fixo do MVP e invalida códigos anteriores ainda não usados do
-// mesmo usuário (evita acumular vários códigos válidos ao pedir de novo).
+// Emite o código fixo do MVP. O hash é determinístico (userId + código), então
+// pedir de novo reaproveita o mesmo registro — um insert novo violaria a unique
+// de tokenHash. Renova o prazo e limpa usedAt para o código voltar a valer.
 export async function issuePasswordResetCode(userId: string): Promise<string> {
   const code = MVP_RESET_CODE;
   const expiresAt = new Date(Date.now() + RESET_TTL_MINUTES * 60 * 1000);
-  await prisma.$transaction([
-    prisma.passwordResetToken.updateMany({
-      where: { userId, usedAt: null },
-      data: { usedAt: new Date() },
-    }),
-    prisma.passwordResetToken.create({
-      data: { userId, tokenHash: hashResetCode(userId, code), expiresAt },
-    }),
-  ]);
+  const tokenHash = hashResetCode(userId, code);
+  await prisma.passwordResetToken.upsert({
+    where: { tokenHash },
+    create: { userId, tokenHash, expiresAt },
+    update: { expiresAt, usedAt: null },
+  });
   return code;
 }
 

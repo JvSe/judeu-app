@@ -39,16 +39,21 @@ import {
 import { useCurrentLocation, useShareIdleLocation, useShareLocationWhileEnRoute } from "@/lib/location";
 
 function orderTitle(order: Order): string {
+  if (order.isOpenRequest && order.description) return order.description;
   return order.service?.name ?? order.category?.name ?? order.description ?? "Serviço";
+}
+
+function addressLine(order: Order): string {
+  const drop = `${order.address.street}${order.address.number ? `, ${order.address.number}` : ""}${order.address.neighborhood ? ` · ${order.address.neighborhood}` : ""} · ${order.address.city}`;
+  if (order.pickupAddress) {
+    const pick = `${order.pickupAddress.street}${order.pickupAddress.number ? `, ${order.pickupAddress.number}` : ""}`;
+    return `${pick} → ${drop}`;
+  }
+  return drop;
 }
 
 function firstNameOf(fullName: string | undefined): string {
   return fullName?.trim().split(/\s+/)[0] || "Prestador";
-}
-
-function addressLine(order: Order): string {
-  const { street, number, neighborhood, city } = order.address;
-  return `${street}${number ? `, ${number}` : ""}${neighborhood ? ` · ${neighborhood}` : ""} · ${city}`;
 }
 
 // Próxima ação do prestador para um pedido já aceito. Em EN_ROUTE, só libera
@@ -56,6 +61,9 @@ function addressLine(order: Order): string {
 function nextAction(order: Order): { action: OrderAction; label: string; disabled?: boolean } | null {
   switch (order.status) {
     case "ACCEPTED":
+      if (order.isOpenRequest && !order.detailsReady) {
+        return { action: "start_route", label: "Aguardando detalhes...", disabled: true };
+      }
       return { action: "start_route", label: "Iniciar trajeto" };
     case "EN_ROUTE":
       return order.tracking.arrived
@@ -92,7 +100,7 @@ export default function ProviderDashboard() {
   const completedOrders = orders.filter((o) => o.status === "COMPLETED");
 
   const enRouteOrder = activeOrders.find(
-    (o) => o.status === "ACCEPTED" || o.status === "EN_ROUTE",
+    (o) => o.status === "ACCEPTED" || o.status === "EN_ROUTE" || o.status === "IN_PROGRESS",
   );
   useShareLocationWhileEnRoute(enRouteOrder?.id);
   useShareIdleLocation(Boolean(profile?.isAvailable));
@@ -379,30 +387,32 @@ export default function ProviderDashboard() {
                   )}
 
                   <View style={styles.jobActions}>
-                    <SpinButton
-                      controlled
-                      isActive={rejecting}
-                      disabled={transition.isPending}
-                      idleText="Recusar"
-                      activeText="Recusando..."
-                      onPress={() => act(order.id, "reject")}
-                      colors={{
-                        idle: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
-                        active: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
-                      }}
-                      buttonStyle={{ paddingHorizontal: 16, paddingVertical: 11, borderRadius: 13, fontSize: 13.5 }}
-                      spinnerConfig={{
-                        color: theme.colors.mutedForeground,
-                        containerBackground: "rgba(255,255,255,0.06)",
-                      }}
-                    />
+                    {!order.isOpenRequest ? (
+                      <SpinButton
+                        controlled
+                        isActive={rejecting}
+                        disabled={transition.isPending}
+                        idleText="Recusar"
+                        activeText="Recusando..."
+                        onPress={() => act(order.id, "reject")}
+                        colors={{
+                          idle: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
+                          active: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
+                        }}
+                        buttonStyle={{ paddingHorizontal: 16, paddingVertical: 11, borderRadius: 13, fontSize: 13.5 }}
+                        spinnerConfig={{
+                          color: theme.colors.mutedForeground,
+                          containerBackground: "rgba(255,255,255,0.06)",
+                        }}
+                      />
+                    ) : null}
                     <View style={{ flex: 1 }}>
                       <SpinButton
                         controlled
                         isActive={accepting}
                         disabled={transition.isPending}
-                        idleText="Aceitar"
-                        activeText="Aceitando..."
+                        idleText={order.isOpenRequest ? "Atender" : "Aceitar"}
+                        activeText={order.isOpenRequest ? "Pegando..." : "Aceitando..."}
                         onPress={() => act(order.id, "accept")}
                         colors={{
                           idle: { background: theme.colors.primary, text: "#fff" },

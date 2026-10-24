@@ -34,6 +34,8 @@ interface BottomSheetProps {
   readonly borderRadius?: number;
   readonly contentContainerStyle?: StyleProp<ViewStyle>;
   readonly enableDynamicSizing?: boolean;
+  /** Called on the JS thread while the sheet content scrolls. */
+  readonly onContentScroll?: (y: number, height: number, contentHeight: number) => void;
 }
 
 export type { BottomSheetMethods, BottomSheetProps, SnapPoint };

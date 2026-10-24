@@ -153,6 +153,7 @@ export async function listProviders(categoryId?: string): Promise<ProviderListDT
     where: {
       status: "APPROVED",
       isAvailable: true,
+      isHelper: false,
       ...(categoryId ? { categories: { some: { categoryId } } } : {}),
     },
     include: { user: true, services: true },
@@ -184,6 +185,7 @@ export async function searchCatalog(query: string): Promise<SearchResultDTO> {
       where: {
         status: "APPROVED",
         isAvailable: true,
+        isHelper: false,
         OR: [
           { user: { fullName: match } },
           { companyName: match },
@@ -231,6 +233,7 @@ export async function listNearbyProviders(query: NearbyQuery): Promise<ProviderL
     where: {
       status: "APPROVED",
       isAvailable: true,
+      isHelper: false,
       ...(query.categoryId ? { categories: { some: { categoryId: query.categoryId } } } : {}),
       ...(query.excludeProviderId ? { id: { not: query.excludeProviderId } } : {}),
     },

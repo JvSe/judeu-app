@@ -118,7 +118,7 @@ export function SupportTicketForm({ role }: { role: "client" | "provider" }) {
             styles.submit,
             { opacity: pressed || createTicket.isPending ? 0.9 : 1 },
           ]}
-          onPress={onValid}
+          onPress={() => void onValid()}
           disabled={createTicket.isPending}
         >
           {createTicket.isPending ? (

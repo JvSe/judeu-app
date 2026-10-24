@@ -60,7 +60,7 @@ export default function Notifications() {
 
   const openNotification = (item: NotificationItem) => {
     if (!item.readAt) markRead.mutate(item.id);
-    const path = pathForNotification(item.data ?? {});
+    const path = pathForNotification(item.data ?? {}, { home: "client" });
     if (path) router.push(path as never);
   };
 

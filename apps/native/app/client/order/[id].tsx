@@ -340,10 +340,9 @@ export default function OrderDetail() {
         <View style={styles.addressCard}>
           <Ionicons name="location" size={18} color={theme.colors.primary} />
           <Text style={styles.addressText}>
-            {order.address.street}
-            {order.address.number ? `, ${order.address.number}` : ""}
-            {order.address.neighborhood ? ` · ${order.address.neighborhood}` : ""} ·{" "}
-            {order.address.city}/{order.address.state}
+            {order.pickupAddress
+              ? `Buscar: ${order.pickupAddress.street}${order.pickupAddress.number ? `, ${order.pickupAddress.number}` : ""}\nDeixar: ${order.address.street}${order.address.number ? `, ${order.address.number}` : ""}`
+              : `${order.address.street}${order.address.number ? `, ${order.address.number}` : ""}${order.address.neighborhood ? ` · ${order.address.neighborhood}` : ""} · ${order.address.city}/${order.address.state}`}
           </Text>
         </View>
 

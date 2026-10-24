@@ -104,7 +104,7 @@ export default function Login() {
             styles.submit,
             { opacity: pressed || formState.isSubmitting ? 0.9 : 1 },
           ]}
-          onPress={onValid}
+          onPress={() => void onValid()}
           disabled={formState.isSubmitting}
         >
           {formState.isSubmitting ? (

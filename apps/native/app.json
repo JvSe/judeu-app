@@ -59,7 +59,8 @@
       [
         "@stripe/stripe-react-native",
         {
-          "enableGooglePay": false
+          "enableGooglePay": false,
+          "disableSPM": true
         }
       ],
       [
@@ -83,7 +84,11 @@
           "locationWhenInUsePermission": "Usado para mostrar sua localização no mapa e compartilhar com o prestador durante o atendimento."
         }
       ],
-      "@maplibre/maplibre-react-native"
+      "@maplibre/maplibre-react-native",
+      "expo-font",
+      "expo-secure-store",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

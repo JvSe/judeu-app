@@ -31,22 +31,30 @@ export default function ConfirmCall() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
-    providerId: string;
+    providerId?: string;
     providerName?: string;
     serviceId?: string;
     serviceName?: string;
     priceCents?: string;
     allowsNegotiation?: string;
     categoryId?: string;
+    description?: string;
   }>();
 
+  const isOpenRequest = !params.providerId;
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(params.serviceId ?? null);
   const [when, setWhen] = useState<"agora" | "agendar">("agora");
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("");
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(params.description ?? "");
+  const [offerReais, setOfferReais] = useState(() => {
+    if (!params.priceCents) return "";
+    const cents = Number(params.priceCents);
+    if (!Number.isFinite(cents) || cents <= 0) return "";
+    return (cents / 100).toFixed(cents % 100 === 0 ? 0 : 2).replace(".", ",");
+  });
 
   const { data: addresses, isLoading: addressesLoading } = useAddresses();
   const { data: provider, isLoading: providerLoading } = useProvider(params.providerId ?? "");
@@ -54,32 +62,62 @@ export default function ConfirmCall() {
   const createOrder = useCreateOrder();
 
   useEffect(() => {
-    if (!addresses?.length) return;
+    if (isOpenRequest || !addresses?.length) return;
     setSelectedAddressId((current) => {
       if (current && addresses.some((a) => a.id === current)) return current;
       return addresses.find((a) => a.isDefault)?.id ?? addresses[0].id;
     });
-  }, [addresses]);
+  }, [addresses, isOpenRequest]);
 
   useEffect(() => {
-    if (!services?.length) return;
+    if (isOpenRequest || !services?.length) return;
     setSelectedServiceId((current) => {
       if (current && services.some((s) => s.id === current)) return current;
       return services[0].id;
     });
-  }, [services]);
+  }, [isOpenRequest, services]);
 
   const selectedService = services?.find((s) => s.id === selectedServiceId);
-  const priceCents = selectedService?.priceCents ?? (params.priceCents ? Number(params.priceCents) : 0);
+  const offeredCents = offerReais
+    ? Math.round(Number(offerReais.replace(",", ".")) * 100)
+    : 0;
+  const priceCents = isOpenRequest
+    ? Number.isFinite(offeredCents)
+      ? offeredCents
+      : 0
+    : (selectedService?.priceCents ?? (params.priceCents ? Number(params.priceCents) : 0));
   const feeCents = Math.round(priceCents * 0.08);
   const totalCents = priceCents + feeCents;
   const providerName = provider?.name ?? params.providerName ?? "Pessoa";
   const selectedAddress = addresses?.find((a) => a.id === selectedAddressId);
   const scheduled = when === "agendar";
-  const canNegotiate = scheduled && (provider?.allowsNegotiation || params.allowsNegotiation === "true");
+  const canNegotiate =
+    scheduled && (provider?.allowsNegotiation || params.allowsNegotiation === "true");
 
   const onConfirm = async () => {
     setSubmitError(null);
+    if (isOpenRequest) {
+      if (note.trim().length < 8) {
+        setSubmitError("Descreva o que você precisa (pelo menos uma frase).");
+        return;
+      }
+      if (!Number.isFinite(offeredCents) || offeredCents < 100) {
+        setSubmitError("Informe quanto você vai pagar.");
+        return;
+      }
+      try {
+        const order = await createOrder.mutateAsync({
+          categoryId: params.categoryId,
+          description: note.trim(),
+          priceCents: offeredCents,
+        });
+        router.replace({ pathname: "/client/waiting/[id]", params: { id: order.id } } as never);
+      } catch (e) {
+        setSubmitError(e instanceof Error ? e.message : "Não foi possível publicar.");
+      }
+      return;
+    }
+
     if (!params.providerId) {
       setSubmitError("Pessoa não informada.");
       return;
@@ -115,6 +153,82 @@ export default function ConfirmCall() {
       setSubmitError(e instanceof Error ? e.message : "Não foi possível enviar a chamada.");
     }
   };
+
+  if (isOpenRequest) {
+    return (
+      <Screen>
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+          <Pressable onPress={() => router.back()} hitSlop={10}>
+            <Ionicons name="chevron-back" size={20} color="#fff" />
+          </Pressable>
+          <Text style={styles.headerTitle}>Pedir ajuda</Text>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.card}>
+            <Text style={styles.kicker}>SOLICITAÇÃO ABERTA</Text>
+            <Text style={styles.name}>Descreva e publique</Text>
+            <Text style={styles.muted}>
+              Qualquer pessoa disponível pode atender. Locais e detalhes você combina depois do aceite.
+            </Text>
+          </View>
+
+          <Text style={styles.label}>O que você precisa?</Text>
+          <TextInput
+            style={[styles.input, styles.note]}
+            value={note}
+            onChangeText={setNote}
+            placeholder="Ex.: buscar documentos na copiadora e deixar no meu trabalho"
+            placeholderTextColor={theme.colors.mutedForeground}
+            multiline
+          />
+
+          <Text style={styles.label}>Quanto vai pagar?</Text>
+          <TextInput
+            style={styles.input}
+            value={offerReais}
+            onChangeText={setOfferReais}
+            placeholder="Ex.: 30"
+            placeholderTextColor={theme.colors.mutedForeground}
+            keyboardType="decimal-pad"
+          />
+
+          <Pressable
+            style={({ pressed }) => [styles.aiButton, { opacity: pressed ? 0.85 : 1 }]}
+            onPress={() => router.push("/client/ai/chat" as never)}
+          >
+            <Ionicons name="chatbubbles-outline" size={18} color={theme.colors.primary} />
+            <Text style={styles.aiButtonText}>Prefere explicar conversando?</Text>
+          </Pressable>
+        </ScrollView>
+
+        <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+          <View>
+            <Text style={styles.footerLabel}>Total com taxa</Text>
+            <Text style={styles.footerPrice}>
+              {priceCents >= 100 ? moneyFromCents(totalCents) : "—"}
+            </Text>
+          </View>
+          <Pressable
+            style={[styles.callButton, createOrder.isPending && { opacity: 0.7 }]}
+            onPress={onConfirm}
+            disabled={createOrder.isPending}
+          >
+            <Text style={styles.callButtonText}>
+              {createOrder.isPending ? "Publicando..." : "Publicar"}
+            </Text>
+          </Pressable>
+        </View>
+        {submitError ? (
+          <Text style={[styles.error, { bottom: insets.bottom + 88 }]}>{submitError}</Text>
+        ) : null}
+      </Screen>
+    );
+  }
 
   return (
     <Screen>
@@ -156,6 +270,16 @@ export default function ConfirmCall() {
           )}
         </View>
 
+        <Text style={styles.label}>Observação (opcional)</Text>
+        <TextInput
+          style={[styles.input, styles.note]}
+          value={note}
+          onChangeText={setNote}
+          placeholder="Ex.: interfone 12, vazamento na pia"
+          placeholderTextColor={theme.colors.mutedForeground}
+          multiline
+        />
+
         <Text style={styles.label}>Onde</Text>
         {addressesLoading ? (
           <ActivityIndicator color={theme.colors.primary} />
@@ -189,10 +313,16 @@ export default function ConfirmCall() {
 
         <Text style={styles.label}>Quando</Text>
         <View style={styles.whenRow}>
-          <Pressable style={[styles.whenChip, when === "agora" && styles.whenChipOn]} onPress={() => setWhen("agora")}>
+          <Pressable
+            style={[styles.whenChip, when === "agora" && styles.whenChipOn]}
+            onPress={() => setWhen("agora")}
+          >
             <Text style={[styles.whenText, when === "agora" && styles.whenTextOn]}>Agora</Text>
           </Pressable>
-          <Pressable style={[styles.whenChip, scheduled && styles.whenChipOn]} onPress={() => setWhen("agendar")}>
+          <Pressable
+            style={[styles.whenChip, scheduled && styles.whenChipOn]}
+            onPress={() => setWhen("agendar")}
+          >
             <Text style={[styles.whenText, scheduled && styles.whenTextOn]}>Agendar</Text>
           </Pressable>
         </View>
@@ -214,16 +344,6 @@ export default function ConfirmCall() {
             />
           </View>
         )}
-
-        <Text style={styles.label}>Observação (opcional)</Text>
-        <TextInput
-          style={[styles.input, styles.note]}
-          value={note}
-          onChangeText={setNote}
-          placeholder="Ex.: interfone 12, vazamento na pia"
-          placeholderTextColor={theme.colors.mutedForeground}
-          multiline
-        />
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
@@ -241,7 +361,9 @@ export default function ConfirmCall() {
           </Text>
         </Pressable>
       </View>
-      {submitError ? <Text style={[styles.error, { bottom: insets.bottom + 88 }]}>{submitError}</Text> : null}
+      {submitError ? (
+        <Text style={[styles.error, { bottom: insets.bottom + 88 }]}>{submitError}</Text>
+      ) : null}
     </Screen>
   );
 }
@@ -321,6 +443,24 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.primary,
     marginTop: 4,
   },
+  aiButton: {
+    marginTop: 18,
+    minHeight: 52,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    backgroundColor: "rgba(255,102,0,0.12)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  aiButtonText: {
+    fontSize: 14.5,
+    fontFamily: fonts.bold,
+    color: theme.colors.primary,
+  },
   whenRow: {
     flexDirection: "row",
     gap: 10,
@@ -354,7 +494,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 14,
   },
   note: {
-    minHeight: 80,
+    minHeight: 100,
     textAlignVertical: "top",
   },
   footer: {
