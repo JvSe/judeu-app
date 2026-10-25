@@ -4,8 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3001",
-    "build": "next build",
+    "build": "opennextjs-cloudflare build",
     "start": "next start",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "check-types": "tsc --noEmit",
     "test": "vitest run"
   },
@@ -13,6 +15,7 @@
     "@judeu/db": "workspace:*",
     "@judeu/env": "workspace:*",
     "@judeu/ui": "workspace:*",
+    "@opennextjs/cloudflare": "^1.20.13",
     "@prisma/client": "catalog:",
     "@supabase/supabase-js": "^2.110.0",
     "@swc/helpers": "^0.5.23",
@@ -38,6 +41,7 @@
     "@types/react-dom": "catalog:",
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "wrangler": "^4.152.0"
   }
 }

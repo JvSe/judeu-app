@@ -7,6 +7,8 @@ allowBuilds:
   sharp: true
   "@prisma/engines": true
   prisma: true
+  esbuild: true
+  workerd: true
 catalog:
   dotenv: ^17.2.2
   zod: ^4.1.13

@@ -17,3 +17,19 @@ index 6a2cb97a51b88e2c30bee60dc1576ed074f9437c..cf7889f8f69ef5b67991789fb18e5d15
  
    testImplementation "junit:junit:4.13"
    testImplementation "com.google.truth:truth:1.4.5"
+diff --git a/android/proguard-rules.txt b/android/proguard-rules.txt
+index 4c37bf56074b50dc5f34f970bdbeb99689d0d9b0..626a0ead45a3e00fc32c57eca27eaf29daff64f5 100644
+--- a/android/proguard-rules.txt
++++ b/android/proguard-rules.txt
+@@ -9,6 +9,11 @@
+ # play-services-tapandpay is a private Google SDK that must be provided by the app.
+ # Suppress R8 warnings when it is absent (e.g. in the example app build).
+ -dontwarn com.google.android.gms.tapandpay.**
++
++# stripe-android-issuing-push-provisioning is compileOnly. The app does not
++# ship it, so R8 must ignore the missing push provisioning classes.
++-dontwarn com.stripe.android.pushProvisioning.**
++
+ -dontwarn com.samsung.android.sdk.samsungpay.**
+ -keep class com.samsung.android.sdk.** { *; }
+ -keep interface com.samsung.android.sdk.** { *; }
