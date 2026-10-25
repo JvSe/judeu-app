@@ -26,6 +26,7 @@
     "lucide-react": "catalog:",
     "next": "^16.2.0",
     "next-themes": "catalog:",
+    "pg-cloudflare": "1.4.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "sonner": "catalog:",
