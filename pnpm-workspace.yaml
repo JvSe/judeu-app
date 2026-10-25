@@ -21,3 +21,4 @@ catalog:
   tailwindcss: ^4.3.1
 patchedDependencies:
   '@stripe/stripe-react-native@0.81.0': patches/@stripe__stripe-react-native@0.81.0.patch
+  react-native-executorch@0.9.2: patches/react-native-executorch@0.9.2.patch

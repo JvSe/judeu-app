@@ -1,0 +1,201 @@
+diff --git a/android/src/main/cpp/CMakeLists.txt b/android/src/main/cpp/CMakeLists.txt
+index dfbf74ae3eb88ed4c781ab69c85d0e2edc110437..a849661d8c708a7ec4bca3bf80d837769f9d56a8 100644
+--- a/android/src/main/cpp/CMakeLists.txt
++++ b/android/src/main/cpp/CMakeLists.txt
+@@ -6,8 +6,43 @@ file(GLOB_RECURSE COMMON_C_SOURCES CONFIGURE_DEPENDS "${COMMON_CPP_DIR}/*.c")
+ file(GLOB_RECURSE TEST_CPP_SOURCES "${COMMON_CPP_DIR}/rnexecutorch/tests/*.cpp")
+ list(REMOVE_ITEM COMMON_CPP_SOURCES ${TEST_CPP_SOURCES})
+ 
++# Judeu only uses the on-device LLM. Compiling the rest of the model zoo
++# (OCR, vision, speech, TTS) blows past the EAS free-plan Android time limit.
++set(EXECUTORCH_SKIP_MODELS
++  classification
++  embeddings
++  instance_segmentation
++  object_detection
++  ocr
++  pose_estimation
++  privacy_filter
++  semantic_segmentation
++  speech_to_text
++  style_transfer
++  text_to_image
++  text_to_speech
++  vertical_ocr
++  voice_activity_detection
++)
++foreach(model ${EXECUTORCH_SKIP_MODELS})
++  list(FILTER COMMON_CPP_SOURCES EXCLUDE REGEX "/models/${model}/")
++endforeach()
++list(FILTER COMMON_CPP_SOURCES EXCLUDE REGEX "/models/VisionModel\\.cpp$")
++
+ add_library(react-native-executorch SHARED ${ANDROID_CPP_SOURCES} ${COMMON_CPP_SOURCES} ${COMMON_C_SOURCES})
+ 
++# RelWithDebInfo is -O2 -g. These translation units are dominated by ExecuTorch
++# headers, and that combination is what stalls the EAS Gradle step.
++target_compile_options(react-native-executorch PRIVATE -O1 -g0 -Wno-deprecated-declarations)
++
++# ModelHostObject.h still includes Kokoro.h, which includes phonemis headers.
++# The phonemis library itself is not compiled or linked.
++target_include_directories(
++  react-native-executorch
++  PUBLIC
++  "${COMMON_THIRD_PARTY_DIR}/phonemis/src"
++)
++
+ find_package(ReactAndroid REQUIRED CONFIG)
+ find_package(fbjni REQUIRED CONFIG)
+ 
+@@ -86,17 +121,6 @@ elseif(ANDROID_ABI STREQUAL "x86_64")
+ endif()
+ 
+ 
+-# ------- phonemis -------
+-
+-set(PHONEMIS_DIR "${COMMON_THIRD_PARTY_DIR}/phonemis")
+-add_subdirectory(${PHONEMIS_DIR} ${CMAKE_BINARY_DIR}/phonemis)
+-
+-target_compile_definitions(phonemis PRIVATE ET_ON)  # Phonemis uses ET_ON flag to detect available ExecuTorch build (NeuralPhonemizer)
+-target_include_directories(phonemis PRIVATE "${INCLUDE_DIR}")  # ExecuTorch headers
+-target_include_directories(react-native-executorch PUBLIC "${PHONEMIS_DIR}/src")
+-
+-# --------------
+-
+ target_link_options(react-native-executorch PRIVATE -fopenmp -static-openmp)
+ 
+ target_link_libraries(
+@@ -105,7 +129,6 @@ target_link_libraries(
+   ${RN_VERSION_LINK_LIBRARIES}
+   ${OPENCV_LIBS}
+   ${OPENCV_THIRD_PARTY_LIBS}
+-  phonemis
+   executorch
+   ${EXECUTORCH_LIBS}
+   z
+diff --git a/common/rnexecutorch/RnExecutorchInstaller.cpp b/common/rnexecutorch/RnExecutorchInstaller.cpp
+index 53ee65a904e52e763f35956fa76d08eb5a7ecf7f..903b61e947e85ec9613cfd3eef0a8fe1f22fa96d 100644
+--- a/common/rnexecutorch/RnExecutorchInstaller.cpp
++++ b/common/rnexecutorch/RnExecutorchInstaller.cpp
+@@ -2,22 +2,7 @@
+ 
+ #include <rnexecutorch/TokenizerModule.h>
+ #include <rnexecutorch/host_objects/JsiConversions.h>
+-#include <rnexecutorch/models/classification/Classification.h>
+-#include <rnexecutorch/models/embeddings/image/ImageEmbeddings.h>
+-#include <rnexecutorch/models/embeddings/text/TextEmbeddings.h>
+-#include <rnexecutorch/models/instance_segmentation/BaseInstanceSegmentation.h>
+ #include <rnexecutorch/models/llm/LLM.h>
+-#include <rnexecutorch/models/object_detection/ObjectDetection.h>
+-#include <rnexecutorch/models/ocr/OCR.h>
+-#include <rnexecutorch/models/pose_estimation/PoseEstimation.h>
+-#include <rnexecutorch/models/privacy_filter/PrivacyFilter.h>
+-#include <rnexecutorch/models/semantic_segmentation/BaseSemanticSegmentation.h>
+-#include <rnexecutorch/models/speech_to_text/SpeechToText.h>
+-#include <rnexecutorch/models/style_transfer/StyleTransfer.h>
+-#include <rnexecutorch/models/text_to_image/TextToImage.h>
+-#include <rnexecutorch/models/text_to_speech/TextToSpeech.h>
+-#include <rnexecutorch/models/vertical_ocr/VerticalOCR.h>
+-#include <rnexecutorch/models/voice_activity_detection/VoiceActivityDetection.h>
+ #include <rnexecutorch/threads/GlobalThreadPool.h>
+ #include <rnexecutorch/threads/utils/ThreadUtils.h>
+ 
+@@ -42,44 +27,8 @@ void RnExecutorchInstaller::injectJSIBindings(
+   jsiRuntime->global().setProperty(*jsiRuntime, "__rne_isEmulator",
+                                    jsi::Value(isEmulator));
+ 
+-  jsiRuntime->global().setProperty(
+-      *jsiRuntime, "loadStyleTransfer",
+-      RnExecutorchInstaller::loadModel<models::style_transfer::StyleTransfer>(
+-          jsiRuntime, jsCallInvoker, "loadStyleTransfer"));
+-
+-  jsiRuntime->global().setProperty(
+-      *jsiRuntime, "loadSemanticSegmentation",
+-      RnExecutorchInstaller::loadModel<
+-          models::semantic_segmentation::BaseSemanticSegmentation>(
+-          jsiRuntime, jsCallInvoker, "loadSemanticSegmentation"));
+-
+-  jsiRuntime->global().setProperty(
+-      *jsiRuntime, "loadInstanceSegmentation",
+-      RnExecutorchInstaller::loadModel<
+-          models::instance_segmentation::BaseInstanceSegmentation>(
+-          jsiRuntime, jsCallInvoker, "loadInstanceSegmentation"));
+-
+-  jsiRuntime->global().setProperty(
+-      *jsiRuntime, "loadTextToImage",
+-      RnExecutorchInstaller::loadModel<models::text_to_image::TextToImage>(
+-          jsiRuntime, jsCallInvoker, "loadTextToImage"));
+-
+-  jsiRuntime->global().setProperty(
+-      *jsiRuntime, "loadClassification",
+-      RnExecutorchInstaller::loadModel<models::classification::Classification>(
+-          jsiRuntime, jsCallInvoker, "loadClassification"));
+-
+-  jsiRuntime->global().setProperty(
+-      *jsiRuntime, "loadObjectDetection",
+-      RnExecutorchInstaller::loadModel<
+-          models::object_detection::ObjectDetection>(jsiRuntime, jsCallInvoker,
+-                                                     "loadObjectDetection"));
+-
+-  jsiRuntime->global().setProperty(
+-      *jsiRuntime, "loadPoseEstimation",
+-      RnExecutorchInstaller::loadModel<models::pose_estimation::PoseEstimation>(
+-          jsiRuntime, jsCallInvoker, "loadPoseEstimation"));
+-
++  // Judeu only runs the on-device LLM. The other model bindings stay out of
++  // this binary so Android release builds finish inside the EAS time limit.
+   jsiRuntime->global().setProperty(
+       *jsiRuntime, "loadExecutorchModule",
+       RnExecutorchInstaller::loadModel<models::BaseModel>(
+@@ -90,52 +39,11 @@ void RnExecutorchInstaller::injectJSIBindings(
+       RnExecutorchInstaller::loadModel<TokenizerModule>(
+           jsiRuntime, jsCallInvoker, "loadTokenizerModule"));
+ 
+-  jsiRuntime->global().setProperty(
+-      *jsiRuntime, "loadImageEmbeddings",
+-      RnExecutorchInstaller::loadModel<models::embeddings::ImageEmbeddings>(
+-          jsiRuntime, jsCallInvoker, "loadImageEmbeddings"));
+-
+-  jsiRuntime->global().setProperty(
+-      *jsiRuntime, "loadTextEmbeddings",
+-      RnExecutorchInstaller::loadModel<models::embeddings::TextEmbeddings>(
+-          jsiRuntime, jsCallInvoker, "loadTextEmbeddings"));
+-
+   jsiRuntime->global().setProperty(
+       *jsiRuntime, "loadLLM",
+       RnExecutorchInstaller::loadModel<models::llm::LLM>(
+           jsiRuntime, jsCallInvoker, "loadLLM"));
+ 
+-  jsiRuntime->global().setProperty(
+-      *jsiRuntime, "loadPrivacyFilter",
+-      RnExecutorchInstaller::loadModel<models::privacy_filter::PrivacyFilter>(
+-          jsiRuntime, jsCallInvoker, "loadPrivacyFilter"));
+-
+-  jsiRuntime->global().setProperty(
+-      *jsiRuntime, "loadOCR",
+-      RnExecutorchInstaller::loadModel<models::ocr::OCR>(
+-          jsiRuntime, jsCallInvoker, "loadOCR"));
+-
+-  jsiRuntime->global().setProperty(
+-      *jsiRuntime, "loadVerticalOCR",
+-      RnExecutorchInstaller::loadModel<models::ocr::VerticalOCR>(
+-          jsiRuntime, jsCallInvoker, "loadVerticalOCR"));
+-
+-  jsiRuntime->global().setProperty(
+-      *jsiRuntime, "loadSpeechToText",
+-      RnExecutorchInstaller::loadModel<models::speech_to_text::SpeechToText>(
+-          jsiRuntime, jsCallInvoker, "loadSpeechToText"));
+-
+-  jsiRuntime->global().setProperty(
+-      *jsiRuntime, "loadTextToSpeechKokoro",
+-      RnExecutorchInstaller::loadModel<models::text_to_speech::kokoro::Kokoro>(
+-          jsiRuntime, jsCallInvoker, "loadTextToSpeechKokoro"));
+-
+-  jsiRuntime->global().setProperty(
+-      *jsiRuntime, "loadVAD",
+-      RnExecutorchInstaller::loadModel<
+-          models::voice_activity_detection::VoiceActivityDetection>(
+-          jsiRuntime, jsCallInvoker, "loadVAD"));
+-
+   threads::utils::unsafeSetupThreadPool();
+   threads::GlobalThreadPool::initialize();
+ }
