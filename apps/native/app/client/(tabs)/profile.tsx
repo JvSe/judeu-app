@@ -17,16 +17,25 @@ import { Avatar } from "@/components/ui/avatar";
 import { JudeuIcon } from "@/components/ui/judeu-icon";
 import { Screen } from "@/components/ui/screen";
 
-const menu: {
+type MenuItem = {
   id: string;
   icon: React.ComponentProps<typeof Ionicons>["name"];
   label: string;
   href?: string;
-}[] = [
-  { id: "edit", icon: "person-outline", label: "Editar perfil", href: "/client/edit-profile" },
-  { id: "addresses", icon: "location-outline", label: "Meus endereços", href: "/client/addresses" },
-  { id: "support", icon: "help-circle-outline", label: "Ajuda e suporte", href: "/client/support" },
-];
+};
+
+// Quem tem perfil de quem atende (helper ou prestador) também vê as vagas de
+// empresas — mesmo atalho que existia só no perfil do prestador.
+function buildMenu(hasWorkProfile: boolean): MenuItem[] {
+  return [
+    { id: "edit", icon: "person-outline", label: "Editar perfil", href: "/client/edit-profile" },
+    { id: "addresses", icon: "location-outline", label: "Meus endereços", href: "/client/addresses" },
+    ...(hasWorkProfile
+      ? [{ id: "jobs", icon: "briefcase-outline", label: "Vagas de emprego", href: "/jobs" } as MenuItem]
+      : []),
+    { id: "support", icon: "help-circle-outline", label: "Ajuda e suporte", href: "/client/support" },
+  ];
+}
 
 export default function ClientProfile() {
   const { theme } = useUnistyles();
@@ -35,6 +44,8 @@ export default function ClientProfile() {
   const { data: stats } = useClientStats();
   const helper = useHelperMode();
   const attendButton = useAttendButtonVisibility();
+  const hasWorkProfile = !!helper.profile;
+  const menu = buildMenu(hasWorkProfile);
 
   const memberSince = user?.createdAt ? new Date(user.createdAt).getFullYear() : null;
 
@@ -130,6 +141,24 @@ export default function ClientProfile() {
                   <Text style={styles.menuLabel}>
                     {attendButton.hidden ? "Mostrar botão no mapa" : "Ocultar botão"}
                   </Text>
+                </Pressable>
+              </>
+            )}
+            {helper.isHelper && (
+              <>
+                <View style={styles.divider} />
+                <Pressable
+                  style={({ pressed }) => [styles.menuRow, { opacity: pressed ? 0.7 : 1 }]}
+                  onPress={() => router.push("/client/helper-profile" as never)}
+                >
+                  <View style={styles.menuIcon}>
+                    <Ionicons name="options-outline" size={19} color={theme.colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.menuTitle}>Como você atende</Text>
+                    <Text style={styles.menuHint}>Sua descrição e o raio de atendimento</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={theme.colors.mutedForeground} />
                 </Pressable>
               </>
             )}

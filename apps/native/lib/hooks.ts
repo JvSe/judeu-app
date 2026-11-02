@@ -18,6 +18,7 @@ import {
   supportApi,
   walletApi,
 } from "@/lib/api";
+import { saveTokens } from "@/lib/tokens";
 import { useAuth } from "@/lib/auth-context";
 import type {
   CreateJobPostingInput,
@@ -343,6 +344,34 @@ export function useUpdateProviderLocation() {
   return useMutation({
     mutationFn: ({ lat, lng }: { lat: number; lng: number }) =>
       providerProfileApi.updateLocation(lat, lng),
+  });
+}
+
+// Edita bio/raio de quem atende ajudas (helper). A resposta já é o perfil novo.
+export function useUpdateHelperProfile() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: (input: { bio?: string; serviceRadiusKm?: number }) =>
+      providerProfileApi.updateHelper(input),
+    onSuccess: (profile) =>
+      qc.setQueryData(["provider-profile", "me", user?.id ?? "anonymous"], profile),
+  });
+}
+
+// Cliente passa a atender ajudas (role CLIENT -> BOTH): troca os tokens, atualiza o
+// usuário em memória e semeia o cache do perfil com o que o backend devolveu.
+export function useRegisterHelper() {
+  const qc = useQueryClient();
+  const { updateUser } = useAuth();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof providerProfileApi.registerHelper>[0]) =>
+      providerProfileApi.registerHelper(input),
+    onSuccess: async (res) => {
+      await saveTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
+      updateUser(res.user);
+      qc.setQueryData(["provider-profile", "me", res.user.id], res.profile);
+    },
   });
 }
 

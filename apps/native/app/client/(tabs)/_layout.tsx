@@ -4,7 +4,7 @@ import { useUnistyles } from "react-native-unistyles";
 
 import { TabBarIcon } from "@/components/tabbar-icon";
 import { isOrderActive } from "@/lib/format";
-import { useOrders } from "@/lib/hooks";
+import { useMyProviderProfile, useOrders } from "@/lib/hooks";
 
 export const clientFloatingTabBarStyle = {
   position: "absolute" as const,
@@ -21,8 +21,16 @@ export const clientFloatingTabBarStyle = {
 
 export default function ClientTabLayout() {
   const { theme } = useUnistyles();
-  const { data: orders = [] } = useOrders("client", { poll: true });
-  const unreadMessages = orders
+  // Quem tem perfil de quem atende (helper ou prestador) ganha a aba Ganhos e
+  // o lado "Atendi" nas chamadas. O gate é o perfil, não o papel.
+  const { data: profile } = useMyProviderProfile();
+  const hasWorkProfile = !!profile;
+  const { data: asked = [] } = useOrders("client", { poll: true });
+  const { data: attended = [] } = useOrders("provider", {
+    poll: hasWorkProfile,
+    enabled: hasWorkProfile,
+  });
+  const unreadMessages = [...asked, ...attended]
     .filter((o) => isOrderActive(o.status))
     .reduce((sum, o) => sum + o.unreadMessages, 0);
 
@@ -67,6 +75,14 @@ export default function ClientTabLayout() {
             color: theme.colors.destructiveForeground,
             fontSize: 10,
           },
+        }}
+      />
+      <Tabs.Screen
+        name="earnings"
+        options={{
+          href: hasWorkProfile ? undefined : null,
+          title: "Ganhos",
+          tabBarIcon: ({ color }) => <TabBarIcon name="cash-outline" color={color} />,
         }}
       />
       <Tabs.Screen

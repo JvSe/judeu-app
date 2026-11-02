@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { issueRefreshToken, requireAuth, signAccessToken } from "@/lib/auth";
 import { error, handleOptions, json } from "@/lib/http";
-import { registerHelper } from "@/lib/provider-profile";
+import { registerHelper, updateHelperProfile } from "@/lib/provider-profile";
 
 export const runtime = "nodejs";
 
@@ -34,4 +34,26 @@ export async function POST(req: Request) {
   const accessToken = await signAccessToken({ sub: result.user.id, role: result.user.role });
   const refreshToken = await issueRefreshToken(result.user.id);
   return json({ ...result, accessToken, refreshToken }, { status: 201 });
+}
+
+const patchSchema = z.object({
+  bio: z.string().trim().max(280).optional(),
+  serviceRadiusKm: z.number().min(1).max(100).optional(),
+});
+
+// PATCH /api/providers/me/helper — edita bio/raio de quem atende, sem mexer em
+// isHelper/status (o upsert profissional em POST /api/providers/me rebaixaria o helper).
+export async function PATCH(req: Request) {
+  const claims = await requireAuth(req);
+  if (!claims) return error("Não autenticado", 401);
+  if (claims.role !== "PROVIDER" && claims.role !== "BOTH") {
+    return error("Só quem atende ajudas edita esse cadastro", 403);
+  }
+
+  const parsed = patchSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return error("Dados inválidos", 422);
+
+  const profile = await updateHelperProfile(claims.sub, parsed.data);
+  if ("error" in profile) return error(profile.error, profile.status);
+  return json({ profile });
 }

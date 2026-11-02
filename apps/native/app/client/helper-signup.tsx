@@ -22,8 +22,8 @@ import { useAttendButtonVisibility } from "@/lib/attend-button";
 import { useAuth } from "@/lib/auth-context";
 import { formatPhone } from "@/lib/formatters/format-phone.helper";
 import { readForegroundPosition } from "@/lib/location";
+import { useRegisterHelper } from "@/lib/hooks";
 import { errorMessage, toast } from "@/lib/toast";
-import { saveTokens } from "@/lib/tokens";
 
 const TERMS = [
   "Ao ativar o modo de atender, você se oferece para ajudar pessoas perto de você em tarefas do dia a dia.",
@@ -54,7 +54,8 @@ const unformatPhone = (value: string) => value.replace(/\D/g, "");
 export default function HelperSignup() {
   const insets = useSafeAreaInsets();
   const { theme } = useUnistyles();
-  const { user, updateUser } = useAuth();
+  const { user } = useAuth();
+  const registerHelper = useRegisterHelper();
   const queryClient = useQueryClient();
   const attendButton = useAttendButtonVisibility();
   const termsRef = useRef<BottomSheetMethods>(null);
@@ -102,7 +103,7 @@ export default function HelperSignup() {
         lng = pos?.lng;
       }
 
-      const res = await providerProfileApi.registerHelper({
+      const res = await registerHelper.mutateAsync({
         fullName: data.fullName,
         phone: unformatPhone(data.phone),
         bio: data.bio || undefined,
@@ -110,9 +111,6 @@ export default function HelperSignup() {
         lat,
         lng,
       });
-      await saveTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
-      updateUser(res.user);
-      queryClient.setQueryData(["provider-profile", "me", res.user.id], res.profile);
 
       if (lat == null || lng == null) {
         toast.warning("Localização", {

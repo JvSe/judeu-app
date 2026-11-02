@@ -380,6 +380,13 @@ export const providerProfileApi = {
       refreshToken: string;
     }>("/api/providers/me/helper", { method: "POST", body: input });
   },
+  // Edita bio/raio de quem atende ajudas (helper) sem passar pelo upsert profissional.
+  updateHelper(input: { bio?: string; serviceRadiusKm?: number }) {
+    return apiFetch<{ profile: MyProviderProfile }>("/api/providers/me/helper", {
+      method: "PATCH",
+      body: input,
+    }).then((r) => r.profile);
+  },
   updateLocation(lat: number, lng: number) {
     return apiFetch<{ profile: MyProviderProfile }>("/api/providers/me/location", {
       method: "POST",

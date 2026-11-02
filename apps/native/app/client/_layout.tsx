@@ -30,6 +30,7 @@ export default function ClientLayout() {
       <Stack.Screen name="ai" />
       <Stack.Screen name="create-order" />
       <Stack.Screen name="helper-signup" />
+      <Stack.Screen name="helper-profile" />
       <Stack.Screen name="attend/[id]" />
       <Stack.Screen name="attend-rating/[id]" />
       <Stack.Screen name="waiting/[id]" />

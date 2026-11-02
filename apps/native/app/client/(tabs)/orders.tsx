@@ -9,7 +9,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import type { Order } from "@/lib/api";
 import { fonts } from "@/constants/fonts";
 import { initialsOf, isOrderActive, moneyFromCents, orderStatusLabel, shortTime } from "@/lib/format";
-import { useOrders } from "@/lib/hooks";
+import { useMyProviderProfile, useOrders } from "@/lib/hooks";
 import { Avatar } from "@/components/ui/avatar";
 import { Screen } from "@/components/ui/screen";
 
@@ -19,19 +19,66 @@ function orderTitle(order: Order): string {
   return order.service?.name ?? order.category?.name ?? order.description ?? "Serviço";
 }
 
+// "Pedi" = chamadas em que sou o cliente. "Atendi" = chamadas em que estou
+// atendendo (helper ou prestador). O segundo lado só existe com perfil de quem atende.
+type Side = "asked" | "attended";
+type Tab = "andamento" | "concluidos";
+
+const goTo = (pathname: string, id: string) => router.push({ pathname, params: { id } } as never);
+
 export default function Orders() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
-  const [tab, setTab] = useState<"andamento" | "concluidos">("andamento");
-  const { data: orders = [], isLoading } = useOrders("client", { poll: true });
+  const { data: profile } = useMyProviderProfile();
+  const hasWorkProfile = !!profile;
+  const [side, setSide] = useState<Side>("asked");
+  const [tab, setTab] = useState<Tab>("andamento");
+
+  const asked = useOrders("client", { poll: true });
+  const attended = useOrders("provider", { poll: hasWorkProfile, enabled: hasWorkProfile });
+  const attending = side === "attended" && hasWorkProfile;
+  const { data: orders = [], isLoading } = attending ? attended : asked;
 
   const activeOrders = orders.filter((o) => isOrderActive(o.status));
   const completedOrders = orders.filter((o) => !isOrderActive(o.status));
+
+  const emptyActive = attending
+    ? "Você não está atendendo nenhuma chamada."
+    : "Você não tem chamadas em andamento.";
+  const emptyCompleted = attending
+    ? "Nenhuma chamada atendida ainda."
+    : "Nenhum pedido no histórico ainda.";
 
   return (
     <Screen>
       <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
         <Text style={styles.heading}>Minhas chamadas</Text>
+        {hasWorkProfile && (
+          <View style={styles.sideRow}>
+            {(
+              [
+                { key: "asked", label: "Pedi", icon: "hand-left-outline" },
+                { key: "attended", label: "Atendi", icon: "briefcase-outline" },
+              ] as { key: Side; label: string; icon: React.ComponentProps<typeof Ionicons>["name"] }[]
+            ).map((s) => {
+              const active = side === s.key;
+              return (
+                <Pressable key={s.key} onPress={() => setSide(s.key)}>
+                  <View style={[styles.sideChip, active && styles.sideChipActive]}>
+                    <Ionicons
+                      name={s.icon}
+                      size={14}
+                      color={active ? "#fff" : theme.colors.mutedForeground}
+                    />
+                    <Text style={[styles.sideChipText, active && styles.sideChipTextActive]}>
+                      {s.label}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
         <View style={styles.segment}>
           <Pressable
             style={[styles.segmentItem, tab === "andamento" && styles.segmentItemActive]}
@@ -58,191 +105,241 @@ export default function Orders() {
         {tab === "andamento" && (
           <>
             {!isLoading && activeOrders.length === 0 && (
-              <Text style={styles.emptyText}>Você não tem chamadas em andamento.</Text>
+              <Text style={styles.emptyText}>{emptyActive}</Text>
             )}
-            {activeOrders.map((order) => {
-              const enRoute = order.status === "EN_ROUTE" || order.status === "IN_PROGRESS";
-              const waiting = order.status === "CREATED";
-              const needsPay =
-                order.status === "ACCEPTED" &&
-                order.payment?.status !== "PAID" &&
-                order.payment?.method !== "CASH";
-              const isHelpAsk = order.isOpenRequest;
-              const canTrackOnMap =
-                !!order.provider &&
-                (order.status === "EN_ROUTE" ||
-                  order.status === "IN_PROGRESS" ||
-                  (order.status === "ACCEPTED" && !needsPay));
-              const goDetails = () =>
-                router.push({ pathname: "/client/order/[id]", params: { id: order.id } });
-              const goPayment = () =>
-                router.push({ pathname: "/client/payment/[id]", params: { id: order.id } });
-              const openCard = () => {
-                if (needsPay) {
-                  goPayment();
-                  return;
-                }
-                goDetails();
-              };
-              const primaryAction = (() => {
-                if (waiting) {
-                  return {
-                    label: "Aguardando aceite",
-                    run: () =>
-                      router.push({
-                        pathname: "/client/waiting/[id]",
-                        params: { id: order.id },
-                      } as never),
-                  };
-                }
-                // Pedido de ajuda (quem pediu): pagar ou ver detalhes.
-                if (isHelpAsk) {
-                  if (needsPay) {
-                    return { label: "Efetuar pagamento", run: goPayment };
-                  }
-                  return { label: "Ver detalhes", run: goDetails };
-                }
-                if (needsPay) {
-                  return { label: "Efetuar pagamento", run: goPayment };
-                }
-                if (canTrackOnMap) {
-                  return {
-                    label:
-                      order.status === "IN_PROGRESS" ? "Ver no mapa" : "Acompanhar caminho",
-                    run: () =>
-                      router.push({
-                        pathname: "/client/tracking/[id]",
-                        params: { id: order.id },
-                      }),
-                  };
-                }
-                return { label: "Ver detalhes", run: goDetails };
-              })();
-              return (
-                <Pressable
-                  key={order.id}
-                  onPress={openCard}
-                  style={({ pressed }) => [
-                    styles.orderCard,
-                    enRoute ? styles.orderCardActive : styles.orderCardMuted,
-                    { opacity: pressed ? 0.92 : 1 },
-                  ]}
-                >
-                  <View style={styles.orderTop}>
-                    <View style={styles.statusRow}>
-                      <View
-                        style={[
-                          styles.statusDot,
-                          { backgroundColor: enRoute ? theme.colors.primary : theme.colors.info },
-                        ]}
-                      />
-                      <Text
-                        style={[
-                          styles.statusLabel,
-                          { color: enRoute ? theme.colors.primary : theme.colors.info },
-                        ]}
-                      >
-                        {orderStatusLabel(order.status)}
-                      </Text>
-                    </View>
-                    <Text style={styles.orderWhen}>{shortTime(order.createdAt)}</Text>
-                  </View>
-                  <View style={styles.orderBody}>
-                    <Avatar
-                      initials={initialsOf(order.provider?.name ?? "?")}
-                      imageUri={order.provider?.avatarUrl}
-                      color="#FF6600"
-                      size={52}
-                      radius={15}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.orderTitle}>{orderTitle(order)}</Text>
-                      <Text style={styles.orderMeta}>
-                        {order.provider?.name ?? (waiting ? "Aguardando alguém" : "Quem ajuda")}
-                        {order.provider?.headline ? ` · ${order.provider.headline}` : ""}
-                      </Text>
-                    </View>
-                    <Text style={styles.orderPrice}>{moneyFromCents(order.totalCents)}</Text>
-                  </View>
-                  <View style={styles.orderActions}>
-                    <Pressable
-                      style={styles.primaryAction}
-                      onPress={(e) => {
-                        e.stopPropagation?.();
-                        primaryAction.run();
-                      }}
-                    >
-                      <Text style={styles.primaryActionText}>{primaryAction.label}</Text>
-                    </Pressable>
-                    {!isHelpAsk && canTrackOnMap && (
-                      <Pressable
-                        style={styles.secondaryAction}
-                        onPress={(e) => {
-                          e.stopPropagation?.();
-                          goDetails();
-                        }}
-                      >
-                        <Text style={styles.secondaryActionText}>Detalhes</Text>
-                      </Pressable>
-                    )}
-                    <Pressable
-                      style={styles.iconAction}
-                      onPress={(e) => {
-                        e.stopPropagation?.();
-                        router.push({ pathname: "/client/chat/[id]", params: { id: order.id } });
-                      }}
-                    >
-                      <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
-                      {order.unreadMessages > 0 && (
-                        <View style={styles.chatBadge}>
-                          <Text style={styles.chatBadgeText}>
-                            {order.unreadMessages > 9 ? "9+" : order.unreadMessages}
-                          </Text>
-                        </View>
-                      )}
-                    </Pressable>
-                  </View>
-                </Pressable>
-              );
-            })}
+            {activeOrders.map((order) =>
+              attending ? (
+                <AttendedActiveCard key={order.id} order={order} />
+              ) : (
+                <AskedActiveCard key={order.id} order={order} />
+              ),
+            )}
           </>
         )}
 
         {tab === "concluidos" && (
           <>
             {!isLoading && completedOrders.length === 0 && (
-              <Text style={styles.emptyText}>Nenhum pedido no histórico ainda.</Text>
+              <Text style={styles.emptyText}>{emptyCompleted}</Text>
             )}
-            {completedOrders.map((order) => (
-              <Pressable
-                key={order.id}
-                style={({ pressed }) => [styles.completedRow, { opacity: pressed ? 0.85 : 1 }]}
-                onPress={() =>
-                  router.push({ pathname: "/client/rating/[id]", params: { id: order.id } })
-                }
-              >
-                <Avatar
-                  initials={initialsOf(order.provider?.name ?? "?")}
-                  color="#3a3a70"
-                  size={46}
-                  radius={13}
-                />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.completedTitle}>{orderTitle(order)}</Text>
-                  <Text style={styles.completedMeta}>
-                    {order.provider?.name ?? "Prestador"} · {orderStatusLabel(order.status)}
-                  </Text>
-                </View>
-                <View style={{ alignItems: "flex-end" }}>
-                  <Text style={styles.completedPrice}>{moneyFromCents(order.totalCents)}</Text>
-                  {order.status === "COMPLETED" && <Text style={styles.rateCta}>★ avaliar</Text>}
-                </View>
-              </Pressable>
-            ))}
+            {completedOrders.map((order) => {
+              const name = attending
+                ? order.client.name
+                : (order.provider?.name ?? "Prestador");
+              const price = attending ? order.priceCents : order.totalCents;
+              const ratingPath = attending ? "/client/attend-rating/[id]" : "/client/rating/[id]";
+              return (
+                <Pressable
+                  key={order.id}
+                  style={({ pressed }) => [styles.completedRow, { opacity: pressed ? 0.85 : 1 }]}
+                  onPress={() => goTo(ratingPath, order.id)}
+                >
+                  <Avatar initials={initialsOf(name)} color="#3a3a70" size={46} radius={13} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.completedTitle}>{orderTitle(order)}</Text>
+                    <Text style={styles.completedMeta}>
+                      {name} · {orderStatusLabel(order.status)}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={styles.completedPrice}>{moneyFromCents(price)}</Text>
+                    {order.status === "COMPLETED" && <Text style={styles.rateCta}>★ avaliar</Text>}
+                  </View>
+                </Pressable>
+              );
+            })}
           </>
         )}
       </ScrollView>
     </Screen>
+  );
+}
+
+type ActionSpec = { label: string; run: () => void };
+
+type CardProps = {
+  order: Order;
+  enRoute: boolean;
+  statusColor: string;
+  counterpartName: string;
+  counterpartAvatar: string | null | undefined;
+  counterpartMeta: string;
+  price: number;
+  primaryAction: ActionSpec;
+  secondaryAction?: ActionSpec;
+  onPress: () => void;
+};
+
+// Card de chamada ativa. Quem decide rótulos/destinos é o lado (pedi × atendi).
+function ActiveCard({
+  order,
+  enRoute,
+  statusColor,
+  counterpartName,
+  counterpartAvatar,
+  counterpartMeta,
+  price,
+  primaryAction,
+  secondaryAction,
+  onPress,
+}: CardProps) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.orderCard,
+        enRoute ? styles.orderCardActive : styles.orderCardMuted,
+        { opacity: pressed ? 0.92 : 1 },
+      ]}
+    >
+      <View style={styles.orderTop}>
+        <View style={styles.statusRow}>
+          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+          <Text style={[styles.statusLabel, { color: statusColor }]}>
+            {orderStatusLabel(order.status)}
+          </Text>
+        </View>
+        <Text style={styles.orderWhen}>{shortTime(order.createdAt)}</Text>
+      </View>
+      <View style={styles.orderBody}>
+        <Avatar
+          initials={initialsOf(counterpartName)}
+          imageUri={counterpartAvatar}
+          color="#FF6600"
+          size={52}
+          radius={15}
+        />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.orderTitle}>{orderTitle(order)}</Text>
+          <Text style={styles.orderMeta}>{counterpartMeta}</Text>
+        </View>
+        <Text style={styles.orderPrice}>{moneyFromCents(price)}</Text>
+      </View>
+      <View style={styles.orderActions}>
+        <Pressable
+          style={styles.primaryAction}
+          onPress={(e) => {
+            e.stopPropagation?.();
+            primaryAction.run();
+          }}
+        >
+          <Text style={styles.primaryActionText}>{primaryAction.label}</Text>
+        </Pressable>
+        {secondaryAction && (
+          <Pressable
+            style={styles.secondaryAction}
+            onPress={(e) => {
+              e.stopPropagation?.();
+              secondaryAction.run();
+            }}
+          >
+            <Text style={styles.secondaryActionText}>{secondaryAction.label}</Text>
+          </Pressable>
+        )}
+        <Pressable
+          style={styles.iconAction}
+          onPress={(e) => {
+            e.stopPropagation?.();
+            goTo("/client/chat/[id]", order.id);
+          }}
+        >
+          <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
+          {order.unreadMessages > 0 && (
+            <View style={styles.chatBadge}>
+              <Text style={styles.chatBadgeText}>
+                {order.unreadMessages > 9 ? "9+" : order.unreadMessages}
+              </Text>
+            </View>
+          )}
+        </Pressable>
+      </View>
+    </Pressable>
+  );
+}
+
+// Lado "Pedi": sou o cliente da chamada.
+function AskedActiveCard({ order }: { order: Order }) {
+  const { theme } = useUnistyles();
+  const enRoute = order.status === "EN_ROUTE" || order.status === "IN_PROGRESS";
+  const waiting = order.status === "CREATED";
+  const needsPay =
+    order.status === "ACCEPTED" &&
+    order.payment?.status !== "PAID" &&
+    order.payment?.method !== "CASH";
+  const isHelpAsk = order.isOpenRequest;
+  const canTrackOnMap =
+    !!order.provider &&
+    (order.status === "EN_ROUTE" ||
+      order.status === "IN_PROGRESS" ||
+      (order.status === "ACCEPTED" && !needsPay));
+  const goDetails = () => goTo("/client/order/[id]", order.id);
+  const goPayment = () => goTo("/client/payment/[id]", order.id);
+
+  const primaryAction: ActionSpec = (() => {
+    if (waiting) {
+      return { label: "Aguardando aceite", run: () => goTo("/client/waiting/[id]", order.id) };
+    }
+    if (needsPay) return { label: "Efetuar pagamento", run: goPayment };
+    if (!isHelpAsk && canTrackOnMap) {
+      return {
+        label: order.status === "IN_PROGRESS" ? "Ver no mapa" : "Acompanhar caminho",
+        run: () => goTo("/client/tracking/[id]", order.id),
+      };
+    }
+    return { label: "Ver detalhes", run: goDetails };
+  })();
+
+  return (
+    <ActiveCard
+      order={order}
+      enRoute={enRoute}
+      statusColor={enRoute ? theme.colors.primary : theme.colors.info}
+      counterpartName={order.provider?.name ?? "?"}
+      counterpartAvatar={order.provider?.avatarUrl}
+      counterpartMeta={`${order.provider?.name ?? (waiting ? "Aguardando alguém" : "Quem ajuda")}${
+        order.provider?.headline ? ` · ${order.provider.headline}` : ""
+      }`}
+      price={order.totalCents}
+      primaryAction={primaryAction}
+      secondaryAction={
+        !isHelpAsk && canTrackOnMap ? { label: "Detalhes", run: goDetails } : undefined
+      }
+      onPress={needsPay ? goPayment : goDetails}
+    />
+  );
+}
+
+// Lado "Atendi": estou atendendo essa chamada (helper ou prestador). O valor
+// mostrado é o que eu recebo; aceitar/terminar continuam no mapa da Início.
+function AttendedActiveCard({ order }: { order: Order }) {
+  const { theme } = useUnistyles();
+  const enRoute = order.status === "EN_ROUTE" || order.status === "IN_PROGRESS";
+  const goDetails = () => goTo("/client/order/[id]", order.id);
+  const goAttend = () => goTo("/client/attend/[id]", order.id);
+
+  const primaryAction: ActionSpec = (() => {
+    if (order.status === "ACCEPTED") return { label: "Ir para o mapa", run: goAttend };
+    if (order.status === "EN_ROUTE") return { label: "Continuar no mapa", run: goAttend };
+    if (order.status === "AWAITING_CONFIRMATION") {
+      return { label: "Aguardando confirmação", run: goDetails };
+    }
+    return { label: "Ver detalhes", run: goDetails };
+  })();
+  const onMap = order.status === "ACCEPTED" || order.status === "EN_ROUTE";
+
+  return (
+    <ActiveCard
+      order={order}
+      enRoute={enRoute}
+      statusColor={enRoute ? theme.colors.primary : theme.colors.info}
+      counterpartName={order.client.name}
+      counterpartAvatar={order.client.avatarUrl}
+      counterpartMeta={`${order.client.name} · você recebe`}
+      price={order.priceCents}
+      primaryAction={primaryAction}
+      secondaryAction={onMap ? { label: "Detalhes", run: goDetails } : undefined}
+      onPress={goDetails}
+    />
   );
 }
 
@@ -256,10 +353,39 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     letterSpacing: -0.8,
   },
+  sideRow: {
+    flexDirection: "row",
+    gap: 9,
+    marginTop: 14,
+  },
+  sideChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(28,28,58,0.85)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  sideChipActive: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  sideChipText: {
+    fontSize: 12.5,
+    fontFamily: fonts.semiBold,
+    color: "#c9c7e4",
+  },
+  sideChipTextActive: {
+    color: "#fff",
+    fontFamily: fonts.bold,
+  },
   segment: {
     flexDirection: "row",
     gap: 8,
-    marginTop: 18,
+    marginTop: 14,
     backgroundColor: "rgba(28,28,58,0.7)",
     borderRadius: 14,
     padding: 5,
@@ -395,12 +521,6 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fonts.bold,
     color: theme.colors.mutedForeground,
   },
-  ghostAction: {
-    backgroundColor: "rgba(255,255,255,0.07)",
-  },
-  ghostActionText: {
-    color: "#e8e8f5",
-  },
   iconAction: {
     width: 48,
     backgroundColor: "rgba(255,255,255,0.07)",
@@ -426,13 +546,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 10,
     fontFamily: fonts.extraBold,
     color: theme.colors.destructiveForeground,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontFamily: fonts.extraBold,
-    color: theme.colors.foreground,
-    marginTop: 10,
-    marginBottom: 13,
   },
   completedRow: {
     flexDirection: "row",
@@ -463,12 +576,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 11.5,
     fontFamily: fonts.extraBold,
     color: "#FF9a52",
-    marginTop: 2,
-  },
-  rateDone: {
-    fontSize: 11.5,
-    fontFamily: fonts.extraBold,
-    color: theme.colors.success,
     marginTop: 2,
   },
 }));

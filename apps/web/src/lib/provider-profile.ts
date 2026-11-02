@@ -290,6 +290,38 @@ export async function registerHelper(
   return { user: publicUser(updated), profile: toDTO(profile) };
 }
 
+export type UpdateHelperProfileInput = {
+  bio?: string;
+  serviceRadiusKm?: number;
+};
+
+// Edição do cadastro de quem atende ajudas (helper). Diferente do upsert
+// profissional, preserva isHelper/status — o helper não passa por KYC e o
+// upsert o rebaixaria a profissional PENDING.
+export async function updateHelperProfile(
+  userId: string,
+  input: UpdateHelperProfileInput,
+): Promise<MyProviderProfileDTO | { error: string; status: number }> {
+  const existing = await loadProfile(userId);
+  if (!existing) return { error: "Cadastro de quem atende não encontrado", status: 404 };
+  if (!existing.isHelper) {
+    return { error: "Edite seu cadastro profissional pela tela de cadastro", status: 409 };
+  }
+
+  const payload: { updatedAt: string; bio?: string | null; serviceRadiusKm?: number } = {
+    updatedAt: new Date().toISOString(),
+  };
+  if (input.bio !== undefined) payload.bio = input.bio.trim() || null;
+  if (input.serviceRadiusKm !== undefined) payload.serviceRadiusKm = input.serviceRadiusKm;
+
+  const { error } = await supabase.from("providerprofile").update(payload).eq("userId", userId);
+  if (error) throw new Error(error.message);
+
+  const profile = await loadProfile(userId);
+  if (!profile) throw new Error("Falha ao atualizar cadastro de quem atende");
+  return toDTO(profile);
+}
+
 export async function updateProviderLocation(
   userId: string,
   lat: number,
