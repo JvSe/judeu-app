@@ -707,9 +707,6 @@ export async function transitionOrder(
     if (!paid) {
       return { error: "Aguardando o cliente confirmar o pagamento", status: 409 };
     }
-    if (order.isOpenRequest && !order.detailsReady) {
-      return { error: "Aguardando o cliente combinar os detalhes", status: 409 };
-    }
   }
   if (action === "start_work") {
     const dest = trackingDestination(order);

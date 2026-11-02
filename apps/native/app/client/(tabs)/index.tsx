@@ -151,13 +151,7 @@ function helperNextAction(
     order.payment?.status === "PAID" || order.payment?.method === "CASH";
   switch (order.status) {
     case "ACCEPTED":
-      if (order.isOpenRequest && !order.detailsReady) {
-        return {
-          action: "start_route",
-          label: "Aguardando a pessoa",
-          disabled: true,
-        };
-      }
+      // Ajuda aberta: pagamento libera o trajeto (endereço já veio no pedido).
       if (!paid)
         return {
           action: "start_route",
@@ -180,6 +174,19 @@ function helperNextAction(
     default:
       return null;
   }
+}
+
+function helperHomeMeta(order: Order): string {
+  const price = moneyFromCents(order.priceCents);
+  const paid =
+    order.payment?.status === "PAID" || order.payment?.method === "CASH";
+  if (order.status === "ACCEPTED" && paid) {
+    return `Pode iniciar o trajeto · ${price}`;
+  }
+  if (order.status === "ACCEPTED" && !paid) {
+    return `Aguardando pagamento · ${price}`;
+  }
+  return price;
 }
 
 export default function ClientHome() {
@@ -551,8 +558,9 @@ export default function ClientHome() {
 
         {activeOrder && next ? (
           <MapStatusCard
+            kicker="Atendendo..."
             title={helpTitle(activeOrder)}
-            meta={moneyFromCents(activeOrder.priceCents)}
+            meta={helperHomeMeta(activeOrder)}
             actionLabel={next.label}
             onAction={runActive}
             actionDisabled={next.disabled || transition.isPending}

@@ -59,10 +59,12 @@ function firstNameOf(fullName: string | undefined): string {
 // Próxima ação do prestador para um pedido já aceito. Em EN_ROUTE, só libera
 // "Iniciar serviço" quando a posição do prestador chegou perto do cliente.
 function nextAction(order: Order): { action: OrderAction; label: string; disabled?: boolean } | null {
+  const paid =
+    order.payment?.status === "PAID" || order.payment?.method === "CASH";
   switch (order.status) {
     case "ACCEPTED":
-      if (order.isOpenRequest && !order.detailsReady) {
-        return { action: "start_route", label: "Aguardando detalhes...", disabled: true };
+      if (!paid) {
+        return { action: "start_route", label: "Aguardando pagamento", disabled: true };
       }
       return { action: "start_route", label: "Iniciar trajeto" };
     case "EN_ROUTE":
@@ -677,47 +679,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   availabilityTextOff: {
     color: theme.colors.mutedForeground,
-  },
-  vagaCard: {
-    backgroundColor: "rgba(28,28,58,0.92)",
-    borderWidth: 1,
-    borderColor: "rgba(255,102,0,0.45)",
-    borderRadius: 20,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  vagaIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: theme.colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  vagaTitle: {
-    fontSize: 16,
-    fontFamily: fonts.extraBold,
-    color: "#fff",
-  },
-  vagaSubtitle: {
-    fontSize: 12.5,
-    fontFamily: fonts.semiBold,
-    color: theme.colors.mutedForeground,
-    marginTop: 2,
-  },
-  vagaButton: {
-    backgroundColor: theme.colors.primary,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  vagaButtonText: {
-    color: "#fff",
-    fontSize: 13,
-    fontFamily: fonts.bold,
   },
   sheet: {
     position: "absolute",

@@ -282,6 +282,7 @@ export function useCreatePayment() {
       qc.setQueryData(["payment", orderId], result.payment);
       qc.invalidateQueries({ queryKey: ["payment", orderId] });
       qc.invalidateQueries({ queryKey: ["order", orderId] });
+      qc.invalidateQueries({ queryKey: ["orders"] });
     },
   });
 }

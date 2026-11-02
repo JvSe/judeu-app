@@ -133,7 +133,6 @@ export function AttendDelivery({
   };
 
   const dest = { lat: destLat, lng: destLng };
-  const waitingDetails = order.isOpenRequest && !order.detailsReady;
 
   return (
     <Screen>
@@ -220,10 +219,6 @@ export function AttendDelivery({
           <Text style={styles.waitPay}>A pessoa ainda está confirmando o pagamento.</Text>
         )}
 
-        {order.status === "ACCEPTED" && canStart && waitingDetails && (
-          <Text style={styles.waitPay}>Aguardando a pessoa combinar o local ou o chat.</Text>
-        )}
-
         {order.provider && order.status === "ACCEPTED" && !canStart && (
           <Pressable
             style={styles.chatPrimary}
@@ -238,8 +233,8 @@ export function AttendDelivery({
           <SpinButton
             controlled
             isActive={pendingAction === "start_route" && transition.isPending}
-            disabled={transition.isPending || !canStart || waitingDetails}
-            idleText={!canStart ? "Aguardando pagamento" : waitingDetails ? "Aguardando detalhes" : startLabel}
+            disabled={transition.isPending || !canStart}
+            idleText={!canStart ? "Aguardando pagamento" : startLabel}
             activeText="Iniciando..."
             onPress={() => runTransition("start_route")}
             colors={{
