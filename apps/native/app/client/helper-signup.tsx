@@ -6,7 +6,7 @@ import * as Location from "expo-location";
 import { router } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { z } from "zod";
@@ -22,6 +22,7 @@ import { useAttendButtonVisibility } from "@/lib/attend-button";
 import { useAuth } from "@/lib/auth-context";
 import { formatPhone } from "@/lib/formatters/format-phone.helper";
 import { readForegroundPosition } from "@/lib/location";
+import { errorMessage, toast } from "@/lib/toast";
 import { saveTokens } from "@/lib/tokens";
 
 const TERMS = [
@@ -111,32 +112,45 @@ export default function HelperSignup() {
       });
       await saveTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
       updateUser(res.user);
-      queryClient.setQueryData(["provider-profile", "me"], res.profile);
+      queryClient.setQueryData(["provider-profile", "me", res.user.id], res.profile);
 
       if (lat == null || lng == null) {
-        Alert.alert(
-          "Localização",
-          "Precisamos saber onde você está para achar pedidos perto.",
-        );
+        toast.warning("Localização", {
+          description: "Precisamos saber onde você está para achar pedidos perto.",
+        });
         router.replace("/client");
         return;
       }
 
       await providerProfileApi.updateLocation(lat, lng);
       const profile = await providerProfileApi.setAvailability(true);
-      queryClient.setQueryData(["provider-profile", "me"], profile);
+      queryClient.setQueryData(["provider-profile", "me", res.user.id], profile);
+      toast.success("Cadastro concluído", {
+        description: "Modo atendimento ligado.",
+      });
       router.replace("/client");
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Não foi possível concluir o cadastro");
+      const message = errorMessage(e, "Não foi possível concluir o cadastro");
+      setSubmitError(message);
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }
   });
 
   const toggleAttendButton = () => {
-    void (attendButton.hidden ? attendButton.show() : attendButton.hide()).catch(() =>
-      setSubmitError("Não foi possível salvar essa preferência."),
-    );
+    const wasHidden = attendButton.hidden;
+    void (wasHidden ? attendButton.show() : attendButton.hide())
+      .then(() =>
+        toast.success(
+          wasHidden ? "Botão de atender visível de novo" : "Botão de atender oculto",
+        ),
+      )
+      .catch(() => {
+        const message = "Não foi possível salvar essa preferência.";
+        setSubmitError(message);
+        toast.error(message);
+      });
   };
 
   return (

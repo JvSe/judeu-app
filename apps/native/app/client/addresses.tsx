@@ -6,11 +6,12 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "rea
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
+import { Screen } from "@/components/ui/screen";
+import SpinButton from "@/components/ui/spin-button";
 import { fonts } from "@/constants/fonts";
 import type { SavedAddress } from "@/lib/api";
 import { useAddresses, useDeleteAddress, useSetDefaultAddress } from "@/lib/hooks";
-import { Screen } from "@/components/ui/screen";
-import SpinButton from "@/components/ui/spin-button";
+import { errorMessage, toast } from "@/lib/toast";
 
 export default function Addresses() {
   const { theme } = useUnistyles();
@@ -24,11 +25,9 @@ export default function Addresses() {
   const handleSetDefault = (address: SavedAddress) => {
     setPendingDefaultId(address.id);
     setDefault.mutate(address.id, {
-      onError: (err) => {
-        const message =
-          err instanceof Error ? err.message : "Não foi possível definir o endereço como padrão.";
-        Alert.alert("Ops", message);
-      },
+      onSuccess: () => toast.success("Endereço padrão atualizado"),
+      onError: (err) =>
+        toast.error(errorMessage(err, "Não foi possível definir o endereço como padrão.")),
       onSettled: () => setPendingDefaultId(null),
     });
   };
@@ -45,11 +44,9 @@ export default function Addresses() {
           onPress: () => {
             setPendingDeleteId(address.id);
             removeAddress.mutate(address.id, {
-              onError: (err) => {
-                const message =
-                  err instanceof Error ? err.message : "Não foi possível excluir o endereço agora.";
-                Alert.alert("Ops", message);
-              },
+              onSuccess: () => toast.success("Endereço removido"),
+              onError: (err) =>
+                toast.error(errorMessage(err, "Não foi possível excluir o endereço agora.")),
               onSettled: () => setPendingDeleteId(null),
             });
           },

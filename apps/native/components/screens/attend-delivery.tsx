@@ -2,19 +2,20 @@ import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
-import { fonts } from "@/constants/fonts";
-import { useOrder, useTransitionOrder } from "@/lib/hooks";
-import { openGoogleMapsNavigation, openWazeNavigation } from "@/lib/external-maps";
-import { useShareLocationWhileEnRoute, useWatchCurrentLocation } from "@/lib/location";
 import { IconButton } from "@/components/ui/icon-button";
 import { SelfMarker } from "@/components/ui/map-marker";
 import { RealMap } from "@/components/ui/real-map";
 import { Screen } from "@/components/ui/screen";
 import SpinButton from "@/components/ui/spin-button";
+import { fonts } from "@/constants/fonts";
+import { openGoogleMapsNavigation, openWazeNavigation } from "@/lib/external-maps";
+import { useOrder, useTransitionOrder } from "@/lib/hooks";
+import { useShareLocationWhileEnRoute, useWatchCurrentLocation } from "@/lib/location";
+import { errorMessage, toast } from "@/lib/toast";
 
 function orderTitle(order: {
   service?: { name: string } | null;
@@ -125,7 +126,7 @@ export function AttendDelivery({
           }
         },
         onError: (err) =>
-          Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível completar a ação."),
+          toast.error(errorMessage(err, "Não foi possível completar a ação.")),
         onSettled: () => setPendingAction(null),
       },
     );
@@ -209,12 +210,28 @@ export function AttendDelivery({
           />
         )}
 
-        {order.status === "ACCEPTED" && !canStart && (
+        {order.status === "ACCEPTED" && !canStart && order.isOpenRequest && (
+          <Text style={styles.waitPay}>
+            Combine os detalhes no chat. A pessoa paga quando o valor estiver certo.
+          </Text>
+        )}
+
+        {order.status === "ACCEPTED" && !canStart && !order.isOpenRequest && (
           <Text style={styles.waitPay}>A pessoa ainda está confirmando o pagamento.</Text>
         )}
 
         {order.status === "ACCEPTED" && canStart && waitingDetails && (
           <Text style={styles.waitPay}>Aguardando a pessoa combinar o local ou o chat.</Text>
+        )}
+
+        {order.provider && order.status === "ACCEPTED" && !canStart && (
+          <Pressable
+            style={styles.chatPrimary}
+            onPress={() => router.push({ pathname: chatPathname, params: { id: order.id } })}
+          >
+            <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
+            <Text style={styles.chatPrimaryText}>Conversar</Text>
+          </Pressable>
         )}
 
         {order.status === "ACCEPTED" && (
@@ -260,7 +277,7 @@ export function AttendDelivery({
           />
         )}
 
-        {order.provider && (
+        {order.provider && !(order.status === "ACCEPTED" && !canStart) && (
           <Pressable
             style={styles.chatLink}
             onPress={() => router.push({ pathname: chatPathname, params: { id: order.id } })}
@@ -383,6 +400,20 @@ const styles = StyleSheet.create((theme) => ({
   },
   externalLabel: {
     fontSize: 13,
+    fontFamily: fonts.bold,
+    color: "#fff",
+  },
+  chatPrimary: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: theme.colors.primary,
+    borderRadius: 14,
+    paddingVertical: 14,
+  },
+  chatPrimaryText: {
+    fontSize: 15,
     fontFamily: fonts.bold,
     color: "#fff",
   },

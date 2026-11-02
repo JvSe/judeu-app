@@ -1,11 +1,8 @@
-import { prisma } from "./db";
+import { randomUUID } from "node:crypto";
+
+import { supabase } from "./db";
 import { geocodeAddress } from "./geo";
 import { FALLBACK_LAT, FALLBACK_LNG } from "./orders";
-
-// ---------------------------------------------------------------------------
-// Endereços salvos do cliente (RF-A6) — livro de endereços reutilizável, além
-// do endereço avulso que já podia ser digitado direto no pedido (RF-C6).
-// ---------------------------------------------------------------------------
 
 export type AddressDTO = {
   id: string;
@@ -67,15 +64,16 @@ function toDTO(a: {
 }
 
 export async function listAddresses(userId: string): Promise<AddressDTO[]> {
-  const rows = await prisma.address.findMany({
-    where: { userId },
-    orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
-  });
-  return rows.map(toDTO);
+  const { data: rows, error } = await supabase
+    .from("address")
+    .select("*")
+    .eq("userId", userId)
+    .order("isDefault", { ascending: false })
+    .order("createdAt", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (rows ?? []).map(toDTO);
 }
 
-// Geocodifica o endereço digitado; se falhar, usa coordenadas do app (GPS) quando
-// enviadas; só então cai no centro de Palmas (RF-C6).
 async function resolveLatLng(input: AddressInput): Promise<{ lat: number; lng: number }> {
   const query = [
     `${input.street}${input.number ? `, ${input.number}` : ""}`,
@@ -90,44 +88,46 @@ async function resolveLatLng(input: AddressInput): Promise<{ lat: number; lng: n
     if (geocoded) return { lat: geocoded.lat, lng: geocoded.lng };
     console.warn(`[addresses] Nominatim não encontrou resultado para "${query}"`);
   } catch (err) {
-    // Nominatim indisponível/não configurada — segue com o fallback abaixo.
     console.warn(`[addresses] geocodeAddress falhou para "${query}":`, err);
   }
   if (input.lat != null && input.lng != null) {
-    console.warn(`[addresses] usando GPS do device como posição de "${query}"`);
     return { lat: input.lat, lng: input.lng };
   }
-  console.warn(`[addresses] usando fallback de Palmas (centro) para "${query}"`);
   return { lat: FALLBACK_LAT, lng: FALLBACK_LNG };
 }
 
 export async function createAddress(userId: string, input: AddressInput): Promise<AddressDTO> {
   const { lat, lng } = await resolveLatLng(input);
-  const existingCount = await prisma.address.count({ where: { userId } });
-  const makeDefault = input.isDefault === true || existingCount === 0;
+  const { count } = await supabase
+    .from("address")
+    .select("*", { count: "exact", head: true })
+    .eq("userId", userId);
+  const makeDefault = input.isDefault === true || (count ?? 0) === 0;
 
-  const address = await prisma.$transaction(async (tx) => {
-    if (makeDefault) {
-      await tx.address.updateMany({ where: { userId, isDefault: true }, data: { isDefault: false } });
-    }
-    return tx.address.create({
-      data: {
-        user: { connect: { id: userId } },
-        label: input.label,
-        cep: input.cep,
-        street: input.street,
-        number: input.number,
-        complement: input.complement,
-        neighborhood: input.neighborhood,
-        city: input.city,
-        state: input.state,
-        lat,
-        lng,
-        isDefault: makeDefault,
-      },
-    });
-  });
+  if (makeDefault) {
+    await supabase.from("address").update({ isDefault: false }).eq("userId", userId).eq("isDefault", true);
+  }
 
+  const { data: address, error } = await supabase
+    .from("address")
+    .insert({
+      id: randomUUID(),
+      userId,
+      label: input.label ?? null,
+      cep: input.cep ?? null,
+      street: input.street,
+      number: input.number ?? null,
+      complement: input.complement ?? null,
+      neighborhood: input.neighborhood ?? null,
+      city: input.city,
+      state: input.state,
+      lat,
+      lng,
+      isDefault: makeDefault,
+    })
+    .select("*")
+    .single();
+  if (error || !address) throw new Error(error?.message ?? "Falha ao criar endereço");
   return toDTO(address);
 }
 
@@ -136,7 +136,7 @@ export async function updateAddress(
   id: string,
   input: Partial<AddressInput>,
 ): Promise<AddressDTO | { error: string; status: number }> {
-  const existing = await prisma.address.findUnique({ where: { id } });
+  const { data: existing } = await supabase.from("address").select("*").eq("id", id).maybeSingle();
   if (!existing || existing.userId !== userId) {
     return { error: "Endereço não encontrado", status: 404 };
   }
@@ -158,9 +158,9 @@ export async function updateAddress(
     lng = resolved.lng;
   }
 
-  const address = await prisma.address.update({
-    where: { id },
-    data: {
+  const { data: address, error } = await supabase
+    .from("address")
+    .update({
       label: input.label ?? existing.label,
       cep: input.cep ?? existing.cep,
       street: input.street ?? existing.street,
@@ -171,8 +171,11 @@ export async function updateAddress(
       state: input.state ?? existing.state,
       lat,
       lng,
-    },
-  });
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error || !address) throw new Error(error?.message ?? "Falha ao atualizar");
   return toDTO(address);
 }
 
@@ -180,28 +183,28 @@ export async function deleteAddress(
   userId: string,
   id: string,
 ): Promise<{ ok: true } | { error: string; status: number }> {
-  const existing = await prisma.address.findUnique({ where: { id } });
+  const { data: existing } = await supabase.from("address").select("*").eq("id", id).maybeSingle();
   if (!existing || existing.userId !== userId) {
     return { error: "Endereço não encontrado", status: 404 };
   }
 
-  try {
-    await prisma.address.delete({ where: { id } });
-  } catch (err) {
-    // P2003 = foreign key: existem pedidos apontando pra esse endereço.
-    if (err && typeof err === "object" && "code" in err && err.code === "P2003") {
+  const { error } = await supabase.from("address").delete().eq("id", id);
+  if (error) {
+    if (/foreign key|violates foreign/i.test(error.message)) {
       return { error: "Não é possível excluir: endereço vinculado a um pedido", status: 409 };
     }
-    throw err;
+    throw new Error(error.message);
   }
 
-  // Se apagou o endereço padrão e ainda sobrou algum, promove o mais recente.
   if (existing.isDefault) {
-    const next = await prisma.address.findFirst({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-    });
-    if (next) await prisma.address.update({ where: { id: next.id }, data: { isDefault: true } });
+    const { data: next } = await supabase
+      .from("address")
+      .select("id")
+      .eq("userId", userId)
+      .order("createdAt", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (next) await supabase.from("address").update({ isDefault: true }).eq("id", next.id);
   }
 
   return { ok: true };
@@ -211,14 +214,15 @@ export async function setDefaultAddress(
   userId: string,
   id: string,
 ): Promise<AddressDTO | { error: string; status: number }> {
-  const existing = await prisma.address.findUnique({ where: { id } });
+  const { data: existing } = await supabase.from("address").select("*").eq("id", id).maybeSingle();
   if (!existing || existing.userId !== userId) {
     return { error: "Endereço não encontrado", status: 404 };
   }
 
-  const [, address] = await prisma.$transaction([
-    prisma.address.updateMany({ where: { userId, isDefault: true }, data: { isDefault: false } }),
-    prisma.address.update({ where: { id }, data: { isDefault: true } }),
-  ]);
+  const { data: address, error } = await supabase.rpc("set_default_address", {
+    p_user_id: userId,
+    p_address_id: id,
+  });
+  if (error || !address) throw new Error(error?.message ?? "Falha ao definir padrão");
   return toDTO(address);
 }

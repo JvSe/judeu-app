@@ -443,7 +443,20 @@ export type Order = {
     ratingAvg: number;
     allowsNegotiation: boolean;
   } | null;
-  client: { id: string; name: string; phone: string | null };
+  client: {
+    id: string;
+    name: string;
+    phone: string | null;
+    avatarUrl: string | null;
+    createdAt: string;
+    phoneVerified: boolean;
+    emailVerified: boolean;
+    ratingAvg: number | null;
+    ratingCount: number;
+    completedOrders: number;
+    cancelledOrders: number;
+    totalOrders: number;
+  };
   payment: { status: "PENDING" | "PAID" | "REFUNDED" | "FAILED"; method: PaymentMethodOption } | null;
   address: OrderAddress;
   pickupAddress: OrderAddress | null;
@@ -523,6 +536,8 @@ export type Proposal = {
   status: "PENDING" | "ACCEPTED" | "REJECTED" | "SUPERSEDED";
   createdAt: string;
   respondedAt: string | null;
+  clientAcceptedAt: string | null;
+  providerAcceptedAt: string | null;
 };
 
 export type CreateProposalInput = { priceCents: number; note?: string };

@@ -2,24 +2,25 @@ import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
-import type { Order, OrderStatus } from "@/lib/api";
-import { fonts } from "@/constants/fonts";
-import { initialsOf, moneyFromCents, orderStatusLabel, shortDateTime, shortTime } from "@/lib/format";
-import { useOrder, useOrderProposals, useRespondToProposal, useTransitionOrder } from "@/lib/hooks";
 import { Avatar } from "@/components/ui/avatar";
 import { Screen } from "@/components/ui/screen";
 import SpinButton from "@/components/ui/spin-button";
+import { fonts } from "@/constants/fonts";
+import type { Order, OrderStatus } from "@/lib/api";
+import { initialsOf, moneyFromCents, orderStatusLabel, shortDateTime, shortTime } from "@/lib/format";
+import { useOrder, useOrderProposals, useRespondToProposal, useTransitionOrder } from "@/lib/hooks";
+import { errorMessage, toast } from "@/lib/toast";
 
 // Fluxo canônico do pedido (caminho feliz).
 const FLOW: { status: OrderStatus; title: string }[] = [
   { status: "CREATED", title: "Pedido criado" },
   { status: "ACCEPTED", title: "Pedido aceito" },
-  { status: "EN_ROUTE", title: "Profissional a caminho" },
-  { status: "IN_PROGRESS", title: "Serviço em execução" },
+  { status: "EN_ROUTE", title: "Quem ajuda a caminho" },
+  { status: "IN_PROGRESS", title: "Ajuda em andamento" },
   { status: "AWAITING_CONFIRMATION", title: "Aguardando sua confirmação" },
   { status: "COMPLETED", title: "Concluído e pago" },
 ];
@@ -66,13 +67,26 @@ export default function OrderDetail() {
   const canCancel = order.status === "CREATED" || order.status === "ACCEPTED";
   const canNegotiate = order.status === "CREATED" && !!order.provider?.allowsNegotiation;
   const pendingProposal = proposals.find((p) => p.status === "PENDING");
+  const needsPay =
+    order.status === "ACCEPTED" &&
+    order.payment?.status !== "PAID" &&
+    order.payment?.method !== "CASH";
+  const openHelpPricePending =
+    needsPay && order.isOpenRequest && !!pendingProposal && pendingProposal.status === "PENDING";
+  const canTrack =
+    !!order.provider &&
+    !needsPay &&
+    (order.status === "ACCEPTED" ||
+      order.status === "EN_ROUTE" ||
+      order.status === "IN_PROGRESS");
 
   const handleCancel = () => {
     transition.mutate(
       { id: order.id, action: "cancel" },
       {
+        onSuccess: () => toast.success("Pedido cancelado"),
         onError: (err) =>
-          Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível cancelar o pedido."),
+          toast.error(errorMessage(err, "Não foi possível cancelar o pedido.")),
       },
     );
   };
@@ -84,13 +98,14 @@ export default function OrderDetail() {
       { orderId: order.id, proposalId: pendingProposal.id, action },
       {
         onSuccess: () => {
+          toast.success(action === "accept" ? "Proposta aceita" : "Proposta recusada");
           if (action === "accept" && !navigatedToPaymentRef.current) {
             navigatedToPaymentRef.current = true;
             router.push({ pathname: "/client/payment/[id]", params: { id: order.id } });
           }
         },
         onError: (err) =>
-          Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível responder à proposta."),
+          toast.error(errorMessage(err, "Não foi possível responder à proposta.")),
         onSettled: () => setRespondAction(null),
       },
     );
@@ -100,9 +115,12 @@ export default function OrderDetail() {
     transition.mutate(
       { id: order.id, action: "confirm_completion" },
       {
-        onSuccess: () => router.push({ pathname: "/client/rating/[id]", params: { id: order.id } }),
+        onSuccess: () => {
+          toast.success("Conclusão confirmada");
+          router.push({ pathname: "/client/rating/[id]", params: { id: order.id } });
+        },
         onError: (err) =>
-          Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível confirmar a conclusão."),
+          toast.error(errorMessage(err, "Não foi possível confirmar a conclusão.")),
       },
     );
   };
@@ -181,25 +199,42 @@ export default function OrderDetail() {
         <View style={styles.providerCard}>
           <Avatar
             initials={initialsOf(order.provider?.name ?? "?")}
+            imageUri={order.provider?.avatarUrl}
             color={theme.colors.primary}
             size={52}
             radius={15}
           />
           <View style={{ flex: 1 }}>
-            <Text style={styles.providerName}>{order.provider?.name ?? "Prestador"}</Text>
+            <Text style={styles.providerName}>
+              {order.provider?.name ?? (order.status === "CREATED" ? "Aguardando alguém" : "Quem ajuda")}
+            </Text>
             <View style={styles.providerMetaRow}>
-              <View style={styles.ratingChip}>
-                <Text style={styles.ratingText}>★ {(order.provider?.ratingAvg ?? 0).toFixed(1)}</Text>
-              </View>
-              <Text style={styles.providerMeta}>{order.provider?.headline ?? "Serviço"}</Text>
+              {order.provider ? (
+                <>
+                  <View style={styles.ratingChip}>
+                    <Text style={styles.ratingText}>
+                      ★ {(order.provider.ratingAvg ?? 0).toFixed(1)}
+                    </Text>
+                  </View>
+                  <Text style={styles.providerMeta}>
+                    {order.provider.headline ?? (order.isOpenRequest ? "Ajudando você" : "Serviço")}
+                  </Text>
+                </>
+              ) : (
+                <Text style={styles.providerMeta}>
+                  {order.isOpenRequest ? "Alguém perto ainda não atendeu" : "Sem prestador"}
+                </Text>
+              )}
             </View>
           </View>
-          <Pressable
-            style={styles.iconButton}
-            onPress={() => router.push({ pathname: "/client/chat/[id]", params: { id: order.id } })}
-          >
-            <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
-          </Pressable>
+          {order.provider && (
+            <Pressable
+              style={styles.iconButton}
+              onPress={() => router.push({ pathname: "/client/chat/[id]", params: { id: order.id } })}
+            >
+              <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
+            </Pressable>
+          )}
         </View>
 
         {order.scheduledAt && (
@@ -209,23 +244,53 @@ export default function OrderDetail() {
           </View>
         )}
 
-        {(order.status === "ACCEPTED" || order.status === "EN_ROUTE") && (
+        {needsPay && openHelpPricePending && (
           <Pressable
             style={styles.trackButton}
-            onPress={() => router.push({ pathname: "/client/tracking/[id]", params: { id: order.id } })}
+            onPress={() => router.push({ pathname: "/client/chat/[id]", params: { id: order.id } })}
           >
-            <Ionicons name="navigate" size={17} color="#fff" />
-            <Text style={styles.trackButtonText}>Acompanhar no mapa</Text>
+            <Ionicons name="cash-outline" size={17} color="#fff" />
+            <Text style={styles.trackButtonText}>Combinar valor no chat</Text>
           </Pressable>
         )}
 
-        {order.status === "IN_PROGRESS" && (
+        {needsPay && !openHelpPricePending && (
           <Pressable
-            style={styles.trackButtonLocal}
-            onPress={() => router.push({ pathname: "/client/tracking/[id]", params: { id: order.id } })}
+            style={styles.trackButton}
+            onPress={() =>
+              router.push({ pathname: "/client/payment/[id]", params: { id: order.id } })
+            }
           >
-            <Ionicons name="location" size={17} color={theme.colors.success} />
-            <Text style={styles.trackButtonLocalText}>Prestador no local — ver no mapa</Text>
+            <Ionicons name="card-outline" size={17} color="#fff" />
+            <Text style={styles.trackButtonText}>Próximo passo: pagar</Text>
+          </Pressable>
+        )}
+
+        {canTrack && (
+          <Pressable
+            style={order.status === "IN_PROGRESS" ? styles.trackButtonLocal : styles.trackButton}
+            onPress={() =>
+              router.push({ pathname: "/client/tracking/[id]", params: { id: order.id } })
+            }
+          >
+            <Ionicons
+              name={order.status === "IN_PROGRESS" ? "location" : "navigate"}
+              size={17}
+              color={order.status === "IN_PROGRESS" ? theme.colors.success : "#fff"}
+            />
+            <Text
+              style={
+                order.status === "IN_PROGRESS"
+                  ? styles.trackButtonLocalText
+                  : styles.trackButtonText
+              }
+            >
+              {order.status === "IN_PROGRESS"
+                ? "No local — ver no mapa"
+                : order.status === "EN_ROUTE"
+                  ? "Acompanhar caminho de quem ajuda"
+                  : "Ver onde está quem ajuda"}
+            </Text>
           </Pressable>
         )}
 
@@ -298,10 +363,12 @@ export default function OrderDetail() {
           </View>
         </View>
 
-        {order.status === "CREATED" && (
+        {order.status === "CREATED" && !order.isOpenRequest && order.provider && (
           <Pressable
             style={styles.payButton}
-            onPress={() => router.push({ pathname: "/client/payment/[id]", params: { id: order.id } })}
+            onPress={() =>
+              router.push({ pathname: "/client/payment/[id]", params: { id: order.id } })
+            }
           >
             <Ionicons name="card-outline" size={17} color="#fff" />
             <Text style={styles.payButtonText}>Ir para pagamento</Text>

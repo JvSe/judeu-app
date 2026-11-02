@@ -1,6 +1,7 @@
+// Schema mantido só para db push / evolução. Runtime do app usa supabase-js.
 generator client {
-  provider = "prisma-client"
-  output   = "../generated"
+  provider     = "prisma-client"
+  output       = "../generated"
   moduleFormat = "esm"
 }
 
@@ -415,19 +416,21 @@ model OrderEvent {
   @@map("orderevent")
 }
 
-// Orçamento/negociação antes do aceite (RF-D5): enquanto o pedido está CREATED,
-// cliente ou prestador podem propor um novo priceCents; a outra parte aceita
-// (atualiza o preço do pedido) ou recusa. Só uma proposta PENDING por vez —
-// uma nova proposta marca a anterior como SUPERSEDED.
+// Orçamento/negociação (RF-D5 + ajuda aberta): chamada profissional em CREATED;
+// ajuda aberta em ACCEPTED (não pago) com aceite bilateral do novo valor.
+// Só uma proposta PENDING por vez — uma nova marca a anterior como SUPERSEDED.
 model OrderProposal {
-  id          String         @id @default(uuid())
-  orderId     String
-  byRole      String // "client" | "provider" — quem propôs
-  priceCents  Int
-  note        String?
-  status      ProposalStatus @default(PENDING)
-  createdAt   DateTime       @default(now())
-  respondedAt DateTime?
+  id                 String         @id @default(uuid())
+  orderId            String
+  byRole             String // "client" | "provider" — quem propôs
+  priceCents         Int
+  note               String?
+  status             ProposalStatus @default(PENDING)
+  createdAt          DateTime       @default(now())
+  respondedAt        DateTime?
+  // Ajuda aberta: solicitante confirma primeiro, depois quem ajuda.
+  clientAcceptedAt   DateTime?
+  providerAcceptedAt DateTime?
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 

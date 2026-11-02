@@ -2,20 +2,21 @@ import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { Alert, Pressable, Text, Vibration, View } from "react-native";
+import { Pressable, Text, Vibration, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
-import type { Order } from "@/lib/api";
-import { fonts } from "@/constants/fonts";
-import { initialsOf, moneyFromCents, shortTime } from "@/lib/format";
-import { useMyProviderProfile, useOrders, useSetAvailability, useTransitionOrder, useWallet } from "@/lib/hooks";
-import { useShareIdleLocation, useShareLocationWhileEnRoute, useWatchCurrentLocation } from "@/lib/location";
 import { Avatar } from "@/components/ui/avatar";
 import { ProviderMarker, SelfMarker } from "@/components/ui/map-marker";
 import { RealMap } from "@/components/ui/real-map";
 import { Screen } from "@/components/ui/screen";
 import SpinButton from "@/components/ui/spin-button";
+import { fonts } from "@/constants/fonts";
+import type { Order } from "@/lib/api";
+import { initialsOf, moneyFromCents, shortTime } from "@/lib/format";
+import { useMyProviderProfile, useOrders, useSetAvailability, useTransitionOrder, useWallet } from "@/lib/hooks";
+import { useShareIdleLocation, useShareLocationWhileEnRoute, useWatchCurrentLocation } from "@/lib/location";
+import { errorMessage, toast } from "@/lib/toast";
 
 function orderTitle(order: Order): string {
   if (order.isOpenRequest && order.description) return order.description;
@@ -70,7 +71,7 @@ export default function ProviderMap() {
           }
         },
         onError: (err) =>
-          Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível completar a ação."),
+          toast.error(errorMessage(err, "Não foi possível completar a ação.")),
         onSettled: () => setRespondAction(null),
       },
     );

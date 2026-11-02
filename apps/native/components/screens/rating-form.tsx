@@ -9,14 +9,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { z } from "zod";
 
-import { fonts } from "@/constants/fonts";
-import { initialsOf, moneyFromCents } from "@/lib/format";
-import { useCreateReview, useMyReview, useOrder } from "@/lib/hooks";
-import { Avatar } from "@/components/ui/avatar";
 import { FormChipSelect } from "@/components/form/chip-select";
 import { FormErrorText } from "@/components/form/error-text";
 import { FormInput } from "@/components/form/input";
+import { Avatar } from "@/components/ui/avatar";
 import { Screen } from "@/components/ui/screen";
+import { fonts } from "@/constants/fonts";
+import { initialsOf, moneyFromCents } from "@/lib/format";
+import { useCreateReview, useMyReview, useOrder } from "@/lib/hooks";
+import { errorMessage, toast } from "@/lib/toast";
 
 const RATING_WORD = ["", "Ruim", "Regular", "Bom", "Ótimo", "Excelente"];
 
@@ -101,9 +102,12 @@ export function RatingForm({
         orderId: id,
         input: { rating: data.stars, comment: parts.join(" — ") || undefined },
       });
+      toast.success("Avaliação enviada");
       router.replace(homeRoute as never);
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Não foi possível enviar a avaliação.");
+      const message = errorMessage(e, "Não foi possível enviar a avaliação.");
+      setSubmitError(message);
+      toast.error(message);
     }
   });
 

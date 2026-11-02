@@ -1,5 +1,4 @@
 import "@/unistyles";
-import Ionicons from "@expo/vector-icons/Ionicons";
 import { useEffect } from "react";
 import { View } from "react-native";
 import Animated, {
@@ -12,6 +11,7 @@ import Animated, {
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { Avatar } from "@/components/ui/avatar";
+import { JudeuPin } from "@/components/ui/judeu-pin";
 
 export const SelfMarker = ({
   size = 22,
@@ -64,7 +64,7 @@ export const SelfMarker = ({
   );
 };
 
-/** Pin circular das ajudas acionadas no mapa. */
+/** Pin das ajudas abertas no mapa (pin.svg). */
 export const HelpMarker = ({
   size = 44,
   highlighted,
@@ -72,48 +72,13 @@ export const HelpMarker = ({
   size?: number;
   highlighted?: boolean;
 }) => {
-  const { theme } = useUnistyles();
+  const height = size * (566 / 482);
   return (
-    <View style={{ width: size, height: size + 6, alignItems: "center" }}>
-      <View
-        style={[
-          helpStyles.pin,
-          {
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            borderColor: highlighted ? theme.colors.primary : theme.colors.border,
-          },
-        ]}
-      >
-        <Ionicons name="hand-left" size={size * 0.42} color={theme.colors.foreground} />
-        <View style={[helpStyles.badge, { backgroundColor: theme.colors.primary, borderColor: theme.colors.background }]}>
-          <Ionicons name="flash" size={9} color={theme.colors.primaryForeground} />
-        </View>
-      </View>
+    <View style={{ width: size * 1.08, height: height * 1.08, alignItems: "center" }}>
+      <JudeuPin size={size} highlighted={highlighted} />
     </View>
   );
 };
-
-const helpStyles = StyleSheet.create((theme) => ({
-  pin: {
-    backgroundColor: theme.colors.secondary,
-    borderWidth: 2.5,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  badge: {
-    position: "absolute",
-    right: -2,
-    bottom: -2,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-  },
-}));
 
 export const ProviderMarker = ({
   initials,

@@ -9,15 +9,16 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { z } from "zod";
 
+import { FormCheckbox } from "@/components/form/checkbox";
+import { FormErrorText } from "@/components/form/error-text";
+import { FormTextField } from "@/components/form/text-field";
+import { Screen } from "@/components/ui/screen";
 import { fonts } from "@/constants/fonts";
 import { useCepAutofill } from "@/lib/cep";
 import { formatZipCode } from "@/lib/formatters/format-zipcode.helper";
 import { useAddresses, useCreateAddress, useUpdateAddress } from "@/lib/hooks";
 import { useCurrentLocation } from "@/lib/location";
-import { FormCheckbox } from "@/components/form/checkbox";
-import { FormErrorText } from "@/components/form/error-text";
-import { FormTextField } from "@/components/form/text-field";
-import { Screen } from "@/components/ui/screen";
+import { errorMessage, toast } from "@/lib/toast";
 
 const addressErrorMessage = "Preencha rua, cidade e estado (UF).";
 
@@ -146,9 +147,12 @@ export default function AddressForm() {
       } else {
         await createAddress.mutateAsync({ ...input, isDefault: data.isDefault });
       }
+      toast.success(isEditing ? "Endereço atualizado" : "Endereço salvo");
       router.back();
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Não foi possível salvar o endereço.");
+      const message = errorMessage(e, "Não foi possível salvar o endereço.");
+      setSubmitError(message);
+      toast.error(message);
     }
   });
 

@@ -2,16 +2,17 @@ import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
-import { fonts } from "@/constants/fonts";
 import { Avatar } from "@/components/ui/avatar";
 import { Screen } from "@/components/ui/screen";
 import SpinButton from "@/components/ui/spin-button";
+import { fonts } from "@/constants/fonts";
 import { initialsOf, jobApplicationStatusLabel, shortDateTime } from "@/lib/format";
 import { useJobApplicants, useRespondToApplication } from "@/lib/hooks";
+import { errorMessage, toast } from "@/lib/toast";
 
 export default function JobApplicants() {
   const { theme } = useUnistyles();
@@ -26,8 +27,10 @@ export default function JobApplicants() {
     respond.mutate(
       { jobId: id, applicationId, action },
       {
+        onSuccess: () =>
+          toast.success(action === "accept" ? "Candidatura aceita" : "Candidatura recusada"),
         onError: (err) =>
-          Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível responder."),
+          toast.error(errorMessage(err, "Não foi possível responder.")),
         onSettled: () => setPending(null),
       },
     );

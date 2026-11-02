@@ -1,14 +1,15 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
+import { Screen } from "@/components/ui/screen";
 import { fonts } from "@/constants/fonts";
 import { moneyFromCents, shortDateTime } from "@/lib/format";
 import { useWallet } from "@/lib/hooks";
-import { Screen } from "@/components/ui/screen";
+import { toast } from "@/lib/toast";
 
 export default function ProviderEarnings() {
   const { theme } = useUnistyles();
@@ -48,10 +49,10 @@ export default function ProviderEarnings() {
             <Pressable
               style={styles.withdrawButton}
               onPress={() =>
-                Alert.alert(
-                  "Saque",
-                  "O saque fica disponível depois da verificação da conta e dos dados bancários.",
-                )
+                toast.warning("Saque", {
+                  description:
+                    "O saque fica disponível depois da verificação da conta e dos dados bancários.",
+                })
               }
             >
               <Text style={styles.withdrawText}>Sacar</Text>
@@ -59,7 +60,9 @@ export default function ProviderEarnings() {
             <Pressable
               style={styles.statementButton}
               onPress={() =>
-                Alert.alert("Extrato", "Seu histórico de ganhos está listado abaixo.")
+                toast.info("Extrato", {
+                  description: "Seu histórico de ganhos está listado abaixo.",
+                })
               }
             >
               <Text style={styles.statementText}>Extrato</Text>

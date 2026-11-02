@@ -67,16 +67,65 @@ export default function Orders() {
                 order.status === "ACCEPTED" &&
                 order.payment?.status !== "PAID" &&
                 order.payment?.method !== "CASH";
+              const isHelpAsk = order.isOpenRequest;
               const canTrackOnMap =
-                order.status === "EN_ROUTE" ||
-                order.status === "IN_PROGRESS" ||
-                (order.status === "ACCEPTED" && !needsPay);
+                !!order.provider &&
+                (order.status === "EN_ROUTE" ||
+                  order.status === "IN_PROGRESS" ||
+                  (order.status === "ACCEPTED" && !needsPay));
+              const goDetails = () =>
+                router.push({ pathname: "/client/order/[id]", params: { id: order.id } });
+              const goPayment = () =>
+                router.push({ pathname: "/client/payment/[id]", params: { id: order.id } });
+              const openCard = () => {
+                if (needsPay) {
+                  goPayment();
+                  return;
+                }
+                goDetails();
+              };
+              const primaryAction = (() => {
+                if (waiting) {
+                  return {
+                    label: "Aguardando aceite",
+                    run: () =>
+                      router.push({
+                        pathname: "/client/waiting/[id]",
+                        params: { id: order.id },
+                      } as never),
+                  };
+                }
+                // Pedido de ajuda (quem pediu): pagar ou ver detalhes.
+                if (isHelpAsk) {
+                  if (needsPay) {
+                    return { label: "Efetuar pagamento", run: goPayment };
+                  }
+                  return { label: "Ver detalhes", run: goDetails };
+                }
+                if (needsPay) {
+                  return { label: "Efetuar pagamento", run: goPayment };
+                }
+                if (canTrackOnMap) {
+                  return {
+                    label:
+                      order.status === "IN_PROGRESS" ? "Ver no mapa" : "Acompanhar caminho",
+                    run: () =>
+                      router.push({
+                        pathname: "/client/tracking/[id]",
+                        params: { id: order.id },
+                      }),
+                  };
+                }
+                return { label: "Ver detalhes", run: goDetails };
+              })();
               return (
-                <View
+                <Pressable
                   key={order.id}
-                  style={[
+                  onPress={openCard}
+                  style={({ pressed }) => [
                     styles.orderCard,
                     enRoute ? styles.orderCardActive : styles.orderCardMuted,
+                    { opacity: pressed ? 0.92 : 1 },
                   ]}
                 >
                   <View style={styles.orderTop}>
@@ -101,6 +150,7 @@ export default function Orders() {
                   <View style={styles.orderBody}>
                     <Avatar
                       initials={initialsOf(order.provider?.name ?? "?")}
+                      imageUri={order.provider?.avatarUrl}
                       color="#FF6600"
                       size={52}
                       radius={15}
@@ -108,7 +158,7 @@ export default function Orders() {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.orderTitle}>{orderTitle(order)}</Text>
                       <Text style={styles.orderMeta}>
-                        {order.provider?.name ?? "Prestador"}
+                        {order.provider?.name ?? (waiting ? "Aguardando alguém" : "Quem ajuda")}
                         {order.provider?.headline ? ` · ${order.provider.headline}` : ""}
                       </Text>
                     </View>
@@ -117,45 +167,30 @@ export default function Orders() {
                   <View style={styles.orderActions}>
                     <Pressable
                       style={styles.primaryAction}
-                      onPress={() =>
-                        router.push(
-                          waiting
-                            ? ({ pathname: "/client/waiting/[id]", params: { id: order.id } } as never)
-                            : needsPay
-                              ? { pathname: "/client/payment/[id]", params: { id: order.id } }
-                              : canTrackOnMap
-                                ? { pathname: "/client/tracking/[id]", params: { id: order.id } }
-                                : { pathname: "/client/order/[id]", params: { id: order.id } },
-                        )
-                      }
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        primaryAction.run();
+                      }}
                     >
-                      <Text style={styles.primaryActionText}>
-                        {waiting
-                          ? "Aguardando aceite"
-                          : needsPay
-                            ? "Pagar chamada"
-                            : canTrackOnMap
-                              ? order.status === "IN_PROGRESS"
-                                ? "No local"
-                                : "Acompanhar no mapa"
-                              : "Ver detalhes"}
-                      </Text>
+                      <Text style={styles.primaryActionText}>{primaryAction.label}</Text>
                     </Pressable>
-                    {canTrackOnMap && (
+                    {!isHelpAsk && canTrackOnMap && (
                       <Pressable
                         style={styles.secondaryAction}
-                        onPress={() =>
-                          router.push({ pathname: "/client/order/[id]", params: { id: order.id } })
-                        }
+                        onPress={(e) => {
+                          e.stopPropagation?.();
+                          goDetails();
+                        }}
                       >
                         <Text style={styles.secondaryActionText}>Detalhes</Text>
                       </Pressable>
                     )}
                     <Pressable
                       style={styles.iconAction}
-                      onPress={() =>
-                        router.push({ pathname: "/client/chat/[id]", params: { id: order.id } })
-                      }
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        router.push({ pathname: "/client/chat/[id]", params: { id: order.id } });
+                      }}
                     >
                       <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
                       {order.unreadMessages > 0 && (
@@ -167,7 +202,7 @@ export default function Orders() {
                       )}
                     </Pressable>
                   </View>
-                </View>
+                </Pressable>
               );
             })}
           </>

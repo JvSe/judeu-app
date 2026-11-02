@@ -14,6 +14,7 @@ import { fonts } from "@/constants/fonts";
 import { initialsOf, moneyFromCents, priceFromCents } from "@/lib/format";
 import { useNearbyProviders, useOrder, useReassignOrder, useTransitionOrder } from "@/lib/hooks";
 import { providerPinPosition } from "@/lib/nearby";
+import { errorMessage, toast } from "@/lib/toast";
 
 export default function WaitingCall() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -38,7 +39,11 @@ export default function WaitingCall() {
   useEffect(() => {
     if (!order) return;
     if (order.status === "ACCEPTED") {
-      router.replace({ pathname: "/client/payment/[id]", params: { id: order.id } });
+      if (order.isOpenRequest) {
+        router.replace({ pathname: "/client/chat/[id]", params: { id: order.id } });
+      } else {
+        router.replace({ pathname: "/client/payment/[id]", params: { id: order.id } });
+      }
     } else if (order.status === "EN_ROUTE" || order.status === "IN_PROGRESS") {
       router.replace({ pathname: "/client/tracking/[id]", params: { id: order.id } });
     } else if (order.status === "CANCELLED") {
@@ -182,7 +187,7 @@ export default function WaitingCall() {
                           { id: order.id, providerId: person.id },
                           {
                             onError: (err) =>
-                              Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível chamar."),
+                              toast.error(errorMessage(err, "Não foi possível chamar.")),
                           },
                         );
                       } else {

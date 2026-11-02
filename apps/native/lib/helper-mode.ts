@@ -1,11 +1,11 @@
 import * as Location from "expo-location";
 import { router } from "expo-router";
 import { useState } from "react";
-import { Alert } from "react-native";
 
 import { useAuth } from "@/lib/auth-context";
 import { useMyProviderProfile, useSetAvailability, useUpdateProviderLocation } from "@/lib/hooks";
 import { readForegroundPosition } from "@/lib/location";
+import { errorMessage, toast } from "@/lib/toast";
 
 const LOCATION_MESSAGE = "Precisamos saber onde você está para achar pedidos perto.";
 
@@ -15,36 +15,51 @@ export function useHelperMode() {
   const setAvailability = useSetAvailability();
   const updateLocation = useUpdateProviderLocation();
   const [arming, setArming] = useState(false);
-  const profile = profileQuery.data ?? null;
-  const isHelper = profile?.isHelper === true;
+
+  // Conta CLIENT nunca herda perfil em cache de outra sessão — só BOTH/PROVIDER
+  // podem ter providerprofile válido neste fluxo.
+  const role = user?.role;
+  const profile =
+    role === "BOTH" || role === "PROVIDER" ? (profileQuery.data ?? null) : null;
+
+  const isHelper = role === "BOTH" && profile?.isHelper === true;
+  // Só CLIENT precisa do formulário; BOTH helper já passou por ele.
+  const needsSignup = role === "CLIENT";
   const blocked = profile?.status === "BLOCKED";
   const isOn = isHelper && profile?.isAvailable === true && !blocked;
   const profileLoading =
-    (user?.role === "BOTH" || user?.role === "PROVIDER") && profileQuery.isLoading;
+    (role === "BOTH" || role === "PROVIDER") && profileQuery.isLoading;
   const pending = setAvailability.isPending || updateLocation.isPending || profileLoading;
 
   const turnOn = async () => {
     if (profileLoading) return;
-    if (user?.role === "PROVIDER" || (profile && !profile.isHelper)) {
-      Alert.alert(
-        "Você já atende como prestador",
-        "Use a área de quem trabalha para receber chamadas.",
-      );
+
+    // Prestador profissional (não-helper) não usa este fluxo.
+    if (role === "PROVIDER" || (profile && !profile.isHelper)) {
+      toast.info("Você já atende como prestador", {
+        description: "Use a área de quem trabalha para receber chamadas.",
+      });
       return;
     }
+
+    // Conta nova / ainda sem cadastro de helper → formulário obrigatório.
     if (!isHelper) {
       router.push("/client/helper-signup" as never);
       return;
     }
+
     if (blocked) {
-      Alert.alert("Cadastro bloqueado", "Fale com o suporte para entender o motivo.");
+      toast.error("Cadastro bloqueado", {
+        description: "Fale com o suporte para entender o motivo.",
+      });
       return;
     }
+
     setArming(true);
     const perm = await Location.requestForegroundPermissionsAsync();
     if (perm.status !== "granted") {
       setArming(false);
-      Alert.alert("Localização", LOCATION_MESSAGE);
+      toast.warning("Localização", { description: LOCATION_MESSAGE });
       return;
     }
     try {
@@ -53,20 +68,21 @@ export function useHelperMode() {
       const lng = pos?.lng ?? profile?.baseLng ?? null;
       if (lat == null || lng == null) {
         setArming(false);
-        Alert.alert(
-          "Localização",
-          "Não consegui ler o GPS agora. Ligue a Localização do celular e tente de novo.",
-        );
+        toast.warning("Localização", {
+          description:
+            "Não consegui ler o GPS agora. Ligue a Localização do celular e tente de novo.",
+        });
         return;
       }
       await updateLocation.mutateAsync({ lat, lng });
       await setAvailability.mutateAsync(true);
+      setArming(false);
+      toast.success("Modo atendimento ligado");
     } catch (err) {
       setArming(false);
       const raw = err instanceof Error ? err.message : "";
       const locationFailed = /kCLError|getCurrentPosition|location/i.test(raw);
-      Alert.alert(
-        "Ops",
+      toast.error(
         locationFailed || !raw
           ? "Não consegui ler o GPS agora. Ligue a Localização do celular e tente de novo."
           : raw,
@@ -77,8 +93,9 @@ export function useHelperMode() {
   const turnOff = () => {
     setArming(false);
     setAvailability.mutate(false, {
+      onSuccess: () => toast.success("Modo atendimento desligado"),
       onError: (err) =>
-        Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível desligar o modo."),
+        toast.error(errorMessage(err, "Não foi possível desligar o modo.")),
     });
   };
 
@@ -88,5 +105,5 @@ export function useHelperMode() {
     else void turnOn();
   };
 
-  return { isHelper, isOn, pending, blocked, arming, toggle };
+  return { isHelper, isOn, pending, blocked, arming, needsSignup, toggle, profile };
 }

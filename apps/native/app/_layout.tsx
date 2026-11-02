@@ -17,10 +17,12 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useUnistyles } from "react-native-unistyles";
 import notifee, { EventType } from "react-native-notify-kit";
 
+import { AuthSessionBoundary } from "@/components/auth-session-boundary";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { initAssistant } from "@/lib/assistant";
 import { pathForNotification } from "@/lib/notifications";
 import { QueryProvider } from "@/lib/query";
-import { initAssistant } from "@/lib/assistant";
+import { Toaster } from "@/lib/toast";
 
 // Registra o resource fetcher do ExecuTorch antes de qualquer hook de IA (seção 2.3 do guia).
 // Guardado: em Expo Go / web o módulo nativo não existe e não deve derrubar o boot.
@@ -110,6 +112,7 @@ export default function RootLayout() {
       <StripeProvider publishableKey={env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ""}>
         <QueryProvider>
           <AuthProvider>
+            <AuthSessionBoundary />
             <NotificationNavigation />
             <Stack
               screenOptions={{
@@ -125,6 +128,7 @@ export default function RootLayout() {
               <Stack.Screen name="terms" />
               <Stack.Screen name="privacy-policy" />
             </Stack>
+            <Toaster position="top" theme="system" />
           </AuthProvider>
         </QueryProvider>
       </StripeProvider>

@@ -16,6 +16,7 @@ import { FormTextField } from "@/components/form/text-field";
 import { fonts } from "@/constants/fonts";
 import { useAuth } from "@/lib/auth-context";
 import { formatPhone } from "@/lib/formatters/format-phone.helper";
+import { errorMessage, toast } from "@/lib/toast";
 
 const signupSchema = z.object({
   fullName: z.string().trim().min(2, "Informe seu nome completo"),
@@ -91,9 +92,12 @@ export default function Signup() {
         role,
         acceptedTerms: true,
       });
+      toast.success("Conta criada");
       router.replace(role === "PROVIDER" ? "/provider/kyc" : "/client");
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Não foi possível criar a conta");
+      const message = errorMessage(e, "Não foi possível criar a conta");
+      setSubmitError(message);
+      toast.error(message);
     }
   });
 

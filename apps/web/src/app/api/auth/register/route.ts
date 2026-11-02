@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
+
 import { z } from "zod";
 
 import { hashPassword, issueRefreshToken, signAccessToken } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { supabase } from "@/lib/db";
 import { error, handleOptions, json } from "@/lib/http";
 import { publicUser, roleSchema } from "@/lib/user";
 
@@ -13,8 +15,6 @@ export const registerSchema = z.object({
   password: z.string().min(8).max(200),
   phone: z.string().min(8).max(20).optional(),
   role: roleSchema.optional(),
-  // Consentimento explícito aos Termos de Uso/Política de Privacidade (RNF-4, LGPD) — sem
-  // isso a conta não é criada, mesmo padrão de "checkbox obrigatório" de qualquer app sério.
   acceptedTerms: z.literal(true),
 });
 
@@ -30,25 +30,39 @@ export async function POST(req: Request) {
   const { fullName, password, phone, role } = parsed.data;
   const email = parsed.data.email.toLowerCase();
 
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const { data: existing } = await supabase.from("user").select("id").eq("email", email).maybeSingle();
   if (existing) return error("E-mail já cadastrado", 409);
 
   const finalRole = role ?? "CLIENT";
-  const user = await prisma.user.create({
-    data: {
+  const now = new Date().toISOString();
+  const userId = randomUUID();
+
+  const { data: user, error: insertError } = await supabase
+    .from("user")
+    .insert({
+      id: userId,
       fullName,
       email,
-      phone,
+      phone: phone ?? null,
       role: finalRole,
       passwordHash: await hashPassword(password),
-      termsAcceptedAt: new Date(),
-      // Prestador nasce com o cadastro profissional vazio (status PENDING) — ele
-      // só aparece pra clientes depois da KYC aprovada (RF-B2/B3, catalog.ts filtra APPROVED).
-      ...(finalRole === "PROVIDER" || finalRole === "BOTH"
-        ? { providerProfile: { create: {} } }
-        : {}),
-    },
-  });
+      termsAcceptedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .select("*")
+    .single();
+  if (insertError || !user) return error(insertError?.message ?? "Falha ao criar conta", 500);
+
+  if (finalRole === "PROVIDER" || finalRole === "BOTH") {
+    const { error: profileError } = await supabase.from("providerprofile").insert({
+      id: randomUUID(),
+      userId: user.id,
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (profileError) return error(profileError.message, 500);
+  }
 
   const accessToken = await signAccessToken({ sub: user.id, role: user.role });
   const refreshToken = await issueRefreshToken(user.id);

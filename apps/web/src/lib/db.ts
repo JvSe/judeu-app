@@ -1,12 +1,12 @@
-import { createPrismaClient } from "@judeu/db";
+import { createServiceClient, type JudeuSupabase } from "@judeu/db";
+import { env } from "@judeu/env/server";
 
-// Singleton para sobreviver ao HMR do Next em dev (evita esgotar conexões).
-const globalForPrisma = globalThis as unknown as {
-  prisma?: ReturnType<typeof createPrismaClient>;
+const globalForDb = globalThis as unknown as {
+  supabase?: JudeuSupabase;
 };
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+export const supabase =
+  globalForDb.supabase ??
+  createServiceClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
+globalForDb.supabase = supabase;

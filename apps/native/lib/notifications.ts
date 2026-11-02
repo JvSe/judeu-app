@@ -34,9 +34,10 @@ export function pathForNotification(
   }
   if (data.type === "order") {
     if (data.role === "provider" && clientShell) return `/client/attend/${data.orderId}`;
+    // Cliente: pagamento (a tela redireciona aos detalhes quando já estiver pago).
     return data.role === "provider"
       ? `/provider/delivery/${data.orderId}`
-      : `/client/tracking/${data.orderId}`;
+      : `/client/payment/${data.orderId}`;
   }
   return null;
 }

@@ -4,16 +4,18 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { router } from "expo-router";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { z } from "zod";
 
-import { fonts } from "@/constants/fonts";
 import { FormErrorText } from "@/components/form/error-text";
 import { FormTextField } from "@/components/form/text-field";
+import { JudeuLogoBadge } from "@/components/ui/judeu-logo";
 import { Screen } from "@/components/ui/screen";
+import { fonts } from "@/constants/fonts";
 import { useAuth } from "@/lib/auth-context";
+import { errorMessage, toast } from "@/lib/toast";
 
 const loginSchema = z.object({
   email: z.string().trim().transform((v) => v.toLowerCase()),
@@ -40,9 +42,12 @@ export default function Login() {
     setSubmitError(null);
     try {
       const user = await signIn(data);
+      toast.success("Login feito");
       router.replace(user.role === "PROVIDER" ? "/provider" : "/client");
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Não foi possível entrar");
+      const message = errorMessage(e, "Não foi possível entrar");
+      setSubmitError(message);
+      toast.error(message);
     }
   });
 
@@ -54,7 +59,7 @@ export default function Login() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <Image source={require("../../assets/images/icon.png")} style={styles.logo} resizeMode="cover" />
+        <JudeuLogoBadge size={62} style={styles.logo} />
         <Text style={styles.title}>Bem-vindo{"\n"}de volta</Text>
         <Text style={styles.subtitle}>Entre para continuar contratando ou trabalhando.</Text>
 
@@ -160,9 +165,6 @@ const styles = StyleSheet.create((theme) => ({
     paddingBottom: 30,
   },
   logo: {
-    width: 62,
-    height: 62,
-    borderRadius: 19,
     shadowColor: theme.colors.primary,
     shadowOpacity: 0.45,
     shadowRadius: 30,

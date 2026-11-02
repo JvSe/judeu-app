@@ -4,8 +4,8 @@ import { z } from "zod";
 
 export const env = createEnv({
   server: {
-    DATABASE_URL: z.string().min(1),
-    // Conexão direta (session pooler) usada só por migrations/db push
+    // Poolers — só tooling Prisma (db push). Runtime do app usa supabase-js.
+    DATABASE_URL: z.string().min(1).optional(),
     DIRECT_URL: z.string().min(1).optional(),
     CORS_ORIGIN: z.url(),
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
@@ -14,9 +14,9 @@ export const env = createEnv({
     JWT_ACCESS_SECRET: z.string().min(16),
     JWT_REFRESH_SECRET: z.string().min(16),
 
-    // Supabase (Postgres via DATABASE_URL + Storage via service role)
-    SUPABASE_URL: z.url().optional(),
-    SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
+    // Supabase (PostgREST + Storage via service role)
+    SUPABASE_URL: z.url(),
+    SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
 
     // Busca por IA (Claude) — usada apenas no servidor
     ANTHROPIC_API_KEY: z.string().min(1).optional(),

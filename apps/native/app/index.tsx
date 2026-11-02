@@ -1,10 +1,11 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Redirect, router } from "expo-router";
-import { Image, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { fonts } from "@/constants/fonts";
+import { JudeuLogoBadge } from "@/components/ui/judeu-logo";
 import { Screen } from "@/components/ui/screen";
 import { useAuth } from "@/lib/auth-context";
 
@@ -23,7 +24,7 @@ export default function Onboarding() {
       <View style={styles.glowBottom} />
 
       <View style={styles.hero}>
-        <Image source={require("../assets/images/icon.png")} style={styles.logo} resizeMode="cover" />
+        <JudeuLogoBadge size={96} style={styles.logo} />
         <Text style={styles.brand}>Judeu</Text>
         <Text style={styles.tagline}>
           Ajuda + eu. Encontre quem resolve — ou seja quem resolve — pertinho de você.
@@ -101,9 +102,6 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: 34,
   },
   logo: {
-    width: 96,
-    height: 96,
-    borderRadius: 30,
     shadowColor: theme.colors.primary,
     shadowOpacity: 0.5,
     shadowRadius: 44,

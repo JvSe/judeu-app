@@ -6,8 +6,8 @@ import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
-import { fonts } from "@/constants/fonts";
 import { Screen } from "@/components/ui/screen";
+import { fonts } from "@/constants/fonts";
 import {
   contractTypeLabel,
   formatShifts,
@@ -15,6 +15,7 @@ import {
   moneyFromCents,
 } from "@/lib/format";
 import { useApplyToJob, useJob } from "@/lib/hooks";
+import { errorMessage, toast } from "@/lib/toast";
 
 export default function JobDetail() {
   const { theme } = useUnistyles();
@@ -38,8 +39,12 @@ export default function JobDetail() {
     apply.mutate(
       { id: job.id, message: message.trim() || undefined },
       {
-        onError: (err) =>
-          setApplyError(err instanceof Error ? err.message : "Não foi possível enviar sua candidatura."),
+        onSuccess: () => toast.success("Candidatura enviada"),
+        onError: (err) => {
+          const msg = errorMessage(err, "Não foi possível enviar sua candidatura.");
+          setApplyError(msg);
+          toast.error(msg);
+        },
       },
     );
   };

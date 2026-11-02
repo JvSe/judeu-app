@@ -4,7 +4,6 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -16,20 +15,23 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
+import { ChatPricePanel } from "@/components/chat-price-panel";
+import { Avatar } from "@/components/ui/avatar";
+import { Screen } from "@/components/ui/screen";
 import { fonts } from "@/constants/fonts";
 import { useAuth } from "@/lib/auth-context";
 import { initialsOf, moneyFromCents } from "@/lib/format";
-import { useMessages, useOrder, useSendMessage } from "@/lib/hooks";
-import { Avatar } from "@/components/ui/avatar";
-import { Screen } from "@/components/ui/screen";
+import { useMessages, useOrder, useOrderProposals, useSendMessage } from "@/lib/hooks";
+import { errorMessage, toast } from "@/lib/toast";
 
 export default function Chat() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const { theme } = useUnistyles();
   const { user } = useAuth();
-  const { data: order, isLoading } = useOrder(id);
+  const { data: order, isLoading } = useOrder(id, { poll: true });
   const { data: messages = [] } = useMessages(id);
+  const { data: proposals = [] } = useOrderProposals(id);
   const sendMessage = useSendMessage();
   const [draft, setDraft] = useState("");
 
@@ -43,6 +45,15 @@ export default function Chat() {
     );
   }
 
+  const isClient = user?.id === order.client.id;
+  const role: "client" | "provider" = isClient ? "client" : "provider";
+  const counterpartName = isClient
+    ? (order.provider?.name ?? "Quem ajuda")
+    : order.client.name;
+  const counterpartAvatar = isClient
+    ? order.provider?.avatarUrl
+    : order.client.avatarUrl;
+
   const send = () => {
     const body = draft.trim();
     if (!body) return;
@@ -52,7 +63,7 @@ export default function Chat() {
       {
         onError: (err) => {
           setDraft(body);
-          Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível enviar a mensagem.");
+          toast.error(errorMessage(err, "Não foi possível enviar a mensagem."));
         },
       },
     );
@@ -68,18 +79,35 @@ export default function Chat() {
           <Pressable onPress={() => router.back()} hitSlop={10}>
             <Ionicons name="chevron-back" size={20} color="#fff" />
           </Pressable>
-          <Avatar initials={initialsOf(order.provider?.name ?? "?")} size={42} radius={13} />
+          <Avatar
+            initials={initialsOf(counterpartName)}
+            imageUri={counterpartAvatar}
+            size={42}
+            radius={13}
+          />
           <View style={{ flex: 1 }}>
-            <Text style={styles.name}>{order.provider?.name ?? "Prestador"}</Text>
+            <Text style={styles.name}>{counterpartName}</Text>
           </View>
         </View>
 
+        <ChatPricePanel
+          order={order}
+          role={role}
+          proposals={proposals}
+          proposePathname="/client/propose/[id]"
+        />
+
         <ScrollView contentContainerStyle={styles.messages} showsVerticalScrollIndicator={false}>
-          {order.service && (
+          {(order.service || order.isOpenRequest) && (
             <View style={styles.serviceChip}>
-              <Text style={styles.serviceChipEyebrow}>Serviço contratado</Text>
+              <Text style={styles.serviceChipEyebrow}>
+                {order.isOpenRequest ? "Ajuda" : "Serviço contratado"}
+              </Text>
               <Text style={styles.serviceChipTitle}>
-                {order.service.name} · {moneyFromCents(order.totalCents)}
+                {order.isOpenRequest
+                  ? order.description?.trim() || "Pedido de ajuda"
+                  : order.service?.name}{" "}
+                · {moneyFromCents(order.priceCents)}
               </Text>
             </View>
           )}
@@ -171,6 +199,7 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fonts.bold,
     color: "#fff",
     marginTop: 3,
+    textAlign: "center",
   },
   bubble: {
     maxWidth: "78%",

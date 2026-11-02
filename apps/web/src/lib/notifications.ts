@@ -1,13 +1,9 @@
-import type { NotificationType, Prisma } from "@judeu/db";
+import { randomUUID } from "node:crypto";
 
-import { prisma } from "./db";
+import type { Json, NotificationType } from "@judeu/db";
+
+import { supabase } from "./db";
 import { sendPushNotification } from "./push";
-
-// ---------------------------------------------------------------------------
-// Centro de notificações in-app (RF-I1): persiste cada evento do domínio (novo
-// pedido, transição de status, mensagem) que hoje já dispara push (RF-E2), e
-// respeita a preferência do usuário por tipo de evento.
-// ---------------------------------------------------------------------------
 
 export type NotificationDTO = {
   id: string;
@@ -24,9 +20,9 @@ function toDTO(n: {
   type: NotificationType;
   title: string;
   body: string;
-  data: Prisma.JsonValue;
-  readAt: Date | null;
-  createdAt: Date;
+  data: unknown;
+  readAt: string | null;
+  createdAt: string;
 }): NotificationDTO {
   return {
     id: n.id,
@@ -34,79 +30,86 @@ function toDTO(n: {
     title: n.title,
     body: n.body,
     data: (n.data as Record<string, unknown> | null) ?? null,
-    readAt: n.readAt?.toISOString() ?? null,
-    createdAt: n.createdAt.toISOString(),
+    readAt: n.readAt,
+    createdAt: n.createdAt,
   };
 }
 
-// Fire-and-forget nos call sites (orders.ts, chat.ts) — notificação é um extra,
-// nunca deve derrubar o fluxo principal (mesmo padrão do push, RF-E2).
 export async function notifyUser(
   userId: string,
   type: NotificationType,
   payload: { title: string; body: string; data?: Record<string, unknown> },
 ): Promise<void> {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { notifyOrders: true, notifyMessages: true },
-    });
+    const { data: user } = await supabase
+      .from("user")
+      .select("notifyOrders, notifyMessages")
+      .eq("id", userId)
+      .maybeSingle();
     if (!user) return;
-    // SUPPORT (resposta de chamado, RF-H1) não tem toggle próprio — sempre notifica.
     const enabled =
       type === "ORDER" ? user.notifyOrders : type === "MESSAGE" ? user.notifyMessages : true;
     if (!enabled) return;
 
-    await prisma.notification.create({
-      data: {
-        userId,
-        type,
-        title: payload.title,
-        body: payload.body,
-        data: (payload.data as Prisma.InputJsonValue | undefined) ?? undefined,
-      },
+    await supabase.from("notification").insert({
+      id: randomUUID(),
+      userId,
+      type,
+      title: payload.title,
+      body: payload.body,
+      data: (payload.data as Json | undefined) ?? null,
     });
     void sendPushNotification(userId, payload);
   } catch {
-    // Best-effort — não deve derrubar criar pedido/enviar mensagem/etc.
+    // Best-effort
   }
 }
 
 export async function listNotifications(
   userId: string,
 ): Promise<{ items: NotificationDTO[]; unreadCount: number }> {
-  const [rows, unreadCount] = await Promise.all([
-    prisma.notification.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    }),
-    prisma.notification.count({ where: { userId, readAt: null } }),
+  const [{ data: rows }, { count: unreadCount }] = await Promise.all([
+    supabase
+      .from("notification")
+      .select("*")
+      .eq("userId", userId)
+      .order("createdAt", { ascending: false })
+      .limit(50),
+    supabase
+      .from("notification")
+      .select("*", { count: "exact", head: true })
+      .eq("userId", userId)
+      .is("readAt", null),
   ]);
-  return { items: rows.map(toDTO), unreadCount };
+  return { items: (rows ?? []).map(toDTO), unreadCount: unreadCount ?? 0 };
 }
 
 export async function markNotificationRead(
   userId: string,
   id: string,
 ): Promise<NotificationDTO | { error: string; status: number }> {
-  const existing = await prisma.notification.findUnique({ where: { id } });
+  const { data: existing } = await supabase.from("notification").select("*").eq("id", id).maybeSingle();
   if (!existing || existing.userId !== userId) {
     return { error: "Notificação não encontrada", status: 404 };
   }
-  const updated = await prisma.notification.update({
-    where: { id },
-    data: { readAt: existing.readAt ?? new Date() },
-  });
+  const { data: updated, error } = await supabase
+    .from("notification")
+    .update({ readAt: existing.readAt ?? new Date().toISOString() })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error || !updated) throw new Error(error?.message ?? "Falha");
   return toDTO(updated);
 }
 
 export async function markAllNotificationsRead(userId: string): Promise<{ count: number }> {
-  const result = await prisma.notification.updateMany({
-    where: { userId, readAt: null },
-    data: { readAt: new Date() },
-  });
-  return { count: result.count };
+  const { data } = await supabase
+    .from("notification")
+    .update({ readAt: new Date().toISOString() })
+    .eq("userId", userId)
+    .is("readAt", null)
+    .select("id");
+  return { count: data?.length ?? 0 };
 }
 
 export type NotificationPreferencesDTO = { notifyOrders: boolean; notifyMessages: boolean };
@@ -114,19 +117,25 @@ export type NotificationPreferencesDTO = { notifyOrders: boolean; notifyMessages
 export async function getNotificationPreferences(
   userId: string,
 ): Promise<NotificationPreferencesDTO> {
-  return prisma.user.findUniqueOrThrow({
-    where: { id: userId },
-    select: { notifyOrders: true, notifyMessages: true },
-  });
+  const { data, error } = await supabase
+    .from("user")
+    .select("notifyOrders, notifyMessages")
+    .eq("id", userId)
+    .single();
+  if (error || !data) throw new Error(error?.message ?? "Usuário não encontrado");
+  return data;
 }
 
 export async function setNotificationPreferences(
   userId: string,
   input: Partial<NotificationPreferencesDTO>,
 ): Promise<NotificationPreferencesDTO> {
-  return prisma.user.update({
-    where: { id: userId },
-    data: input,
-    select: { notifyOrders: true, notifyMessages: true },
-  });
+  const { data, error } = await supabase
+    .from("user")
+    .update({ ...input, updatedAt: new Date().toISOString() })
+    .eq("id", userId)
+    .select("notifyOrders, notifyMessages")
+    .single();
+  if (error || !data) throw new Error(error?.message ?? "Falha");
+  return data;
 }

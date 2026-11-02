@@ -278,6 +278,8 @@ export function useCreatePayment() {
     mutationFn: ({ orderId, method }: { orderId: string; method: PaymentMethodOption }) =>
       paymentsApi.create(orderId, method),
     onSuccess: (result, { orderId }) => {
+      // Atualiza cache na hora para a tela de pagamento redirecionar sem esperar o poll.
+      qc.setQueryData(["payment", orderId], result.payment);
       qc.invalidateQueries({ queryKey: ["payment", orderId] });
       qc.invalidateQueries({ queryKey: ["order", orderId] });
     },
@@ -294,7 +296,8 @@ export function useMyProviderProfile() {
   const { user } = useAuth();
   const canHaveProfile = user?.role === "PROVIDER" || user?.role === "BOTH";
   return useQuery({
-    queryKey: ["provider-profile", "me"],
+    // user.id no key evita reusar perfil de outra conta no mesmo processo JS
+    queryKey: ["provider-profile", "me", user?.id ?? "anonymous"],
     queryFn: () => providerProfileApi.me(),
     enabled: canHaveProfile,
   });
@@ -302,27 +305,36 @@ export function useMyProviderProfile() {
 
 export function useUpsertProviderProfile() {
   const qc = useQueryClient();
+  const { user } = useAuth();
   return useMutation({
     mutationFn: (input: UpsertProviderProfileInput) => providerProfileApi.upsert(input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["provider-profile", "me"] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["provider-profile", "me", user?.id ?? "anonymous"] }),
   });
 }
 
 export function useUploadProviderDocument() {
   const qc = useQueryClient();
+  const { user } = useAuth();
   return useMutation({
     mutationFn: ({ base64, mimeType }: { base64: string; mimeType: string }) =>
       providerProfileApi.uploadDocument(base64, mimeType),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["provider-profile", "me"] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["provider-profile", "me", user?.id ?? "anonymous"] }),
   });
 }
 
 // Liga/desliga a disponibilidade do prestador para receber pedidos (RF-B4).
 export function useSetAvailability() {
   const qc = useQueryClient();
+  const { user } = useAuth();
   return useMutation({
     mutationFn: (isAvailable: boolean) => providerProfileApi.setAvailability(isAvailable),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["provider-profile", "me"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["provider-profile", "me", user?.id ?? "anonymous"] });
+      // Ajuda aberta depende da posição/disponibilidade — força lista fresca.
+      qc.invalidateQueries({ queryKey: ["orders", "provider"] });
+    },
   });
 }
 

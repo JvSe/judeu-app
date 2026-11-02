@@ -14,6 +14,7 @@ import { useAttendButtonVisibility } from "@/lib/attend-button";
 import { useHelperMode } from "@/lib/helper-mode";
 import { useClientStats } from "@/lib/hooks";
 import { Avatar } from "@/components/ui/avatar";
+import { JudeuIcon } from "@/components/ui/judeu-icon";
 import { Screen } from "@/components/ui/screen";
 
 const menu: {
@@ -94,7 +95,7 @@ export default function ClientProfile() {
               disabled={helper.pending}
             >
               <View style={styles.menuIcon}>
-                <Ionicons name="hand-left-outline" size={19} color={theme.colors.primary} />
+                <JudeuIcon size={19} color={theme.colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.menuTitle}>

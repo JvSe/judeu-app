@@ -9,12 +9,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { z } from "zod";
 
-import { fonts } from "@/constants/fonts";
-import { ApiError } from "@/lib/api";
-import { useAuth } from "@/lib/auth-context";
 import { FormErrorText } from "@/components/form/error-text";
 import { FormTextField } from "@/components/form/text-field";
 import { Screen } from "@/components/ui/screen";
+import { fonts } from "@/constants/fonts";
+import { ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { errorMessage, toast } from "@/lib/toast";
 
 const resetPasswordSchema = z
   .object({
@@ -50,9 +51,12 @@ export default function ResetPassword() {
     setSubmitError(null);
     try {
       const user = await resetPassword({ email, code: data.code, newPassword: data.newPassword });
+      toast.success("Senha atualizada");
       router.replace(user.role === "PROVIDER" ? "/provider" : "/client");
     } catch (e) {
-      setSubmitError(e instanceof ApiError ? e.message : "Não foi possível trocar a senha.");
+      const message = e instanceof ApiError ? e.message : errorMessage(e, "Não foi possível trocar a senha.");
+      setSubmitError(message);
+      toast.error(message);
     }
   });
 

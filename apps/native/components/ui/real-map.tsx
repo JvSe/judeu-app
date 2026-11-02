@@ -1,6 +1,13 @@
 import "@/unistyles";
-import { Camera, GeoJSONSource, Layer, Map, Marker } from "@maplibre/maplibre-react-native";
-import type { ReactElement } from "react";
+import {
+  Camera,
+  GeoJSONSource,
+  Layer,
+  Map,
+  Marker,
+  type CameraRef,
+} from "@maplibre/maplibre-react-native";
+import { forwardRef, useImperativeHandle, useRef, type ReactElement } from "react";
 import { Pressable } from "react-native";
 import { useUnistyles } from "react-native-unistyles";
 
@@ -34,17 +41,48 @@ type RealMapProps = {
   cameraKey?: number | string;
 };
 
-export const RealMap = ({
-  markers = [],
-  route,
-  center,
-  bounds,
-  zoom = 14,
-  variant = "dark",
-  cameraKey = 0,
-}: RealMapProps) => {
+export type RealMapHandle = {
+  /** Recentraliza a câmera no ponto informado (ou no `center` atual). */
+  recenter: (target?: [number, number]) => Promise<void>;
+};
+
+export const RealMap = forwardRef<RealMapHandle, RealMapProps>(function RealMap(
+  {
+    markers = [],
+    route,
+    center,
+    bounds,
+    zoom = 14,
+    variant = "dark",
+    cameraKey = 0,
+  },
+  ref,
+) {
   const { theme } = useUnistyles();
+  const cameraRef = useRef<CameraRef>(null);
+  const centerRef = useRef(center);
+  centerRef.current = center;
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
   const mapStyle = variant === "light" ? MAP_STYLE_LIGHT : MAP_STYLE_DARK;
+
+  useImperativeHandle(ref, () => ({
+    recenter: async (target) => {
+      const next = target ?? centerRef.current ?? PALMAS_CENTER;
+      const duration = 650;
+      try {
+        cameraRef.current?.easeTo({
+          center: next,
+          zoom: zoomRef.current,
+          duration,
+          easing: "ease",
+        });
+      } catch (err) {
+        console.warn("[map] recenter falhou:", err);
+      }
+      await new Promise((resolve) => setTimeout(resolve, duration));
+    },
+  }));
 
   // Degradação graciosa: sem o style.json (ex.: sem rede na primeira carga), mantém
   // o backdrop decorativo em vez de uma tela de mapa quebrada.
@@ -68,12 +106,18 @@ export const RealMap = ({
     <Map mapStyle={mapStyle} style={{ flex: 1 }} attribution={false} logo={false}>
       {bounds ? (
         <Camera
+          ref={cameraRef}
           key={`bounds-${cameraKey}`}
           bounds={bounds}
           padding={{ top: 120, bottom: 260, left: 60, right: 60 }}
         />
       ) : (
-        <Camera key={`center-${cameraKey}`} center={center ?? PALMAS_CENTER} zoom={zoom} />
+        <Camera
+          ref={cameraRef}
+          key={`center-${cameraKey}`}
+          center={center ?? PALMAS_CENTER}
+          zoom={zoom}
+        />
       )}
 
       {routeGeoJson && (
@@ -97,4 +141,4 @@ export const RealMap = ({
       ))}
     </Map>
   );
-};
+});

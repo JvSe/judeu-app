@@ -6,12 +6,13 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet } from "react-native-unistyles";
 
-import { fonts } from "@/constants/fonts";
 import { FormErrorText } from "@/components/form/error-text";
 import { JobPostingForm } from "@/components/screens/job-posting-form";
 import { Screen } from "@/components/ui/screen";
+import { fonts } from "@/constants/fonts";
 import { useCategories, useCreateJobPosting } from "@/lib/hooks";
 import { clearJobDraft, getJobDraft, jobDraftToInput } from "@/lib/job-draft";
+import { errorMessage, toast } from "@/lib/toast";
 
 export default function VagaAiReview() {
   const insets = useSafeAreaInsets();
@@ -58,9 +59,12 @@ export default function VagaAiReview() {
             try {
               const job = await createJob.mutateAsync(input);
               clearJobDraft();
+              toast.success("Vaga publicada");
               router.replace({ pathname: "/provider/vaga/[id]", params: { id: job.id } });
             } catch (e) {
-              setSubmitError(e instanceof Error ? e.message : "Não foi possível publicar a vaga.");
+              const message = errorMessage(e, "Não foi possível publicar a vaga.");
+              setSubmitError(message);
+              toast.error(message);
             }
           }}
         />

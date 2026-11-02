@@ -9,13 +9,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { z } from "zod";
 
-import { fonts } from "@/constants/fonts";
-import { moneyFromCents } from "@/lib/format";
-import { useCreateProposal, useOrder, useOrderProposals, useRespondToProposal } from "@/lib/hooks";
 import { FormErrorText } from "@/components/form/error-text";
 import { FormInput } from "@/components/form/input";
 import { Screen } from "@/components/ui/screen";
 import SpinButton from "@/components/ui/spin-button";
+import { fonts } from "@/constants/fonts";
+import { moneyFromCents } from "@/lib/format";
+import { useCreateProposal, useOrder, useOrderProposals, useRespondToProposal } from "@/lib/hooks";
+import { errorMessage, toast } from "@/lib/toast";
 
 const ROLE_LABELS: Record<"client" | "provider", { counterpart: string; counterpartLower: string }> = {
   client: { counterpart: "Prestador", counterpartLower: "prestador" },
@@ -37,9 +38,7 @@ const proposeSchema = z.object({
 type ProposeFormInput = z.input<typeof proposeSchema>;
 type ProposeFormOutput = z.output<typeof proposeSchema>;
 
-// Orçamento/negociação antes do aceite (RF-D5) — compartilhado entre cliente e
-// prestador, que propõem um novo valor ou respondem a uma contraproposta enquanto
-// o pedido segue CREATED. `role` decide de qual lado a tela está sendo vista.
+// Orçamento profissional (CREATED) + ajuste de valor em ajuda aberta (ACCEPTED, só client propõe).
 export function ProposeForm({ role }: { role: "client" | "provider" }) {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
@@ -70,10 +69,20 @@ export function ProposeForm({ role }: { role: "client" | "provider" }) {
   }
 
   const pending = proposals.find((p) => p.status === "PENDING");
-  const canNegotiate = order.status === "CREATED";
+  const openHelp =
+    order.isOpenRequest && order.status === "ACCEPTED" && !order.payment;
+  const professional = order.status === "CREATED" && !!order.provider?.allowsNegotiation;
+  const canNegotiate = openHelp || professional;
+  const canCreate = canNegotiate && !pending && (!openHelp || role === "client");
   const history = proposals.filter((p) => p.id !== pending?.id);
   const { counterpart, counterpartLower } = ROLE_LABELS[role];
   const counterpartName = role === "client" ? (order.provider?.name ?? "—") : order.client.name;
+
+  const clientNeedsAccept = openHelp && pending && !pending.clientAcceptedAt && role === "client";
+  const helperNeedsAccept =
+    openHelp && pending && !!pending.clientAcceptedAt && !pending.providerAcceptedAt && role === "provider";
+  const professionalNeedsRespond =
+    professional && pending && pending.byRole !== role;
 
   const onValid = handleSubmit(async (data) => {
     setSubmitError(null);
@@ -83,8 +92,11 @@ export function ProposeForm({ role }: { role: "client" | "provider" }) {
         input: { priceCents: data.price, note: data.note.trim() || undefined },
       });
       reset({ price: "", note: "" });
+      toast.success(openHelp ? "Novo valor enviado — confirme abaixo" : "Proposta enviada");
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Não foi possível enviar a proposta.");
+      const message = errorMessage(e, "Não foi possível enviar a proposta.");
+      setSubmitError(message);
+      toast.error(message);
     }
   });
 
@@ -93,10 +105,29 @@ export function ProposeForm({ role }: { role: "client" | "provider" }) {
     setSubmitError(null);
     setRespondAction(action);
     try {
-      await respondToProposal.mutateAsync({ orderId: order.id, proposalId: pending.id, action });
-      if (action === "accept") router.back();
+      const updated = await respondToProposal.mutateAsync({
+        orderId: order.id,
+        proposalId: pending.id,
+        action,
+      });
+      if (action === "reject") {
+        toast.success("Valor recusado");
+        return;
+      }
+      if (openHelp && updated.status === "PENDING") {
+        toast.success("Você confirmou. Agora quem ajuda precisa aceitar.");
+        return;
+      }
+      toast.success(openHelp ? "Valor atualizado" : "Proposta aceita");
+      if (openHelp && role === "client") {
+        router.replace({ pathname: "/client/payment/[id]", params: { id: order.id } });
+        return;
+      }
+      router.back();
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Não foi possível responder à proposta.");
+      const message = errorMessage(e, "Não foi possível responder à proposta.");
+      setSubmitError(message);
+      toast.error(message);
     } finally {
       setRespondAction(null);
     }
@@ -108,7 +139,9 @@ export function ProposeForm({ role }: { role: "client" | "provider" }) {
         <Pressable onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="chevron-back" size={20} color="#fff" />
         </Pressable>
-        <Text style={styles.headerTitle}>Orçamento do pedido</Text>
+        <Text style={styles.headerTitle}>
+          {openHelp ? "Ajustar valor" : "Orçamento do pedido"}
+        </Text>
         <View style={{ width: 20 }} />
       </View>
 
@@ -131,7 +164,131 @@ export function ProposeForm({ role }: { role: "client" | "provider" }) {
           </View>
         )}
 
-        {pending && pending.byRole !== role && (
+        {openHelp && pending && (
+          <View style={styles.pendingCard}>
+            <Text style={styles.pendingLabel}>Novo valor combinado</Text>
+            <Text style={styles.pendingValue}>{moneyFromCents(pending.priceCents)}</Text>
+            {pending.note && <Text style={styles.pendingNote}>“{pending.note}”</Text>}
+
+            {clientNeedsAccept && (
+              <View style={styles.pendingActions}>
+                <SpinButton
+                  controlled
+                  isActive={respondAction === "reject" && respondToProposal.isPending}
+                  disabled={respondToProposal.isPending}
+                  idleText="Cancelar"
+                  activeText="Cancelando..."
+                  onPress={() => handleRespond("reject")}
+                  colors={{
+                    idle: {
+                      background: "rgba(255,255,255,0.06)",
+                      text: theme.colors.mutedForeground,
+                    },
+                    active: {
+                      background: "rgba(255,255,255,0.06)",
+                      text: theme.colors.mutedForeground,
+                    },
+                  }}
+                  buttonStyle={{
+                    paddingHorizontal: 20,
+                    paddingVertical: 13,
+                    borderRadius: 13,
+                    fontSize: 13.5,
+                  }}
+                  spinnerConfig={{
+                    color: theme.colors.mutedForeground,
+                    containerBackground: "rgba(255,255,255,0.06)",
+                  }}
+                />
+                <View style={{ flex: 1 }}>
+                  <SpinButton
+                    controlled
+                    isActive={respondAction === "accept" && respondToProposal.isPending}
+                    disabled={respondToProposal.isPending}
+                    idleText="Aceitar valor"
+                    activeText="Aceitando..."
+                    onPress={() => handleRespond("accept")}
+                    colors={{
+                      idle: { background: theme.colors.primary, text: "#fff" },
+                      active: { background: theme.colors.primary, text: "#fff" },
+                    }}
+                    buttonStyle={{
+                      paddingHorizontal: 20,
+                      paddingVertical: 13,
+                      borderRadius: 13,
+                      fontSize: 13.5,
+                    }}
+                    spinnerConfig={{ color: "#fff", containerBackground: theme.colors.primary }}
+                  />
+                </View>
+              </View>
+            )}
+
+            {role === "client" && pending.clientAcceptedAt && !pending.providerAcceptedAt && (
+              <Text style={styles.waitingText}>Aguardando quem ajuda aceitar…</Text>
+            )}
+
+            {role === "provider" && !pending.clientAcceptedAt && (
+              <Text style={styles.waitingText}>Aguardando o solicitante aceitar o valor…</Text>
+            )}
+
+            {helperNeedsAccept && (
+              <View style={styles.pendingActions}>
+                <SpinButton
+                  controlled
+                  isActive={respondAction === "reject" && respondToProposal.isPending}
+                  disabled={respondToProposal.isPending}
+                  idleText="Recusar"
+                  activeText="Recusando..."
+                  onPress={() => handleRespond("reject")}
+                  colors={{
+                    idle: {
+                      background: "rgba(255,255,255,0.06)",
+                      text: theme.colors.mutedForeground,
+                    },
+                    active: {
+                      background: "rgba(255,255,255,0.06)",
+                      text: theme.colors.mutedForeground,
+                    },
+                  }}
+                  buttonStyle={{
+                    paddingHorizontal: 20,
+                    paddingVertical: 13,
+                    borderRadius: 13,
+                    fontSize: 13.5,
+                  }}
+                  spinnerConfig={{
+                    color: theme.colors.mutedForeground,
+                    containerBackground: "rgba(255,255,255,0.06)",
+                  }}
+                />
+                <View style={{ flex: 1 }}>
+                  <SpinButton
+                    controlled
+                    isActive={respondAction === "accept" && respondToProposal.isPending}
+                    disabled={respondToProposal.isPending}
+                    idleText={`Aceitar ${moneyFromCents(pending.priceCents)}`}
+                    activeText="Aceitando..."
+                    onPress={() => handleRespond("accept")}
+                    colors={{
+                      idle: { background: theme.colors.primary, text: "#fff" },
+                      active: { background: theme.colors.primary, text: "#fff" },
+                    }}
+                    buttonStyle={{
+                      paddingHorizontal: 20,
+                      paddingVertical: 13,
+                      borderRadius: 13,
+                      fontSize: 13.5,
+                    }}
+                    spinnerConfig={{ color: "#fff", containerBackground: theme.colors.primary }}
+                  />
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+
+        {professionalNeedsRespond && pending && (
           <View style={styles.pendingCard}>
             <Text style={styles.pendingLabel}>O {counterpartLower} propôs um novo valor</Text>
             <Text style={styles.pendingValue}>{moneyFromCents(pending.priceCents)}</Text>
@@ -146,10 +303,21 @@ export function ProposeForm({ role }: { role: "client" | "provider" }) {
                 onPress={() => handleRespond("reject")}
                 colors={{
                   idle: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
-                  active: { background: "rgba(255,255,255,0.06)", text: theme.colors.mutedForeground },
+                  active: {
+                    background: "rgba(255,255,255,0.06)",
+                    text: theme.colors.mutedForeground,
+                  },
                 }}
-                buttonStyle={{ paddingHorizontal: 20, paddingVertical: 13, borderRadius: 13, fontSize: 13.5 }}
-                spinnerConfig={{ color: theme.colors.mutedForeground, containerBackground: "rgba(255,255,255,0.06)" }}
+                buttonStyle={{
+                  paddingHorizontal: 20,
+                  paddingVertical: 13,
+                  borderRadius: 13,
+                  fontSize: 13.5,
+                }}
+                spinnerConfig={{
+                  color: theme.colors.mutedForeground,
+                  containerBackground: "rgba(255,255,255,0.06)",
+                }}
               />
               <View style={{ flex: 1 }}>
                 <SpinButton
@@ -163,7 +331,12 @@ export function ProposeForm({ role }: { role: "client" | "provider" }) {
                     idle: { background: theme.colors.primary, text: "#fff" },
                     active: { background: theme.colors.primary, text: "#fff" },
                   }}
-                  buttonStyle={{ paddingHorizontal: 20, paddingVertical: 13, borderRadius: 13, fontSize: 13.5 }}
+                  buttonStyle={{
+                    paddingHorizontal: 20,
+                    paddingVertical: 13,
+                    borderRadius: 13,
+                    fontSize: 13.5,
+                  }}
                   spinnerConfig={{ color: "#fff", containerBackground: theme.colors.primary }}
                 />
               </View>
@@ -171,7 +344,7 @@ export function ProposeForm({ role }: { role: "client" | "provider" }) {
           </View>
         )}
 
-        {pending && pending.byRole === role && (
+        {professional && pending && pending.byRole === role && (
           <View style={styles.pendingCard}>
             <Text style={styles.pendingLabel}>Sua proposta</Text>
             <Text style={styles.pendingValue}>{moneyFromCents(pending.priceCents)}</Text>
@@ -179,9 +352,11 @@ export function ProposeForm({ role }: { role: "client" | "provider" }) {
           </View>
         )}
 
-        {canNegotiate && !pending && (
+        {canCreate && (
           <View style={styles.formCard}>
-            <Text style={styles.formTitle}>Propor um valor diferente</Text>
+            <Text style={styles.formTitle}>
+              {openHelp ? "Definir novo valor" : "Propor um valor diferente"}
+            </Text>
             <FormInput
               control={control}
               name="price"
@@ -208,9 +383,23 @@ export function ProposeForm({ role }: { role: "client" | "provider" }) {
               disabled={createProposal.isPending}
             >
               <Text style={styles.submitText}>
-                {createProposal.isPending ? "Enviando..." : "Enviar proposta"}
+                {createProposal.isPending
+                  ? "Enviando..."
+                  : openHelp
+                    ? "Enviar novo valor"
+                    : "Enviar proposta"}
               </Text>
             </Pressable>
+          </View>
+        )}
+
+        {openHelp && role === "provider" && !pending && (
+          <View style={styles.noticeCard}>
+            <Ionicons name="information-circle" size={18} color={theme.colors.mutedForeground} />
+            <Text style={styles.noticeText}>
+              Só quem pediu a ajuda pode ajustar o valor. Se combinarem outro valor no chat, a pessoa
+              envia o ajuste e vocês dois aceitam.
+            </Text>
           </View>
         )}
 

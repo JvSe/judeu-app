@@ -6,10 +6,11 @@ import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
+import { Screen } from "@/components/ui/screen";
 import { fonts } from "@/constants/fonts";
 import { formatAddressLine, moneyFromCents } from "@/lib/format";
 import { useAddresses, useCreateOrder, useProvider } from "@/lib/hooks";
-import { Screen } from "@/components/ui/screen";
+import { errorMessage, toast } from "@/lib/toast";
 
 function parseScheduledAt(date: string, time: string): Date | null {
   const dateMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(date);
@@ -98,11 +99,15 @@ export default function ConfirmCall() {
     setSubmitError(null);
     if (isOpenRequest) {
       if (note.trim().length < 8) {
-        setSubmitError("Descreva o que você precisa (pelo menos uma frase).");
+        const message = "Descreva o que você precisa (pelo menos uma frase).";
+        setSubmitError(message);
+        toast.warning(message);
         return;
       }
       if (!Number.isFinite(offeredCents) || offeredCents < 100) {
-        setSubmitError("Informe quanto você vai pagar.");
+        const message = "Informe quanto você vai pagar.";
+        setSubmitError(message);
+        toast.warning(message);
         return;
       }
       try {
@@ -111,26 +116,35 @@ export default function ConfirmCall() {
           description: note.trim(),
           priceCents: offeredCents,
         });
+        toast.success("Pedido publicado");
         router.replace({ pathname: "/client/waiting/[id]", params: { id: order.id } } as never);
       } catch (e) {
-        setSubmitError(e instanceof Error ? e.message : "Não foi possível publicar.");
+        const message = errorMessage(e, "Não foi possível publicar.");
+        setSubmitError(message);
+        toast.error(message);
       }
       return;
     }
 
     if (!params.providerId) {
-      setSubmitError("Pessoa não informada.");
+      const message = "Pessoa não informada.";
+      setSubmitError(message);
+      toast.error(message);
       return;
     }
     if (!selectedAddress) {
-      setSubmitError("Escolha um endereço.");
+      const message = "Escolha um endereço.";
+      setSubmitError(message);
+      toast.warning(message);
       return;
     }
     let scheduledAt: string | undefined;
     if (scheduled) {
       const parsed = parseScheduledAt(scheduleDate, scheduleTime);
       if (!parsed || parsed.getTime() <= Date.now()) {
-        setSubmitError("Informe uma data e hora futuras.");
+        const message = "Informe uma data e hora futuras.";
+        setSubmitError(message);
+        toast.warning(message);
         return;
       }
       scheduledAt = parsed.toISOString();
@@ -144,13 +158,16 @@ export default function ConfirmCall() {
         scheduledAt,
         addressId: selectedAddress.id,
       });
+      toast.success("Chamada enviada");
       if (canNegotiate) {
         router.replace({ pathname: "/client/order/[id]", params: { id: order.id } });
         return;
       }
       router.replace({ pathname: "/client/waiting/[id]", params: { id: order.id } } as never);
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Não foi possível enviar a chamada.");
+      const message = errorMessage(e, "Não foi possível enviar a chamada.");
+      setSubmitError(message);
+      toast.error(message);
     }
   };
 

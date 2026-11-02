@@ -9,11 +9,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { z } from "zod";
 
-import { fonts } from "@/constants/fonts";
-import { authApi, ApiError } from "@/lib/api";
 import { FormErrorText } from "@/components/form/error-text";
 import { FormTextField } from "@/components/form/text-field";
 import { Screen } from "@/components/ui/screen";
+import { fonts } from "@/constants/fonts";
+import { authApi, ApiError } from "@/lib/api";
+import { errorMessage, toast } from "@/lib/toast";
 
 const forgotPasswordSchema = z.object({
   email: z
@@ -41,9 +42,14 @@ export default function ForgotPassword() {
     setSubmitError(null);
     try {
       await authApi.forgotPassword(data.email);
+      toast.success("Código enviado", {
+        description: "Confira seu e-mail para continuar.",
+      });
       router.push({ pathname: "/(auth)/reset-password", params: { email: data.email } });
     } catch (e) {
-      setSubmitError(e instanceof ApiError ? e.message : "Não foi possível enviar o código.");
+      const message = e instanceof ApiError ? e.message : errorMessage(e, "Não foi possível enviar o código.");
+      setSubmitError(message);
+      toast.error(message);
     }
   });
 

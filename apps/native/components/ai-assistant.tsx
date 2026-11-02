@@ -16,10 +16,11 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useLLM, type Message } from "react-native-executorch";
 
 import { fonts } from "@/constants/fonts";
-import { useAuth } from "@/lib/auth-context";
 import { catalogApi, jobsApi, type Category, type JobPosting, type ProviderListItem } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { contractTypeLabel, initialsOf, moneyFromCents, priceFromCents } from "@/lib/format";
 import { useAddresses, useCategories, useMyProviderProfile, useOrders } from "@/lib/hooks";
+import { toast } from "@/lib/toast";
 import {
   AI_MODEL,
   buildAssistantTools,
@@ -378,7 +379,9 @@ export function AiAssistant() {
         },
       ]);
     } catch {
-      setSendError("Não consegui responder agora. Tente reformular a mensagem.");
+      const message = "Não consegui responder agora. Tente reformular a mensagem.";
+      setSendError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }

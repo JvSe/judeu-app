@@ -1,32 +1,47 @@
-import { env } from "@judeu/env/server";
-import { PrismaPg } from "@prisma/adapter-pg";
-
-import { PrismaClient } from "../prisma/generated/client";
-
-// Re-exporta os tipos gerados para o código de aplicação (server-only).
-export type { Prisma } from "../prisma/generated/client";
+export type { Database, Json } from "./database";
 export type {
-  OrderStatus,
+  UserRow,
+  RefreshTokenRow,
+  PasswordResetTokenRow,
+  NotificationRow,
+  ProviderProfileRow,
+  CategoryRow,
+  ProviderCategoryRow,
+  ServiceRow,
+  AddressRow,
+  OrderRow,
+  OrderEventRow,
+  OrderProposalRow,
+  MessageRow,
+  ReviewRow,
+  PaymentRow,
+  WalletRow,
+  WalletTransactionRow,
+  AiConversationRow,
+  AiMessageRow,
+  JobPostingRow,
+  JobShiftRow,
+  JobApplicationRow,
+  SupportTicketRow,
+} from "./database";
+
+export type {
   Role,
   ProviderStatus,
+  OrderStatus,
   PaymentMethod,
   PaymentStatus,
+  WalletTxType,
+  AiRole,
   NotificationType,
-  SupportTicketCategory,
-  SupportTicketStatus,
   ProposalStatus,
   JobContractType,
   JobStatus,
   WeekDay,
   JobApplicationStatus,
-} from "../prisma/generated/client";
+  SupportTicketCategory,
+  SupportTicketStatus,
+} from "./enums";
 
-export function createPrismaClient() {
-  const adapter = new PrismaPg({
-    connectionString: env.DATABASE_URL,
-  });
-  return new PrismaClient({ adapter });
-}
-
-const prisma = createPrismaClient();
-export default prisma;
+export { createServiceClient, assertNoError } from "./client";
+export type { JudeuSupabase } from "./client";

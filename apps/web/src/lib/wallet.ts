@@ -1,10 +1,4 @@
-import { prisma } from "./db";
-
-// ---------------------------------------------------------------------------
-// Carteira/ganhos do prestador (RF-F4/F5): leitura do ledger interno
-// (Wallet/WalletTransaction) já alimentado pelo fluxo de pagamento. Saque
-// fica para depois (depende de KYC/dados bancários) — aqui é só saldo/extrato.
-// ---------------------------------------------------------------------------
+import { supabase } from "./db";
 
 export type WalletTransactionDTO = {
   id: string;
@@ -16,7 +10,7 @@ export type WalletTransactionDTO = {
 };
 
 export type WalletDailyEarning = {
-  day: string; // "Seg".."Dom"
+  day: string;
   totalCents: number;
   isToday: boolean;
 };
@@ -31,27 +25,31 @@ export type WalletSummaryDTO = {
 const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 export async function getWalletSummary(userId: string): Promise<WalletSummaryDTO> {
-  const wallet = await prisma.wallet.findUnique({ where: { userId } });
+  const { data: wallet } = await supabase.from("wallet").select("*").eq("userId", userId).maybeSingle();
   const balanceCents = wallet?.balanceCents ?? 0;
 
   const since = new Date();
   since.setHours(0, 0, 0, 0);
-  since.setDate(since.getDate() - 6); // janela de 7 dias, hoje incluso
+  since.setDate(since.getDate() - 6);
 
   const [weekTx, recentTx] = wallet
     ? await Promise.all([
-        prisma.walletTransaction.findMany({
-          where: { walletId: wallet.id, createdAt: { gte: since } },
-        }),
-        prisma.walletTransaction.findMany({
-          where: { walletId: wallet.id },
-          orderBy: { createdAt: "desc" },
-          take: 20,
-        }),
+        supabase
+          .from("wallettransaction")
+          .select("*")
+          .eq("walletId", wallet.id)
+          .gte("createdAt", since.toISOString())
+          .then((r) => r.data ?? []),
+        supabase
+          .from("wallettransaction")
+          .select("*")
+          .eq("walletId", wallet.id)
+          .order("createdAt", { ascending: false })
+          .limit(20)
+          .then((r) => r.data ?? []),
       ])
     : [[], []];
 
-  // Agrega o líquido (crédito - débito) por dia dentro da janela de 7 dias.
   const dayKeys: string[] = [];
   const buckets = new Map<string, number>();
   for (let i = 0; i < 7; i++) {
@@ -62,7 +60,7 @@ export async function getWalletSummary(userId: string): Promise<WalletSummaryDTO
     buckets.set(key, 0);
   }
   for (const tx of weekTx) {
-    const key = tx.createdAt.toDateString();
+    const key = new Date(tx.createdAt).toDateString();
     if (!buckets.has(key)) continue;
     const signed = tx.type === "CREDIT" ? tx.amountCents : -tx.amountCents;
     buckets.set(key, (buckets.get(key) ?? 0) + signed);
@@ -75,11 +73,9 @@ export async function getWalletSummary(userId: string): Promise<WalletSummaryDTO
     isToday: key === todayKey,
   }));
 
-  const weekTotalCents = daily.reduce((sum, d) => sum + d.totalCents, 0);
-
   return {
     balanceCents,
-    weekTotalCents,
+    weekTotalCents: daily.reduce((sum, d) => sum + d.totalCents, 0),
     daily,
     transactions: recentTx.map((t) => ({
       id: t.id,
@@ -87,7 +83,7 @@ export async function getWalletSummary(userId: string): Promise<WalletSummaryDTO
       amountCents: t.amountCents,
       description: t.description,
       orderId: t.orderId,
-      createdAt: t.createdAt.toISOString(),
+      createdAt: t.createdAt,
     })),
   };
 }

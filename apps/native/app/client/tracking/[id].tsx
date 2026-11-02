@@ -55,7 +55,13 @@ export default function Tracking() {
 
   useEffect(() => {
     if (!order) return;
-    if (order.isOpenRequest && order.status === "ACCEPTED" && !order.detailsReady) {
+    // Só redireciona para combinar detalhes se ainda não há quem ajuda no mapa.
+    if (
+      order.isOpenRequest &&
+      order.status === "ACCEPTED" &&
+      !order.detailsReady &&
+      order.tracking.providerLat == null
+    ) {
       router.replace({ pathname: "/client/arrange/[id]", params: { id: order.id } } as never);
     }
   }, [order]);
@@ -215,7 +221,8 @@ export default function Tracking() {
           <View style={{ flex: 1 }}>
             <Text style={styles.providerName}>{providerName}</Text>
             <Text style={styles.providerRole}>
-              {order.provider?.headline ?? "Serviço"} · ★ {(order.provider?.ratingAvg ?? 0).toFixed(1)}
+              {order.provider?.headline ?? (order.isOpenRequest ? "Quem ajuda" : "Serviço")} · ★{" "}
+              {(order.provider?.ratingAvg ?? 0).toFixed(1)}
             </Text>
           </View>
           <IconButton
@@ -226,6 +233,13 @@ export default function Tracking() {
             <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
           </IconButton>
         </View>
+        <Pressable
+          style={styles.detailsLink}
+          onPress={() => router.push({ pathname: "/client/order/[id]", params: { id: order.id } })}
+        >
+          <Text style={styles.detailsLinkText}>Ver detalhes da chamada</Text>
+          <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+        </Pressable>
       </View>
     </Screen>
   );
@@ -369,6 +383,19 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
+  },
+  detailsLink: {
+    marginTop: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingVertical: 8,
+  },
+  detailsLinkText: {
+    fontSize: 14,
+    fontFamily: fonts.bold,
+    color: theme.colors.primary,
   },
   providerName: {
     fontSize: 16,

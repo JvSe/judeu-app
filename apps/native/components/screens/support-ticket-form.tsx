@@ -9,14 +9,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { z } from "zod";
 
-import type { SupportTicketCategory } from "@/lib/api";
-import { fonts } from "@/constants/fonts";
-import { SUPPORT_CATEGORY_LABELS } from "@/lib/format";
-import { useCreateSupportTicket } from "@/lib/hooks";
 import { FormChipSelect } from "@/components/form/chip-select";
 import { FormErrorText } from "@/components/form/error-text";
 import { FormInput } from "@/components/form/input";
 import { Screen } from "@/components/ui/screen";
+import { fonts } from "@/constants/fonts";
+import type { SupportTicketCategory } from "@/lib/api";
+import { SUPPORT_CATEGORY_LABELS } from "@/lib/format";
+import { useCreateSupportTicket } from "@/lib/hooks";
+import { errorMessage, toast } from "@/lib/toast";
 
 const categories = Object.keys(SUPPORT_CATEGORY_LABELS) as SupportTicketCategory[];
 const categoryOptions = categories.map((c) => ({ value: c, label: SUPPORT_CATEGORY_LABELS[c] }));
@@ -61,9 +62,12 @@ export function SupportTicketForm({ role }: { role: "client" | "provider" }) {
         message: data.message,
         orderId,
       });
+      toast.success("Chamado aberto");
       router.replace(`/${role}/support-ticket/${ticket.id}` as never);
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Não foi possível abrir o chamado.");
+      const message = errorMessage(e, "Não foi possível abrir o chamado.");
+      setSubmitError(message);
+      toast.error(message);
     }
   });
 

@@ -1,14 +1,8 @@
-import { prisma } from "./db";
+import { randomUUID } from "node:crypto";
+
+import { supabase } from "./db";
 import { uploadKycDocument } from "./storage";
 import { publicUser, type PublicUser } from "./user";
-
-// ---------------------------------------------------------------------------
-// Onboarding profissional do prestador + KYC (RF-B1/B2/B3): cadastro de
-// categorias/serviços/raio de atuação e envio do documento de identidade.
-// Aprovação (PENDING -> APPROVED/BLOCKED) é manual por ora (sem painel admin,
-// RF-H3) — enquanto PENDING, o prestador não aparece no catálogo (listProviders
-// já filtra status: "APPROVED").
-// ---------------------------------------------------------------------------
 
 export type MyProviderProfileDTO = {
   status: "PENDING" | "APPROVED" | "BLOCKED";
@@ -43,6 +37,12 @@ export type UpsertProviderProfileInput = {
   categoryIds: string[];
   services: { name: string; priceCents: number; categoryId: string }[];
 };
+
+const PROFILE_SELECT = `
+  *,
+  categories:providercategory(categoryId),
+  services:service(id, categoryId, name, priceCents)
+`;
 
 function toDTO(p: {
   status: string;
@@ -82,116 +82,136 @@ function toDTO(p: {
   };
 }
 
-const profileInclude = {
-  categories: { select: { categoryId: true } },
-  services: { select: { id: true, categoryId: true, name: true, priceCents: true } },
-} as const;
+async function loadProfile(userId: string) {
+  const { data } = await supabase
+    .from("providerprofile")
+    .select(PROFILE_SELECT)
+    .eq("userId", userId)
+    .maybeSingle();
+  return data as unknown as Parameters<typeof toDTO>[0] | null;
+}
 
 export async function getMyProviderProfile(userId: string): Promise<MyProviderProfileDTO | null> {
-  const profile = await prisma.providerProfile.findUnique({
-    where: { userId },
-    include: profileInclude,
-  });
+  const profile = await loadProfile(userId);
   return profile ? toDTO(profile) : null;
 }
 
-// Cria (se ainda não existir) ou atualiza o cadastro profissional do prestador.
-// Substitui por completo categorias e serviços a cada chamada (form é a fonte da verdade).
 export async function upsertMyProviderProfile(
   userId: string,
   input: UpsertProviderProfileInput,
 ): Promise<MyProviderProfileDTO> {
-  const profile = await prisma.$transaction(async (tx) => {
-    const p = await tx.providerProfile.upsert({
-      where: { userId },
-      update: {
-        headline: input.headline,
-        bio: input.bio,
-        yearsExperience: input.yearsExperience,
-        serviceRadiusKm: input.serviceRadiusKm,
-        baseLat: input.baseLat,
-        baseLng: input.baseLng,
-        allowsNegotiation: input.allowsNegotiation ?? false,
-        isHelper: false,
-        isCompany: input.isCompany ?? false,
-        companyName: input.isCompany ? input.companyName : null,
-        responsibleName: input.isCompany ? input.responsibleName : null,
-      },
-      create: {
-        userId,
-        headline: input.headline,
-        bio: input.bio,
-        yearsExperience: input.yearsExperience,
-        serviceRadiusKm: input.serviceRadiusKm,
-        baseLat: input.baseLat,
-        baseLng: input.baseLng,
-        allowsNegotiation: input.allowsNegotiation ?? false,
-        isHelper: false,
-        isCompany: input.isCompany ?? false,
-        companyName: input.isCompany ? input.companyName : null,
-        responsibleName: input.isCompany ? input.responsibleName : null,
-      },
-    });
+  const now = new Date().toISOString();
+  const payload = {
+    headline: input.headline,
+    bio: input.bio ?? null,
+    yearsExperience: input.yearsExperience,
+    serviceRadiusKm: input.serviceRadiusKm,
+    baseLat: input.baseLat ?? null,
+    baseLng: input.baseLng ?? null,
+    allowsNegotiation: input.allowsNegotiation ?? false,
+    isHelper: false,
+    isCompany: input.isCompany ?? false,
+    companyName: input.isCompany ? (input.companyName ?? null) : null,
+    responsibleName: input.isCompany ? (input.responsibleName ?? null) : null,
+    updatedAt: now,
+  };
 
-    await tx.providerCategory.deleteMany({ where: { providerId: p.id } });
-    await tx.providerCategory.createMany({
-      data: input.categoryIds.map((categoryId) => ({ providerId: p.id, categoryId })),
-    });
+  const { data: existing } = await supabase
+    .from("providerprofile")
+    .select("id")
+    .eq("userId", userId)
+    .maybeSingle();
 
-    await tx.service.deleteMany({ where: { providerId: p.id } });
-    await tx.service.createMany({
-      data: input.services.map((s) => ({
-        providerId: p.id,
-        categoryId: s.categoryId,
-        name: s.name,
-        priceCents: s.priceCents,
-      })),
+  let providerId: string;
+  if (existing) {
+    const { error } = await supabase.from("providerprofile").update(payload).eq("userId", userId);
+    if (error) throw new Error(error.message);
+    providerId = existing.id;
+  } else {
+    providerId = randomUUID();
+    const { error } = await supabase.from("providerprofile").insert({
+      id: providerId,
+      userId,
+      ...payload,
+      createdAt: now,
     });
+    if (error) throw new Error(error.message);
+  }
 
-    return tx.providerProfile.findUniqueOrThrow({
-      where: { id: p.id },
-      include: profileInclude,
-    });
+  const { error: rpcError } = await supabase.rpc("replace_provider_categories_services", {
+    p_provider_id: providerId,
+    p_category_ids: input.categoryIds,
+    p_services: input.services,
   });
+  if (rpcError) throw new Error(rpcError.message);
 
+  const profile = await loadProfile(userId);
+  if (!profile) throw new Error("Perfil não encontrado após upsert");
   return toDTO(profile);
 }
 
-// Envia (ou substitui) o documento de identidade — sobe pro Storage e grava o path.
 export async function setProviderDocument(
   userId: string,
   base64: string,
   mimeType: string,
 ): Promise<MyProviderProfileDTO> {
   const path = await uploadKycDocument(userId, base64, mimeType);
+  const now = new Date().toISOString();
+  const { data: existing } = await supabase
+    .from("providerprofile")
+    .select("id")
+    .eq("userId", userId)
+    .maybeSingle();
 
-  const profile = await prisma.providerProfile.upsert({
-    where: { userId },
-    update: { documentUrl: path },
-    create: { userId, documentUrl: path },
-    include: profileInclude,
-  });
+  if (existing) {
+    await supabase
+      .from("providerprofile")
+      .update({ documentUrl: path, updatedAt: now })
+      .eq("userId", userId);
+  } else {
+    await supabase.from("providerprofile").insert({
+      id: randomUUID(),
+      userId,
+      documentUrl: path,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
 
+  const profile = await loadProfile(userId);
+  if (!profile) throw new Error("Perfil não encontrado");
   return toDTO(profile);
 }
 
-// Liga/desliga a disponibilidade do prestador para receber pedidos (RF-B4).
-// Não exige status APPROVED — o prestador pode preparar isso antes da aprovação,
-// só não aparece no catálogo (listProviders) enquanto não for APPROVED.
 export async function setProviderAvailability(
   userId: string,
   isAvailable: boolean,
 ): Promise<MyProviderProfileDTO | { error: string; status: number }> {
-  const existing = await prisma.providerProfile.findUnique({ where: { userId } });
-  if (isAvailable && existing?.status === "BLOCKED") {
+  const existing = await loadProfile(userId);
+  if (!existing) {
+    return {
+      error: "Complete o cadastro antes de ficar disponível.",
+      status: 404,
+    };
+  }
+  if (isAvailable && existing.status === "BLOCKED") {
     return { error: "Cadastro bloqueado. Fale com o suporte.", status: 403 };
   }
-  const profile = await prisma.providerProfile.upsert({
-    where: { userId },
-    update: { isAvailable },
-    create: { userId, isAvailable },
-    include: profileInclude,
-  });
+  // Helper precisa ter passado pelo registerHelper; prestador profissional
+  // usa o mesmo endpoint, mas nunca criamos perfil “vazio” aqui.
+  if (isAvailable && existing.isHelper !== true && existing.status !== "APPROVED") {
+    return {
+      error: "Seu cadastro ainda não foi aprovado.",
+      status: 403,
+    };
+  }
+  const now = new Date().toISOString();
+  await supabase
+    .from("providerprofile")
+    .update({ isAvailable, updatedAt: now })
+    .eq("userId", userId);
+  const profile = await loadProfile(userId);
+  if (!profile) throw new Error("Perfil não encontrado");
   return toDTO(profile);
 }
 
@@ -203,20 +223,17 @@ export type RegisterHelperInput = {
   lng?: number;
 };
 
-// Cadastro curto para a conta de cliente atender ajudas abertas. Não pede
-// ofício nem preço. Sobe o papel para BOTH para os endpoints de disponibilidade
-// aceitarem o token novo.
 export async function registerHelper(
   userId: string,
   input: RegisterHelperInput,
 ): Promise<{ user: PublicUser; profile: MyProviderProfileDTO } | { error: string; status: number }> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const { data: user } = await supabase.from("user").select("*").eq("id", userId).maybeSingle();
   if (!user || user.deletedAt) return { error: "Conta não encontrada", status: 404 };
   if (user.role === "PROVIDER") {
     return { error: "Você já atende como prestador. Use a área de quem trabalha.", status: 409 };
   }
 
-  const existing = await prisma.providerProfile.findUnique({ where: { userId } });
+  const existing = await loadProfile(userId);
   if (existing && !existing.isHelper) {
     return { error: "Você já tem cadastro de prestador. Use a área de quem trabalha.", status: 409 };
   }
@@ -224,48 +241,52 @@ export async function registerHelper(
     return { error: "Cadastro bloqueado. Fale com o suporte.", status: 403 };
   }
 
+  const now = new Date().toISOString();
   const hasCoords = input.lat != null && input.lng != null;
   const coords = hasCoords
     ? {
-        baseLat: input.lat,
-        baseLng: input.lng,
-        lastLat: input.lat,
-        lastLng: input.lng,
-        lastLocationAt: new Date(),
+        baseLat: input.lat!,
+        baseLng: input.lng!,
+        lastLat: input.lat!,
+        lastLng: input.lng!,
+        lastLocationAt: now,
       }
     : {};
 
-  const profile = await prisma.$transaction(async (tx) => {
-    await tx.user.update({
-      where: { id: userId },
-      data: {
-        fullName: input.fullName.trim(),
-        phone: input.phone.trim(),
-        role: "BOTH",
-      },
-    });
-    return tx.providerProfile.upsert({
-      where: { userId },
-      create: {
-        userId,
-        isHelper: true,
-        status: "APPROVED",
-        isAvailable: false,
-        headline: "Ajuda perto de você",
-        bio: input.bio?.trim() || null,
-        ...coords,
-      },
-      update: {
-        isHelper: true,
-        headline: "Ajuda perto de você",
-        bio: input.bio?.trim() || null,
-        ...coords,
-      },
-      include: profileInclude,
-    });
-  });
+  await supabase
+    .from("user")
+    .update({
+      fullName: input.fullName.trim(),
+      phone: input.phone.trim(),
+      role: "BOTH",
+      updatedAt: now,
+    })
+    .eq("id", userId);
 
-  const updated = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  const profilePayload = {
+    isHelper: true,
+    status: "APPROVED" as const,
+    isAvailable: false,
+    headline: "Ajuda perto de você",
+    bio: input.bio?.trim() || null,
+    updatedAt: now,
+    ...coords,
+  };
+
+  if (existing) {
+    await supabase.from("providerprofile").update(profilePayload).eq("userId", userId);
+  } else {
+    await supabase.from("providerprofile").insert({
+      id: randomUUID(),
+      userId,
+      ...profilePayload,
+      createdAt: now,
+    });
+  }
+
+  const { data: updated } = await supabase.from("user").select("*").eq("id", userId).single();
+  const profile = await loadProfile(userId);
+  if (!updated || !profile) throw new Error("Falha ao registrar helper");
   return { user: publicUser(updated), profile: toDTO(profile) };
 }
 
@@ -274,19 +295,21 @@ export async function updateProviderLocation(
   lat: number,
   lng: number,
 ): Promise<MyProviderProfileDTO | { error: string; status: number }> {
-  const profile = await prisma.providerProfile.findUnique({ where: { userId } });
-  if (!profile) return { error: "Cadastro profissional não encontrado", status: 404 };
-  const updated = await prisma.providerProfile.update({
-    where: { userId },
-    data: { lastLat: lat, lastLng: lng, lastLocationAt: new Date() },
-    include: profileInclude,
-  });
-  return toDTO(updated);
+  const existing = await loadProfile(userId);
+  if (!existing) return { error: "Cadastro profissional não encontrado", status: 404 };
+  await supabase
+    .from("providerprofile")
+    .update({
+      lastLat: lat,
+      lastLng: lng,
+      lastLocationAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    .eq("userId", userId);
+  const profile = await loadProfile(userId);
+  if (!profile) throw new Error("Perfil não encontrado");
+  return toDTO(profile);
 }
-
-// ---------------------------------------------------------------------------
-// Moderação (RF-H3, painel admin): fila de aprovação de KYC.
-// ---------------------------------------------------------------------------
 
 export type AdminProviderDTO = {
   id: string;
@@ -306,36 +329,62 @@ export type AdminProviderDTO = {
 };
 
 export async function listAllProviderProfiles(): Promise<AdminProviderDTO[]> {
-  const rows = await prisma.providerProfile.findMany({
-    include: {
-      user: { select: { fullName: true, email: true } },
-      categories: { include: { category: { select: { name: true } } } },
-      _count: { select: { services: true } },
-    },
-    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-  });
+  const { data: rows, error } = await supabase
+    .from("providerprofile")
+    .select(
+      `
+      *,
+      user:user!inner(fullName, email),
+      categories:providercategory(category:category(name)),
+      services:service(id)
+    `,
+    )
+    .order("status")
+    .order("createdAt", { ascending: false });
+  if (error) throw new Error(error.message);
 
-  return rows.map((p) => ({
-    id: p.id,
-    fullName: p.user.fullName,
-    email: p.user.email,
-    status: p.status,
-    headline: p.headline,
-    yearsExperience: p.yearsExperience,
-    isCompany: p.isCompany,
-    isHelper: p.isHelper,
-    companyName: p.companyName,
-    responsibleName: p.responsibleName,
-    hasDocument: !!p.documentUrl,
-    categoryNames: p.categories.map((c) => c.category.name),
-    serviceCount: p._count.services,
-    createdAt: p.createdAt.toISOString(),
-  }));
+  return (rows ?? []).map((p) => {
+    const row = p as unknown as {
+      id: string;
+      status: AdminProviderDTO["status"];
+      headline: string | null;
+      yearsExperience: number;
+      isCompany: boolean;
+      isHelper: boolean;
+      companyName: string | null;
+      responsibleName: string | null;
+      documentUrl: string | null;
+      createdAt: string;
+      user: { fullName: string; email: string };
+      categories: { category: { name: string } }[];
+      services: { id: string }[];
+    };
+    return {
+      id: row.id,
+      fullName: row.user.fullName,
+      email: row.user.email,
+      status: row.status,
+      headline: row.headline,
+      yearsExperience: row.yearsExperience,
+      isCompany: row.isCompany,
+      isHelper: row.isHelper,
+      companyName: row.companyName,
+      responsibleName: row.responsibleName,
+      hasDocument: !!row.documentUrl,
+      categoryNames: row.categories.map((c) => c.category.name),
+      serviceCount: row.services.length,
+      createdAt: row.createdAt,
+    };
+  });
 }
 
 export async function setProviderProfileStatus(
   providerId: string,
   status: "PENDING" | "APPROVED" | "BLOCKED",
 ): Promise<void> {
-  await prisma.providerProfile.update({ where: { id: providerId }, data: { status } });
+  const { error } = await supabase
+    .from("providerprofile")
+    .update({ status, updatedAt: new Date().toISOString() })
+    .eq("id", providerId);
+  if (error) throw new Error(error.message);
 }

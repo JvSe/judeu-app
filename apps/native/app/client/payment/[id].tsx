@@ -2,51 +2,89 @@ import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Clipboard from "expo-clipboard";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { usePaymentSheet } from "@stripe/stripe-react-native";
+import { useQueryClient } from "@tanstack/react-query";
 
+import { Screen } from "@/components/ui/screen";
+import SpinButton from "@/components/ui/spin-button";
 import { fonts } from "@/constants/fonts";
+import type { Order, Payment, PaymentMethodOption, PixDisplay } from "@/lib/api";
 import { moneyFromCents } from "@/lib/format";
 import { useCreatePayment, useOrder, useOrderPayment } from "@/lib/hooks";
-import type { PaymentMethodOption, PixDisplay } from "@/lib/api";
-import { PrimaryButton } from "@/components/ui/primary-button";
-import { Screen } from "@/components/ui/screen";
+import { errorMessage, toast } from "@/lib/toast";
 
-const paymentMethods: { id: PaymentMethodOption; label: string; icon: "flash" | "card-outline" | "cash-outline"; tone: "success" | "neutral" }[] = [
+const paymentMethods: {
+  id: PaymentMethodOption;
+  label: string;
+  icon: "flash" | "card-outline" | "cash-outline";
+  tone: "success" | "neutral";
+}[] = [
   { id: "PIX", label: "Pix", icon: "flash", tone: "success" },
   { id: "CARD", label: "Cartão de crédito", icon: "card-outline", tone: "neutral" },
   { id: "CASH", label: "Dinheiro no local", icon: "cash-outline", tone: "neutral" },
 ];
 
+function isPaymentSettled(
+  payment: Payment | null | undefined,
+  orderPayment: { status: string; method: string } | null | undefined,
+): boolean {
+  if (payment?.status === "PAID" || orderPayment?.status === "PAID") return true;
+  if (payment?.method === "CASH" || orderPayment?.method === "CASH") return true;
+  return false;
+}
+
 export default function Payment() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id: rawId } = useLocalSearchParams<{ id: string }>();
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const insets = useSafeAreaInsets();
   const { theme } = useUnistyles();
+  const queryClient = useQueryClient();
   const { initPaymentSheet, presentPaymentSheet } = usePaymentSheet();
   const [method, setMethod] = useState<PaymentMethodOption>("PIX");
   const [pix, setPix] = useState<PixDisplay | null>(null);
   const [copied, setCopied] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const redirectedRef = useRef(false);
 
-  const { data: order, isLoading } = useOrder(id);
-  const { data: payment } = useOrderPayment(id);
+  const { data: order, isLoading } = useOrder(id, { poll: true });
+  const { data: payment, refetch: refetchPayment } = useOrderPayment(id);
   const createPayment = useCreatePayment();
 
-  const goToOrder = () => {
-    if (order?.isOpenRequest && !order.detailsReady) {
-      router.replace({ pathname: "/client/arrange/[id]", params: { id } } as never);
-      return;
-    }
-    router.replace({ pathname: "/client/tracking/[id]", params: { id } });
+  const paymentDone = isPaymentSettled(payment, order?.payment ?? null);
+
+  const goToDetails = () => {
+    if (!id || redirectedRef.current) return;
+    redirectedRef.current = true;
+    // Href em string é o caminho mais estável no Expo Router.
+    const href = `/client/order/${id}`;
+    setTimeout(() => {
+      router.replace(href as never);
+    }, 0);
   };
 
+  const markOrderPaidLocally = (paid: Payment) => {
+    queryClient.setQueryData(["payment", id], paid);
+    queryClient.setQueryData<Order>(["order", id], (current) =>
+      current
+        ? {
+            ...current,
+            payment: { status: paid.status, method: paid.method },
+          }
+        : current,
+    );
+  };
+
+  // Entrada com pedido já pago / confirmação via poll (Pix).
   useEffect(() => {
-    if (payment?.status === "PAID") goToOrder();
+    if (!order || isLoading || !paymentDone) return;
+    goToDetails();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [payment?.status]);
+  }, [paymentDone, order?.id, isLoading]);
 
   if (isLoading || !order) {
     return (
@@ -58,24 +96,43 @@ export default function Payment() {
     );
   }
 
+  if (paymentDone || redirectedRef.current) {
+    return (
+      <Screen>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 12 }}>
+          <ActivityIndicator color={theme.colors.primary} />
+          <Text style={{ color: theme.colors.mutedForeground, fontFamily: fonts.medium }}>
+            Pagamento ok — abrindo detalhes…
+          </Text>
+        </View>
+      </Screen>
+    );
+  }
+
   const handleConfirm = async () => {
     setErrorMsg(null);
+    setConfirming(true);
     try {
       const result = await createPayment.mutateAsync({ orderId: order.id, method });
 
       if (method === "CASH") {
-        goToOrder();
+        markOrderPaidLocally(result.payment);
+        toast.success("Pagamento em dinheiro confirmado");
+        goToDetails();
         return;
       }
 
       if (method === "PIX") {
         setPix(result.pix ?? null);
+        toast.info("Pix gerado", { description: "Fique nesta tela até a confirmação." });
         return;
       }
 
       // CARD
       if (!result.clientSecret) {
-        setErrorMsg("Não foi possível iniciar o pagamento.");
+        const message = "Não foi possível iniciar o pagamento.";
+        setErrorMsg(message);
+        toast.error(message);
         return;
       }
       const init = await initPaymentSheet({
@@ -84,16 +141,30 @@ export default function Payment() {
       });
       if (init.error) {
         setErrorMsg(init.error.message);
+        toast.error(init.error.message);
         return;
       }
       const present = await presentPaymentSheet();
       if (present.error) {
         setErrorMsg(present.error.message);
+        toast.error(present.error.message);
         return;
       }
-      goToOrder();
+
+      const synced = await refetchPayment();
+      const settled = isPaymentSettled(synced.data, order.payment);
+      if (settled && synced.data) {
+        markOrderPaidLocally(synced.data);
+      }
+      toast.success("Pagamento confirmado");
+      // Cartão: mesmo se o sync ainda estiver PENDING, segue — o webhook confirma depois.
+      goToDetails();
     } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : "Não foi possível processar o pagamento.");
+      const message = errorMessage(e, "Não foi possível processar o pagamento.");
+      setErrorMsg(message);
+      toast.error(message);
+    } finally {
+      setConfirming(false);
     }
   };
 
@@ -101,8 +172,11 @@ export default function Payment() {
     if (!pix) return;
     await Clipboard.setStringAsync(pix.data);
     setCopied(true);
+    toast.success("Código Pix copiado");
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const busy = confirming || createPayment.isPending;
 
   return (
     <Screen>
@@ -157,9 +231,13 @@ export default function Payment() {
                     key={option.id}
                     style={[styles.methodRow, selected && styles.methodRowSelected]}
                     onPress={() => setMethod(option.id)}
+                    disabled={busy}
                   >
                     <View
-                      style={[styles.methodIcon, option.tone === "success" && styles.methodIconSuccess]}
+                      style={[
+                        styles.methodIcon,
+                        option.tone === "success" && styles.methodIconSuccess,
+                      ]}
                     >
                       <Ionicons
                         name={option.icon}
@@ -183,16 +261,23 @@ export default function Payment() {
 
       {!pix && (
         <View style={[styles.footer, { paddingBottom: insets.bottom + 14 }]}>
-          <PrimaryButton
-            label={
-              createPayment.isPending
-                ? "Processando…"
-                : method === "CASH"
-                  ? "Confirmar pagamento em dinheiro"
-                  : `Confirmar e pagar ${moneyFromCents(order.totalCents)}`
+          <SpinButton
+            controlled
+            isActive={busy}
+            disabled={busy}
+            idleText={
+              method === "CASH"
+                ? "Confirmar pagamento em dinheiro"
+                : `Confirmar e pagar ${moneyFromCents(order.totalCents)}`
             }
-            onPress={handleConfirm}
-            disabled={createPayment.isPending}
+            activeText="Processando..."
+            onPress={() => void handleConfirm()}
+            colors={{
+              idle: { background: theme.colors.primary, text: "#fff" },
+              active: { background: theme.colors.primary, text: "#fff" },
+            }}
+            buttonStyle={{ paddingVertical: 15, borderRadius: 16, fontSize: 15 }}
+            spinnerConfig={{ color: "#fff", containerBackground: theme.colors.primary }}
           />
         </View>
       )}

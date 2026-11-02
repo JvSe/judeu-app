@@ -6,10 +6,11 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
+import { Screen } from "@/components/ui/screen";
 import { fonts } from "@/constants/fonts";
 import { formatAddressLine } from "@/lib/format";
 import { useAddresses, useArrangeOrder, useOrder } from "@/lib/hooks";
-import { Screen } from "@/components/ui/screen";
+import { errorMessage, toast } from "@/lib/toast";
 
 export default function ArrangeHelp() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -64,9 +65,12 @@ export default function ArrangeHelp() {
         ...(withLocations ? { pickupAddressId: pickupId } : { pickupAddressId: null }),
         detailsReady: true,
       });
+      toast.success("Detalhes enviados");
       router.replace({ pathname: "/client/tracking/[id]", params: { id: order.id } });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Não foi possível continuar.");
+      const message = errorMessage(e, "Não foi possível continuar.");
+      setError(message);
+      toast.error(message);
     }
   };
 

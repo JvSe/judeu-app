@@ -90,6 +90,15 @@ export default function ProviderProfileTab() {
 
         <Pressable
           style={({ pressed }) => [styles.menuRow, { opacity: pressed ? 0.7 : 1 }]}
+          onPress={() => router.push("/provider/privacy")}
+        >
+          <Ionicons name="settings-outline" size={19} color={theme.colors.primary} />
+          <Text style={styles.menuLabel}>Privacidade & permissões</Text>
+          <Ionicons name="chevron-forward" size={16} color={theme.colors.mutedForeground} />
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [styles.menuRow, { opacity: pressed ? 0.7 : 1 }]}
           onPress={() => router.push("/provider/support")}
         >
           <Ionicons name="help-circle-outline" size={19} color={theme.colors.primary} />

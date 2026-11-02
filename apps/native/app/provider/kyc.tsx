@@ -10,12 +10,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { z } from "zod";
 
-import { fonts } from "@/constants/fonts";
-import { Screen } from "@/components/ui/screen";
 import { FormChipSelect } from "@/components/form/chip-select";
 import { FormErrorText } from "@/components/form/error-text";
 import { FormInput } from "@/components/form/input";
+import { Screen } from "@/components/ui/screen";
+import { fonts } from "@/constants/fonts";
 import { useCategories, useMyProviderProfile, useUploadProviderDocument, useUpsertProviderProfile } from "@/lib/hooks";
+import { errorMessage, toast } from "@/lib/toast";
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Em análise",
@@ -133,7 +134,9 @@ export default function ProviderKyc() {
   async function pickDocument() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      setSubmitError("Precisamos de acesso às fotos para enviar o documento.");
+      const message = "Precisamos de acesso às fotos para enviar o documento.";
+      setSubmitError(message);
+      toast.warning(message);
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -149,12 +152,15 @@ export default function ProviderKyc() {
       mimeType: asset.mimeType ?? "image/jpeg",
     });
     setSubmitError(null);
+    toast.success("Documento anexado");
   }
 
   const onValid = handleSubmit(async (data) => {
     setSubmitError(null);
     if (!hasDocument) {
-      setSubmitError("Envie uma foto do seu documento de identidade.");
+      const message = "Envie uma foto do seu documento de identidade.";
+      setSubmitError(message);
+      toast.warning(message);
       return;
     }
     try {
@@ -177,9 +183,12 @@ export default function ProviderKyc() {
       if (document) {
         await uploadDocument.mutateAsync({ base64: document.base64, mimeType: document.mimeType });
       }
+      toast.success("Cadastro enviado");
       router.replace("/provider");
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Não foi possível enviar seu cadastro.");
+      const message = errorMessage(e, "Não foi possível enviar seu cadastro.");
+      setSubmitError(message);
+      toast.error(message);
     }
   });
 

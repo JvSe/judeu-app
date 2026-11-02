@@ -16,8 +16,9 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useLLM, type Message } from "react-native-executorch";
 
 import { fonts } from "@/constants/fonts";
-import { useAuth } from "@/lib/auth-context";
 import type { Category } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { toast } from "@/lib/toast";
 import {
   AI_MODEL,
   buildJobSystemPrompt,
@@ -122,7 +123,9 @@ export function VagaAssistant() {
       setJobDraft(draft);
       router.push("/provider/vaga/ai/review");
     } catch {
-      setSendError("Não consegui responder agora. Tente reformular a mensagem.");
+      const message = "Não consegui responder agora. Tente reformular a mensagem.";
+      setSendError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }

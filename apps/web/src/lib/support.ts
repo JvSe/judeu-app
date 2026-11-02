@@ -1,13 +1,9 @@
+import { randomUUID } from "node:crypto";
+
 import type { SupportTicketCategory, SupportTicketStatus } from "@judeu/db";
 
-import { prisma } from "./db";
+import { supabase } from "./db";
 import { notifyUser } from "./notifications";
-
-// ---------------------------------------------------------------------------
-// Central de ajuda/suporte + disputas (RF-H1/H2): usuário abre um chamado (dúvida
-// geral ou contestação vinculada a um pedido), admin responde pelo painel — não há
-// fila/atribuição, é um modelo simples de pergunta/resposta única por chamado.
-// ---------------------------------------------------------------------------
 
 export type SupportTicketDTO = {
   id: string;
@@ -29,8 +25,8 @@ function toDTO(t: {
   message: string;
   status: SupportTicketStatus;
   adminResponse: string | null;
-  resolvedAt: Date | null;
-  createdAt: Date;
+  resolvedAt: string | null;
+  createdAt: string;
 }): SupportTicketDTO {
   return {
     id: t.id,
@@ -40,8 +36,8 @@ function toDTO(t: {
     message: t.message,
     status: t.status,
     adminResponse: t.adminResponse,
-    resolvedAt: t.resolvedAt?.toISOString() ?? null,
-    createdAt: t.createdAt.toISOString(),
+    resolvedAt: t.resolvedAt,
+    createdAt: t.createdAt,
   };
 }
 
@@ -57,47 +53,52 @@ export async function createSupportTicket(
   input: CreateSupportTicketInput,
 ): Promise<SupportTicketDTO | { error: string; status: number }> {
   if (input.orderId) {
-    const order = await prisma.order.findUnique({
-      where: { id: input.orderId },
-      include: { provider: { select: { userId: true } } },
-    });
+    const { data: order } = await supabase
+      .from("order")
+      .select("clientId, provider:providerprofile(userId)")
+      .eq("id", input.orderId)
+      .maybeSingle();
     if (!order) return { error: "Pedido não encontrado", status: 404 };
-    const isParticipant = order.clientId === userId || order.provider?.userId === userId;
+    const provider = order.provider as unknown as { userId: string } | null;
+    const isParticipant = order.clientId === userId || provider?.userId === userId;
     if (!isParticipant) return { error: "Pedido não encontrado", status: 404 };
   }
 
-  const ticket = await prisma.supportTicket.create({
-    data: {
+  const { data: ticket, error } = await supabase
+    .from("supportticket")
+    .insert({
+      id: randomUUID(),
       userId,
-      orderId: input.orderId,
+      orderId: input.orderId ?? null,
       category: input.category,
       subject: input.subject,
       message: input.message,
-    },
-  });
+    })
+    .select("*")
+    .single();
+  if (error || !ticket) throw new Error(error?.message ?? "Falha");
   return toDTO(ticket);
 }
 
 export async function listMySupportTickets(userId: string): Promise<SupportTicketDTO[]> {
-  const rows = await prisma.supportTicket.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-  });
-  return rows.map(toDTO);
+  const { data: rows } = await supabase
+    .from("supportticket")
+    .select("*")
+    .eq("userId", userId)
+    .order("createdAt", { ascending: false });
+  return (rows ?? []).map(toDTO);
 }
 
 export async function getSupportTicket(
   userId: string,
   id: string,
 ): Promise<SupportTicketDTO | { error: string; status: number }> {
-  const ticket = await prisma.supportTicket.findUnique({ where: { id } });
+  const { data: ticket } = await supabase.from("supportticket").select("*").eq("id", id).maybeSingle();
   if (!ticket || ticket.userId !== userId) {
     return { error: "Chamado não encontrado", status: 404 };
   }
   return toDTO(ticket);
 }
-
-// ---- Admin (painel web) ----
 
 export type AdminSupportTicketDTO = SupportTicketDTO & {
   userName: string;
@@ -105,25 +106,32 @@ export type AdminSupportTicketDTO = SupportTicketDTO & {
 };
 
 export async function listAllSupportTickets(): Promise<AdminSupportTicketDTO[]> {
-  const rows = await prisma.supportTicket.findMany({
-    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-    include: { user: { select: { fullName: true, email: true } } },
+  const { data: rows } = await supabase
+    .from("supportticket")
+    .select("*, user:user!inner(fullName, email)")
+    .order("status")
+    .order("createdAt", { ascending: false });
+  return (rows ?? []).map((r) => {
+    const user = r.user as unknown as { fullName: string; email: string };
+    return { ...toDTO(r), userName: user.fullName, userEmail: user.email };
   });
-  return rows.map((r) => ({ ...toDTO(r), userName: r.user.fullName, userEmail: r.user.email }));
 }
 
-export async function respondToSupportTicket(
-  ticketId: string,
-  response: string,
-): Promise<void> {
-  const ticket = await prisma.supportTicket.update({
-    where: { id: ticketId },
-    data: { adminResponse: response, status: "RESOLVED", resolvedAt: new Date() },
-    include: { user: { select: { role: true } } },
-  });
-  // Chamado não tem "outra parte" como pedido/chat — o role só decide em qual árvore
-  // de telas (client/ ou provider/) navegar ao tocar a notificação (RF-I1).
-  const role = ticket.user.role === "PROVIDER" ? "provider" : "client";
+export async function respondToSupportTicket(ticketId: string, response: string): Promise<void> {
+  const { data: ticket, error } = await supabase
+    .from("supportticket")
+    .update({
+      adminResponse: response,
+      status: "RESOLVED",
+      resolvedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    .eq("id", ticketId)
+    .select("*, user:user!inner(role)")
+    .single();
+  if (error || !ticket) throw new Error(error?.message ?? "Falha");
+  const user = ticket.user as unknown as { role: string };
+  const role = user.role === "PROVIDER" ? "provider" : "client";
   void notifyUser(ticket.userId, "SUPPORT", {
     title: "Seu chamado foi respondido",
     body: response.length > 100 ? `${response.slice(0, 97)}...` : response,
@@ -132,8 +140,9 @@ export async function respondToSupportTicket(
 }
 
 export async function markSupportTicketInProgress(ticketId: string): Promise<void> {
-  await prisma.supportTicket.updateMany({
-    where: { id: ticketId, status: "OPEN" },
-    data: { status: "IN_PROGRESS" },
-  });
+  await supabase
+    .from("supportticket")
+    .update({ status: "IN_PROGRESS", updatedAt: new Date().toISOString() })
+    .eq("id", ticketId)
+    .eq("status", "OPEN");
 }

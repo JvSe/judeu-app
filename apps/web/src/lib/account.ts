@@ -1,76 +1,49 @@
 import { randomUUID } from "node:crypto";
 
 import { hashPassword, revokeAllRefreshTokens } from "./auth";
-import { prisma } from "./db";
+import { supabase } from "./db";
 
-// ---------------------------------------------------------------------------
-// Exclusão e exportação de conta (RF-A7, LGPD/RNF-4).
-// ---------------------------------------------------------------------------
-
-// Anonimiza em vez de apagar a linha: pedidos/avaliações/mensagens já trocados
-// com outras partes continuam existindo (histórico/auditoria legítimos dessas
-// outras partes) — só os dados que identificam esta pessoa são removidos.
 export async function deleteAccount(userId: string): Promise<void> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: { providerProfile: true },
-  });
-  if (!user) return;
+  const { data: provider } = await supabase
+    .from("providerprofile")
+    .select("id")
+    .eq("userId", userId)
+    .maybeSingle();
 
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: userId },
-      data: {
-        email: `deleted-${randomUUID()}@ajuda.app`,
-        fullName: "Usuário excluído",
-        phone: null,
-        avatarUrl: null,
-        passwordHash: await hashPassword(randomUUID()),
-        pushToken: null,
-        deletedAt: new Date(),
-      },
-    }),
-    ...(user.providerProfile
-      ? [
-          prisma.providerProfile.update({
-            where: { userId },
-            data: { status: "BLOCKED" as const, isAvailable: false, headline: null, bio: null },
-          }),
-        ]
-      : []),
-  ]);
+  const { error } = await supabase.rpc("soft_delete_account", {
+    p_user_id: userId,
+    p_email: `deleted-${randomUUID()}@ajuda.app`,
+    p_password_hash: await hashPassword(randomUUID()),
+    p_has_provider: !!provider,
+  });
+  if (error) throw new Error(`delete account: ${error.message}`);
 
   await revokeAllRefreshTokens(userId);
 }
 
-// Dump simples de tudo que a conta gerou — direito de portabilidade (LGPD).
 export async function exportAccountData(userId: string) {
-  return prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      email: true,
-      fullName: true,
-      phone: true,
-      role: true,
-      createdAt: true,
-      termsAcceptedAt: true,
-      notifyOrders: true,
-      notifyMessages: true,
-      addresses: true,
-      ordersAsClient: { include: { events: true } },
-      reviewsAuthored: true,
-      reviewsReceived: true,
-      messages: true,
-      wallet: { include: { transactions: true } },
-      notifications: true,
-      providerProfile: {
-        include: {
-          services: true,
-          categories: true,
-          ordersAsProvider: { include: { events: true } },
-        },
-      },
-    },
-  });
+  const { data: user, error } = await supabase
+    .from("user")
+    .select(
+      `
+      id, email, fullName, phone, role, createdAt, termsAcceptedAt, notifyOrders, notifyMessages,
+      addresses:address(*),
+      ordersAsClient:order!order_clientId_fkey(*, events:orderevent(*)),
+      reviewsAuthored:review!review_authorId_fkey(*),
+      reviewsReceived:review!review_targetId_fkey(*),
+      messages:message(*),
+      wallet:wallet(*, transactions:wallettransaction(*)),
+      notifications:notification(*),
+      providerProfile:providerprofile(
+        *,
+        services:service(*),
+        categories:providercategory(*),
+        ordersAsProvider:order!order_providerId_fkey(*, events:orderevent(*))
+      )
+    `,
+    )
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) throw new Error(`export account: ${error.message}`);
+  return user;
 }

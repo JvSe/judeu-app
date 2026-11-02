@@ -11,6 +11,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 
+import { JudeuIcon } from "@/components/ui/judeu-icon";
 import { fonts } from "@/constants/fonts";
 
 type AttendFabProps = {
@@ -61,7 +62,11 @@ export function AttendFab({ active, pending, onPress }: AttendFabProps) {
       >
         {!active && <Animated.View style={[styles.pulse, pulseStyle]} />}
         <View style={[styles.button, pending && styles.buttonPending]}>
-          <Ionicons name={active ? "close" : "hand-left"} size={26} color="#fff" />
+          {active ? (
+            <Ionicons name="close" size={26} color="#fff" />
+          ) : (
+            <JudeuIcon size={28} />
+          )}
         </View>
       </Pressable>
     </View>

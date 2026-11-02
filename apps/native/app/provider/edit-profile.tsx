@@ -10,15 +10,16 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { z } from "zod";
 
+import { FormErrorText } from "@/components/form/error-text";
+import { FormTextField } from "@/components/form/text-field";
+import { Avatar } from "@/components/ui/avatar";
+import { Screen } from "@/components/ui/screen";
 import { fonts } from "@/constants/fonts";
 import { useAuth } from "@/lib/auth-context";
 import { initialsOf } from "@/lib/format";
 import { formatPhone } from "@/lib/formatters/format-phone.helper";
 import { useUpdateProfile, useUploadAvatar } from "@/lib/hooks";
-import { Avatar } from "@/components/ui/avatar";
-import { FormErrorText } from "@/components/form/error-text";
-import { FormTextField } from "@/components/form/text-field";
-import { Screen } from "@/components/ui/screen";
+import { errorMessage, toast } from "@/lib/toast";
 
 const editProfileSchema = z.object({
   fullName: z.string().trim().min(2, "Informe seu nome completo."),
@@ -51,7 +52,9 @@ export default function ProviderEditProfile() {
   async function pickAvatar() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      setSubmitError("Precisamos de acesso às fotos para trocar sua foto de perfil.");
+      const message = "Precisamos de acesso às fotos para trocar sua foto de perfil.";
+      setSubmitError(message);
+      toast.warning(message);
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -69,8 +72,11 @@ export default function ProviderEditProfile() {
         base64: asset.base64!,
         mimeType: asset.mimeType ?? "image/jpeg",
       });
+      toast.success("Foto atualizada");
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Não foi possível enviar a foto.");
+      const message = errorMessage(e, "Não foi possível enviar a foto.");
+      setSubmitError(message);
+      toast.error(message);
     }
   }
 
@@ -81,9 +87,12 @@ export default function ProviderEditProfile() {
         fullName: data.fullName,
         phone: data.phone || undefined,
       });
+      toast.success("Perfil salvo");
       router.back();
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Não foi possível salvar.");
+      const message = errorMessage(e, "Não foi possível salvar.");
+      setSubmitError(message);
+      toast.error(message);
     }
   });
 

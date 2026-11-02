@@ -1,9 +1,7 @@
-import { prisma } from "./db";
-import { notifyUser } from "./notifications";
+import { randomUUID } from "node:crypto";
 
-// ---------------------------------------------------------------------------
-// Chat: mensagens reais cliente ↔ prestador, ancoradas a um pedido (RF-E1).
-// ---------------------------------------------------------------------------
+import { supabase } from "./db";
+import { notifyUser } from "./notifications";
 
 export type MessageDTO = {
   id: string;
@@ -22,8 +20,8 @@ function toDTO(m: {
   orderId: string;
   senderId: string;
   body: string;
-  readAt: Date | null;
-  createdAt: Date;
+  readAt: string | null;
+  createdAt: string;
   sender: { id: string; fullName: string };
 }): MessageDTO {
   return {
@@ -32,8 +30,8 @@ function toDTO(m: {
     senderId: m.senderId,
     senderName: m.sender.fullName,
     body: m.body,
-    readAt: m.readAt?.toISOString() ?? null,
-    createdAt: m.createdAt.toISOString(),
+    readAt: m.readAt,
+    createdAt: m.createdAt,
   };
 }
 
@@ -43,22 +41,22 @@ async function authorize(
 ): Promise<
   { error: string; status: number } | { clientId: string; providerUserId: string | null }
 > {
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: { provider: { select: { userId: true } } },
-  });
-  if (!order) return { error: "Pedido não encontrado", status: 404 } as const;
+  const { data: order } = await supabase
+    .from("order")
+    .select("clientId, provider:providerprofile(userId)")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (!order) return { error: "Pedido não encontrado", status: 404 };
 
+  const provider = order.provider as unknown as { userId: string } | null;
   const isClient = order.clientId === userId;
-  const isProvider = order.provider?.userId === userId;
+  const isProvider = provider?.userId === userId;
   if (!isClient && !isProvider) {
-    return { error: "Você não participou deste pedido", status: 403 } as const;
+    return { error: "Você não participou deste pedido", status: 403 };
   }
-  return { clientId: order.clientId, providerUserId: order.provider?.userId ?? null } as const;
+  return { clientId: order.clientId, providerUserId: provider?.userId ?? null };
 }
 
-// Lista o histórico do pedido e marca como lidas as mensagens da outra parte
-// (abrir a conversa == ver as mensagens).
 export async function listMessages(
   userId: string,
   orderId: string,
@@ -66,18 +64,21 @@ export async function listMessages(
   const participants = await authorize(userId, orderId);
   if ("error" in participants) return participants;
 
-  await prisma.message.updateMany({
-    where: { orderId, senderId: { not: userId }, readAt: null },
-    data: { readAt: new Date() },
-  });
+  await supabase
+    .from("message")
+    .update({ readAt: new Date().toISOString() })
+    .eq("orderId", orderId)
+    .neq("senderId", userId)
+    .is("readAt", null);
 
-  const rows = await prisma.message.findMany({
-    where: { orderId },
-    include: { sender: { select: { id: true, fullName: true } } },
-    orderBy: { createdAt: "asc" },
-    take: 500,
-  });
-  return rows.map(toDTO);
+  const { data: rows, error } = await supabase
+    .from("message")
+    .select("*, sender:user!inner(id, fullName)")
+    .eq("orderId", orderId)
+    .order("createdAt", { ascending: true })
+    .limit(500);
+  if (error) throw new Error(error.message);
+  return (rows ?? []).map((r) => toDTO(r as unknown as Parameters<typeof toDTO>[0]));
 }
 
 export async function sendMessage(
@@ -88,24 +89,32 @@ export async function sendMessage(
   const participants = await authorize(senderId, orderId);
   if ("error" in participants) return participants;
 
-  const message = await prisma.message.create({
-    data: {
-      order: { connect: { id: orderId } },
-      sender: { connect: { id: senderId } },
+  const { data: message, error } = await supabase
+    .from("message")
+    .insert({
+      id: randomUUID(),
+      orderId,
+      senderId,
       body: input.body,
-    },
-    include: { sender: { select: { id: true, fullName: true } } },
-  });
+    })
+    .select("*, sender:user!inner(id, fullName)")
+    .single();
+  if (error || !message) throw new Error(error?.message ?? "Falha ao enviar");
 
+  const row = message as unknown as Parameters<typeof toDTO>[0];
   const recipientId =
     senderId === participants.clientId ? participants.providerUserId : participants.clientId;
   if (recipientId) {
     void notifyUser(recipientId, "MESSAGE", {
-      title: `Nova mensagem de ${message.sender.fullName}`,
+      title: `Nova mensagem de ${row.sender.fullName}`,
       body: input.body,
-      data: { type: "chat", orderId, role: senderId === participants.clientId ? "provider" : "client" },
+      data: {
+        type: "chat",
+        orderId,
+        role: senderId === participants.clientId ? "provider" : "client",
+      },
     });
   }
 
-  return toDTO(message);
+  return toDTO(row);
 }

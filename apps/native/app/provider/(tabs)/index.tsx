@@ -4,7 +4,6 @@ import { router } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   Text,
@@ -37,6 +36,7 @@ import {
   useTransitionOrder,
 } from "@/lib/hooks";
 import { useCurrentLocation, useShareIdleLocation, useShareLocationWhileEnRoute } from "@/lib/location";
+import { errorMessage, toast } from "@/lib/toast";
 
 function orderTitle(order: Order): string {
   if (order.isOpenRequest && order.description) return order.description;
@@ -127,7 +127,7 @@ export default function ProviderDashboard() {
           }
         },
         onError: (err) =>
-          Alert.alert("Ops", err instanceof Error ? err.message : "Não foi possível completar a ação."),
+          toast.error(errorMessage(err, "Não foi possível completar a ação.")),
         onSettled: () => setPendingOrder(null),
       },
     );

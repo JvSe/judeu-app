@@ -32,6 +32,7 @@ export default function ProviderLayout() {
       <Stack.Screen name="rating/[id]" />
       <Stack.Screen name="propose/[id]" />
       <Stack.Screen name="notifications" />
+      <Stack.Screen name="privacy" />
       <Stack.Screen name="support" />
       <Stack.Screen name="support-ticket-new" />
       <Stack.Screen name="support-ticket/[id]" />
