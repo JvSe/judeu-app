@@ -366,7 +366,7 @@ export function AiAssistant() {
             content: "Fechei a vaga com o que você me passou. Dá uma olhada e publica se estiver ok.",
           },
         ]);
-        router.push("/provider/vaga/ai/review");
+        router.push("/client/vaga/ai/review");
         return;
       }
 
@@ -483,7 +483,7 @@ export function AiAssistant() {
               {canPublishJobs ? (
                 <Pressable
                   style={styles.chip}
-                  onPress={() => router.push("/provider/vaga/ai/chat")}
+                  onPress={() => router.push("/client/vaga/ai/chat")}
                 >
                   <Text style={styles.chipText}>Publicar vaga</Text>
                 </Pressable>

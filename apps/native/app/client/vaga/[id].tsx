@@ -60,7 +60,7 @@ export default function JobPostingDetail() {
         <Pressable
           style={styles.applicantsRow}
           onPress={() =>
-            router.push({ pathname: "/provider/vaga/applicants/[id]", params: { id: job.id } })
+            router.push({ pathname: "/client/vaga/applicants/[id]", params: { id: job.id } })
           }
         >
           <Ionicons name="people-outline" size={19} color={theme.colors.primary} />

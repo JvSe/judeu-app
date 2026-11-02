@@ -11,11 +11,11 @@ import { useAuth } from "@/lib/auth-context";
 
 export default function Onboarding() {
   const { theme } = useUnistyles();
-  const { status, user } = useAuth();
+  const { status } = useAuth();
 
   // Já autenticado? Vai direto para a seção do papel.
   if (status === "authenticated") {
-    return <Redirect href={user?.role === "PROVIDER" ? "/provider" : "/client"} />;
+    return <Redirect href="/client" />;
   }
 
   return (

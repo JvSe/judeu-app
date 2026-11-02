@@ -8,15 +8,12 @@ describe("pathForNotification", () => {
     expect(pathForNotification({ type: "order", role: "client" })).toBeNull();
   });
 
-  it("chat + role cliente -> chat do cliente", () => {
+  it("chat -> chat da chamada, qualquer lado", () => {
     expect(pathForNotification({ type: "chat", orderId: "abc", role: "client" })).toBe(
       "/client/chat/abc",
     );
-  });
-
-  it("chat + role prestador -> chat do prestador", () => {
     expect(pathForNotification({ type: "chat", orderId: "abc", role: "provider" })).toBe(
-      "/provider/chat/abc",
+      "/client/chat/abc",
     );
   });
 
@@ -26,38 +23,34 @@ describe("pathForNotification", () => {
     );
   });
 
-  it("pedido + role prestador -> mapa de entrega", () => {
+  it("pedido + role de quem atende -> mapa da chamada", () => {
     expect(pathForNotification({ type: "order", orderId: "abc", role: "provider" })).toBe(
-      "/provider/delivery/abc",
+      "/client/attend/abc",
     );
-  });
-
-  it("quem atende pelo app do cliente abre o caminho de lá", () => {
-    expect(
-      pathForNotification({ type: "order", orderId: "abc", role: "provider" }, { home: "client" }),
-    ).toBe("/client/attend/abc");
-    expect(
-      pathForNotification({ type: "chat", orderId: "abc", role: "provider" }, { home: "client" }),
-    ).toBe("/client/chat/abc");
   });
 
   it("sem type reconhecido não navega", () => {
     expect(pathForNotification({ orderId: "abc", role: "client" })).toBeNull();
   });
 
-  it("suporte + role cliente -> chamado do cliente (não depende de orderId)", () => {
+  it("suporte -> chamado (não depende de orderId nem do lado)", () => {
     expect(pathForNotification({ type: "support", ticketId: "t1", role: "client" })).toBe(
       "/client/support-ticket/t1",
     );
-  });
-
-  it("suporte + role prestador -> chamado do prestador", () => {
     expect(pathForNotification({ type: "support", ticketId: "t1", role: "provider" })).toBe(
-      "/provider/support-ticket/t1",
+      "/client/support-ticket/t1",
     );
   });
 
   it("suporte sem ticketId não navega", () => {
     expect(pathForNotification({ type: "support", role: "client" })).toBeNull();
+  });
+
+  it("vaga: empresa vê candidatos, candidato vê a vaga", () => {
+    expect(pathForNotification({ type: "job", jobId: "j1", role: "provider" })).toBe(
+      "/client/vaga/applicants/j1",
+    );
+    expect(pathForNotification({ type: "job", jobId: "j1", role: "candidate" })).toBe("/jobs/j1");
+    expect(pathForNotification({ type: "job", role: "candidate" })).toBeNull();
   });
 });

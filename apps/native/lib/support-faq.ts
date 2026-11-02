@@ -78,7 +78,7 @@ export const SUPPORT_FAQ: Record<SupportRole, SupportFaq[]> = {
       icon: "toggle-outline",
       question: "Como fico indisponível temporariamente?",
       answer:
-        "No seu painel, use o botão Disponível/Offline no topo — enquanto estiver offline você continua listado, mas os clientes veem que não está atendendo no momento.",
+        "Na Início (mapa) ou no Perfil, desligue o modo atender — enquanto estiver offline você continua listado, mas os clientes veem que não está atendendo no momento.",
     },
     account,
   ],

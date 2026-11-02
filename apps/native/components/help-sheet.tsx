@@ -1,7 +1,7 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { forwardRef } from "react";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
@@ -15,11 +15,18 @@ import type { BottomSheetMethods } from "@/components/ui/templates/bottom-sheet/
 
 type HelpSheetProps = {
   order: Order | null;
+  /** "open" = ajuda aberta (qualquer um perto pode pegar); "direct" = chamada feita para mim. */
+  kind: "open" | "direct";
+  /** Prestador aceita negociar valor (allowsNegotiation) — só para chamada direta. */
+  canNegotiate: boolean;
   distanceKm: number | null;
   minutesAgo: number | null;
   accepting: boolean;
+  rejecting: boolean;
   blockedLabel: string | null;
   onAccept: () => void;
+  onReject: () => void;
+  onPropose: () => void;
   onClose: () => void;
 };
 
@@ -37,7 +44,25 @@ type InfoRow = {
 };
 
 export const HelpSheet = forwardRef<BottomSheetMethods, HelpSheetProps>(
-  ({ order, distanceKm, minutesAgo, accepting, blockedLabel, onAccept, onClose }, ref) => {
+  (
+    {
+      order,
+      kind,
+      canNegotiate,
+      distanceKm,
+      minutesAgo,
+      accepting,
+      rejecting,
+      blockedLabel,
+      onAccept,
+      onReject,
+      onPropose,
+      onClose,
+    },
+    ref,
+  ) => {
+    const direct = kind === "direct";
+    const busy = accepting || rejecting;
     const insets = useSafeAreaInsets();
     const { theme } = useUnistyles();
     const place = order
@@ -128,7 +153,9 @@ export const HelpSheet = forwardRef<BottomSheetMethods, HelpSheetProps>(
               <Text style={styles.earnLabel}>Você recebe</Text>
               <Text style={styles.earnValue}>{moneyFromCents(order.priceCents)}</Text>
               <Text style={styles.title} numberOfLines={3}>
-                {order.description?.trim() || order.category?.name || "Ajuda"}
+                {direct
+                  ? (order.service?.name ?? order.category?.name ?? order.description?.trim() ?? "Chamada")
+                  : (order.description?.trim() || order.category?.name || "Ajuda")}
               </Text>
 
               <View style={styles.chips}>
@@ -164,7 +191,7 @@ export const HelpSheet = forwardRef<BottomSheetMethods, HelpSheetProps>(
                   radius={22}
                 />
                 <View style={styles.personHeaderText}>
-                  <Text style={styles.personEyebrow}>Quem pediu</Text>
+                  <Text style={styles.personEyebrow}>{direct ? "Quem te chamou" : "Quem pediu"}</Text>
                   <Text style={styles.personName} numberOfLines={2}>
                     {order.client.name}
                   </Text>
@@ -242,8 +269,8 @@ export const HelpSheet = forwardRef<BottomSheetMethods, HelpSheetProps>(
               <SpinButton
                 controlled
                 isActive={accepting}
-                disabled={accepting || !!blockedLabel}
-                idleText={blockedLabel ?? "Atender esta ajuda"}
+                disabled={busy || !!blockedLabel}
+                idleText={blockedLabel ?? (direct ? "Aceitar chamada" : "Atender esta ajuda")}
                 activeText="Pegando..."
                 onPress={onAccept}
                 colors={{
@@ -253,8 +280,33 @@ export const HelpSheet = forwardRef<BottomSheetMethods, HelpSheetProps>(
                 buttonStyle={{ paddingVertical: 14, borderRadius: 16, fontSize: 16 }}
                 spinnerConfig={{ color: "#fff", containerBackground: theme.colors.primary }}
               />
+              {direct && (
+                <View style={styles.secondaryRow}>
+                  <Pressable
+                    style={({ pressed }) => [styles.secondaryBtn, { opacity: pressed || busy ? 0.7 : 1 }]}
+                    onPress={onReject}
+                    disabled={busy}
+                  >
+                    <Text style={[styles.secondaryBtnText, styles.secondaryBtnDanger]}>
+                      {rejecting ? "Recusando..." : "Recusar"}
+                    </Text>
+                  </Pressable>
+                  {canNegotiate && (
+                    <Pressable
+                      style={({ pressed }) => [styles.secondaryBtn, { opacity: pressed || busy ? 0.7 : 1 }]}
+                      onPress={onPropose}
+                      disabled={busy}
+                    >
+                      <Ionicons name="pricetag-outline" size={14} color={theme.colors.primary} />
+                      <Text style={styles.secondaryBtnText}>Propor outro valor</Text>
+                    </Pressable>
+                  )}
+                </View>
+              )}
               <Text style={styles.hint}>
-                Depois de atender, conversem no chat. A pessoa paga quando combinarem.
+                {direct
+                  ? "Essa pessoa chamou você. Se não puder atender, recuse para ela procurar outra."
+                  : "Depois de atender, conversem no chat. A pessoa paga quando combinarem."}
               </Text>
             </View>
           </View>
@@ -438,6 +490,31 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fonts.semiBold,
     color: theme.colors.foreground,
     lineHeight: 18,
+  },
+  secondaryRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 10,
+  },
+  secondaryBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  secondaryBtnText: {
+    fontSize: 13.5,
+    fontFamily: fonts.bold,
+    color: theme.colors.foreground,
+  },
+  secondaryBtnDanger: {
+    color: theme.colors.destructive,
   },
   footer: {
     marginTop: "auto",

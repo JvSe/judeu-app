@@ -50,9 +50,9 @@ export default function ResetPassword() {
   const onValid = handleSubmit(async (data) => {
     setSubmitError(null);
     try {
-      const user = await resetPassword({ email, code: data.code, newPassword: data.newPassword });
+      await resetPassword({ email, code: data.code, newPassword: data.newPassword });
       toast.success("Senha atualizada");
-      router.replace(user.role === "PROVIDER" ? "/provider" : "/client");
+      router.replace("/client");
     } catch (e) {
       const message = e instanceof ApiError ? e.message : errorMessage(e, "Não foi possível trocar a senha.");
       setSubmitError(message);

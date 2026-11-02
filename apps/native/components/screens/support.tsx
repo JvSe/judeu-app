@@ -46,7 +46,7 @@ export function SupportScreen({ role }: { role: SupportRole }) {
             ) : (
               <View style={styles.ticketList}>
                 {tickets!.map((t) => (
-                  <Pressable key={t.id} onPress={() => router.push(`/${role}/support-ticket/${t.id}` as never)}>
+                  <Pressable key={t.id} onPress={() => router.push(`/client/support-ticket/` as never)}>
                     <View style={styles.ticketCard}>
                       <View style={styles.ticketTop}>
                         <Text style={styles.ticketSubject} numberOfLines={1}>
@@ -95,7 +95,7 @@ export function SupportScreen({ role }: { role: SupportRole }) {
           })}
         </View>
 
-        <Pressable onPress={() => router.push(`/${role}/support-ticket-new` as never)}>
+        <Pressable onPress={() => router.push("/client/support-ticket-new" as never)}>
           <View style={styles.chatButton}>
             <Ionicons name="chatbubble-ellipses-outline" size={18} color={theme.colors.primary} />
             <Text style={styles.chatButtonText}>Abrir um chamado</Text>

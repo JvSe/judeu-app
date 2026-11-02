@@ -1098,3 +1098,42 @@ conta Sentry gratuita.
 - Guia técnico do LLM on-device: [apps/native/docs/react-native-executorch-guide.md](../apps/native/docs/react-native-executorch-guide.md)
 - Planejamento da busca por IA: [apps/native/docs/ai-search-planning.md](../apps/native/docs/ai-search-planning.md)
 - Checklist de cobertura: confrontar cada campo mockado em `apps/native/lib/mock-data.ts` com o dado real correspondente.
+
+### ✅ Incremento — Casca única: prestador e helper dentro do app do cliente
+Antes havia duas "cascas" no mesmo binário (`app/client/*` e `app/provider/*`), com roteamento por
+papel (`role === "PROVIDER" ? /provider : /client`) repetido em 4 lugares e ~10 telas duplicadas
+quase literalmente. Quem virava helper (`BOTH`) caía sempre no cliente e não enxergava ganhos,
+histórico nem detalhe das chamadas que atendia. Decisão: **uma casca só (`/client`)**; o que muda
+entre cliente puro, helper e prestador profissional vem do **perfil** (`isHelper`, `isCompany`,
+`status`), não do papel. Papéis no backend ficam como estão (todo gate já aceitava `PROVIDER`/`BOTH`).
+
+**Fase 0 — deduplicação:** `edit-profile`, `support-ticket/[id]`, `notifications`, `support` e
+`chat/[id]` viraram componentes em `components/screens/` (FAQ por papel em `lib/support-faq.ts`);
+removidos `attend-fab`, `provider-sheet`, `search-help-bridge` (sem import) e estilos mortos.
+
+**Fase 1 — o que o helper não tinha:** aba **Chamadas** com lados **Pedi / Atendi**
+(`useOrders("provider")`), badge somando os dois lados; aba **Ganhos** (tela extraída para
+`components/screens/earnings.tsx`, só aparece com perfil de quem atende); **detalhe da chamada
+como quem atende** — `/client/order/[id]` decide o lado por `user.id` (`order-detail-attending` ×
+`order-detail-client`); tela **"Como você atende"** (bio + raio) com novo
+`PATCH /api/providers/me/helper` (`updateHelperProfile`, preserva `isHelper`/`status` — o upsert
+profissional rebaixaria o helper); atalhos **Vagas de emprego** e **Como você atende** no perfil;
+hooks `useRegisterHelper`/`useUpdateHelperProfile`.
+
+**Fase 2 — casca única:** `lib/helper-mode.ts` → `lib/work-mode.ts` (`useWorkMode`: profissional
+sem KYC aprovado recebe toast e vai pro cadastro; helper segue igual); filtro puro
+`lib/incoming-work.ts` (`filterIncomingWork`, com testes) junta **ajudas abertas** (modo ligado,
+raio, TTL) e **chamadas diretas** ao prestador (sempre); o mapa da Início mostra as duas, com card
+"Nova chamada" quando o modo está desligado; `HelpSheet` ganhou **Recusar** e **Propor outro valor**
+(`allowsNegotiation`) para chamada direta; `provider/kyc` → `client/kyc`, `provider/vaga/**` →
+`client/vaga/**`; perfil unificado (chip de status KYC, "Cadastro profissional", "Minhas vagas" para
+empresa); roteamento sempre `/client` (cadastro "Quero trabalhar" → `/client/kyc`);
+`pathForNotification` sem parâmetro `home`, prefixo único; **`app/provider/**` apagado**.
+
+**O que o prestador perdeu de propósito:** painel com stats agregados e vibração/"NOVA CHAMADA" do
+mapa antigo — substituídos pelo card no mapa + lados Pedi/Atendi. **Mantido como estava:** helper
+fora do catálogo, sem propor preço e sem cancelar após aceitar; papéis `CLIENT/PROVIDER/BOTH`.
+
+**Verificado:** `tsc --noEmit` native e web (fora 2 erros pré-existentes no WIP: `date-fns/locale` e
+`payments.ts:187`); Vitest native (incluindo `incoming-work.test.ts` e `notifications.test.ts`
+reescrito) e web. Teste manual em device/simulador ainda pendente — roteiro em `TESTE_QA.md`.

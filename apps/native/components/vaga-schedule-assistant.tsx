@@ -121,7 +121,7 @@ export function VagaAssistant() {
       }
 
       setJobDraft(draft);
-      router.push("/provider/vaga/ai/review");
+      router.push("/client/vaga/ai/review");
     } catch {
       const message = "Não consegui responder agora. Tente reformular a mensagem.";
       setSendError(message);

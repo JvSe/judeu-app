@@ -18,7 +18,7 @@ import { useUnistyles } from "react-native-unistyles";
 import notifee, { EventType } from "react-native-notify-kit";
 
 import { AuthSessionBoundary } from "@/components/auth-session-boundary";
-import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { AuthProvider } from "@/lib/auth-context";
 import { initAssistant } from "@/lib/assistant";
 import { pathForNotification } from "@/lib/notifications";
 import { QueryProvider } from "@/lib/query";
@@ -51,24 +51,22 @@ export const unstable_settings = {
 
 function NotificationNavigation() {
   const router = useRouter();
-  const { user } = useAuth();
-  const home = user?.role === "PROVIDER" ? "provider" : "client";
 
   useEffect(() => {
     return notifee.onForegroundEvent(({ type, detail }) => {
       if (type !== EventType.PRESS) return;
-      const path = pathForNotification(detail.notification?.data ?? {}, { home });
+      const path = pathForNotification(detail.notification?.data ?? {});
       if (path) router.push(path as never);
     });
-  }, [router, home]);
+  }, [router]);
 
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      const path = pathForNotification(response.notification.request.content.data ?? {}, { home });
+      const path = pathForNotification(response.notification.request.content.data ?? {});
       if (path) router.push(path as never);
     });
     return () => sub.remove();
-  }, [router, home]);
+  }, [router]);
 
   return null;
 }
@@ -123,7 +121,6 @@ export default function RootLayout() {
               <Stack.Screen name="index" />
               <Stack.Screen name="(auth)" />
               <Stack.Screen name="client" />
-              <Stack.Screen name="provider" />
               <Stack.Screen name="jobs" />
               <Stack.Screen name="terms" />
               <Stack.Screen name="privacy-policy" />

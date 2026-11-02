@@ -28,8 +28,8 @@ function orderTitle(order: {
 }
 
 type AttendDeliveryProps = {
-  exitTo: "/provider" | "/client";
-  chatPathname: "/provider/chat/[id]" | "/client/chat/[id]";
+  exitTo: "/client";
+  chatPathname: "/client/chat/[id]";
   startLabel?: string;
   /** Quem atende pelo app do cliente volta ao mapa em vez de desempilhar. */
   replaceOnStartWork?: boolean;

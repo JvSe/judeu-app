@@ -41,9 +41,9 @@ export default function Login() {
   const onValid = handleSubmit(async (data) => {
     setSubmitError(null);
     try {
-      const user = await signIn(data);
+      await signIn(data);
       toast.success("Login feito");
-      router.replace(user.role === "PROVIDER" ? "/provider" : "/client");
+      router.replace("/client");
     } catch (e) {
       const message = errorMessage(e, "Não foi possível entrar");
       setSubmitError(message);

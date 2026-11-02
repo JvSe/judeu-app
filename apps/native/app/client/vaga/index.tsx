@@ -22,13 +22,13 @@ export default function MyJobPostings() {
           <Ionicons name="chevron-back" size={20} color="#fff" />
         </Pressable>
         <Text style={styles.title}>Minhas vagas</Text>
-        <Pressable onPress={() => router.push("/provider/vaga/ai/chat")} hitSlop={10}>
+        <Pressable onPress={() => router.push("/client/vaga/ai/chat")} hitSlop={10}>
           <Ionicons name="add" size={24} color={theme.colors.primary} />
         </Pressable>
       </View>
 
       <Pressable
-        onPress={() => router.push("/provider/vaga/new")}
+        onPress={() => router.push("/client/vaga/new")}
         style={styles.manualLink}
         hitSlop={8}
       >
@@ -40,7 +40,7 @@ export default function MyJobPostings() {
         {!isLoading && jobs.length === 0 && (
           <View style={styles.empty}>
             <Text style={styles.emptyText}>Você ainda não publicou nenhuma vaga.</Text>
-            <Pressable onPress={() => router.push("/provider/vaga/new")} hitSlop={8}>
+            <Pressable onPress={() => router.push("/client/vaga/new")} hitSlop={8}>
               <Text style={styles.manualLinkText}>Preencher manualmente</Text>
             </Pressable>
           </View>
@@ -49,7 +49,7 @@ export default function MyJobPostings() {
           <Pressable
             key={job.id}
             style={({ pressed }) => [styles.card, { opacity: pressed ? 0.85 : 1 }]}
-            onPress={() => router.push({ pathname: "/provider/vaga/[id]", params: { id: job.id } })}
+            onPress={() => router.push({ pathname: "/client/vaga/[id]", params: { id: job.id } })}
           >
             <View style={{ flex: 1 }}>
               <Text style={styles.cardTitle}>{job.title}</Text>

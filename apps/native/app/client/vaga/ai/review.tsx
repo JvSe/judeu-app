@@ -26,7 +26,7 @@ export default function VagaAiReview() {
       <Screen>
         <View style={styles.emptyState}>
           <Text style={styles.emptyText}>Não encontramos os dados da vaga. Vamos recomeçar.</Text>
-          <Pressable style={styles.emptyButton} onPress={() => router.replace("/provider/vaga/ai/chat")}>
+          <Pressable style={styles.emptyButton} onPress={() => router.replace("/client/vaga/ai/chat")}>
             <Text style={styles.emptyButtonText}>Nova vaga</Text>
           </Pressable>
         </View>
@@ -60,7 +60,7 @@ export default function VagaAiReview() {
               const job = await createJob.mutateAsync(input);
               clearJobDraft();
               toast.success("Vaga publicada");
-              router.replace({ pathname: "/provider/vaga/[id]", params: { id: job.id } });
+              router.replace({ pathname: "/client/vaga/[id]", params: { id: job.id } });
             } catch (e) {
               const message = errorMessage(e, "Não foi possível publicar a vaga.");
               setSubmitError(message);

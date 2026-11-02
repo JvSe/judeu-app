@@ -16,7 +16,7 @@ type ChatPricePanelProps = {
   order: Order;
   role: "client" | "provider";
   proposals: Proposal[];
-  proposePathname: "/client/propose/[id]" | "/provider/propose/[id]";
+  proposePathname: "/client/propose/[id]";
 };
 
 export function ChatPricePanel({ order, role, proposals, proposePathname }: ChatPricePanelProps) {

@@ -34,8 +34,8 @@ const ROLE_CONFIG: Record<
   provider: {
     tags: ["Pontual", "Educado", "Ambiente organizado", "Pagamento em dia"],
     question: (firstName) => `Como foi com ${firstName}?`,
-    homeRoute: "/provider/(tabs)",
-    backLabel: "Voltar ao painel",
+    homeRoute: "/client",
+    backLabel: "Voltar ao mapa",
   },
 };
 

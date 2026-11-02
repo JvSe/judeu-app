@@ -10,7 +10,7 @@ Legenda:
 
 ## 0. Preparação
 
-- [ ] Crie **duas contas de teste**: uma pelo botão "Quero contratar" (vira CLIENT) e outra por "Quero trabalhar" (vira PROVIDER). Não existe alternância de papel dentro de uma mesma conta — o papel é fixado no cadastro. Reaproveite `SEED_USUARIOS_TESTE.md` se já houver contas prontas.
+- [ ] Crie **duas contas de teste**: uma pelo botão "Quero contratar" (vira CLIENT) e outra por "Quero trabalhar" (vira PROVIDER). As duas contas usam a **mesma área do app** (`/client`): o que muda é o perfil de quem atende (helper via "Quero atender" ou prestador com KYC) — aparecem a aba Ganhos e o lado "Atendi" em Chamadas. Reaproveite `SEED_USUARIOS_TESTE.md` se já houver contas prontas.
 - [ ] A conta PROVIDER só aparece para clientes e só recebe pedidos depois que o status dela vira **APPROVED**. Isso é aprovação manual (não existe botão no app para isso) — combine com quem tiver acesso ao banco/admin para aprovar a conta de teste antes de tentar os fluxos de pedido ponta a ponta.
 - [ ] Se possível, rode duas instâncias do app (2 emuladores, ou 1 emulador + 1 celular físico) logadas uma como cliente e outra como prestador — vários fluxos (chat, proposta, tracking) só fazem sentido testando os dois lados em paralelo.
 - [ ] **Tracking com rota/ETA:** confirme que o backend web tem `VALHALLA_URL` apontando para um servidor OSRM/Valhalla acessível (ex.: deploy Railway). Sem isso, mapa e GPS funcionam, mas linha laranja e ETA ficam em "Calculando...".
@@ -21,7 +21,7 @@ Legenda:
 
 **Tela inicial (`/`)**
 - [ ] Abrir o app deslogado → aparece a tela com "Quero contratar" / "Quero trabalhar" / "Já tem conta? Entrar"
-- [ ] Se já estiver logado, abrir o app deve pular direto para a home do papel certo (cliente → `/client`, prestador → `/provider`)
+- [ ] Se já estiver logado, abrir o app deve pular direto para `/client` (todo papel); o prestador vê as chamadas no mapa da Início e os lados Pedi/Atendi em Chamadas
 
 **Cadastro**
 - [ ] "Quero contratar" abre o cadastro e, ao concluir, leva para a Home do cliente
@@ -178,10 +178,10 @@ Legenda:
 - [ ] Se "permite negociação" estiver ligado, botão "Propor outro valor" aparece nos pedidos novos e leva para a tela de proposta
 - [ ] Tocar duas vezes rápido em Aceitar/Recusar → confirmar que não duplica a ação (botão deve travar durante o processamento)
 - [ ] Pedido em andamento mostra o botão de avançar etapa certo conforme o status (Iniciar trajeto / Iniciar serviço / Concluir serviço)
-- [ ] **Iniciar trajeto** abre a tela **Mapa de entrega** (`/provider/delivery/[id]`) com rota até o cliente
+- [ ] **Iniciar trajeto** abre a tela **Mapa de entrega** (`/client/attend/[id]`) com rota até o cliente
 - [ ] Link **Ir para o mapa** no card em andamento abre a mesma tela de entrega
 - [ ] Na entrega: botões **Google Maps** e **Waze** abrem navegação externa; GPS do prestador atualiza no mapa (app em foreground)
-- [ ] Toque em notificação de **pedido** (prestador) abre `/provider/delivery/[id]`
+- [ ] Toque em notificação de **pedido** (prestador) abre `/client/attend/[id]`
 - [ ] Pedidos concluídos aparecem na lista (até 10 mais recentes) e levam para a tela de avaliar o cliente
 
 ### 3.4 Negociação de orçamento (lado prestador)
@@ -213,7 +213,7 @@ Legenda:
 
 ### 3.10 Perfil do prestador
 - [ ] Status (Em análise/Aprovado/Bloqueado) aparece correto
-- [ ] "Trocar de perfil" volta para a tela inicial (não existe alternância real de papel, é preciso logar em outra conta)
+- [ ] Não existe mais "Trocar de perfil": cliente e prestador usam a mesma área; o lado de quem atende aparece conforme o perfil (Ganhos, Atendi, "Como você atende" para helper, "Cadastro profissional" para prestador)
 
 ### 3.11 Suporte e notificações
 - [ ] Mesmos casos das seções 2.11 (central de ajuda) e 2.12 (notificações), do lado do prestador

@@ -74,7 +74,7 @@ const kycSchema = z
 type KycFormInput = z.input<typeof kycSchema>;
 type KycFormOutput = z.output<typeof kycSchema>;
 
-export default function ProviderKyc() {
+export default function Kyc() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
 
@@ -184,7 +184,7 @@ export default function ProviderKyc() {
         await uploadDocument.mutateAsync({ base64: document.base64, mimeType: document.mimeType });
       }
       toast.success("Cadastro enviado");
-      router.replace("/provider");
+      router.replace("/client");
     } catch (e) {
       const message = errorMessage(e, "Não foi possível enviar seu cadastro.");
       setSubmitError(message);

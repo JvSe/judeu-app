@@ -31,13 +31,13 @@ import {
   isOrderActive,
   moneyFromCents,
 } from "@/lib/format";
-import { useHelperMode } from "@/lib/helper-mode";
 import {
   useAddresses,
   useNotifications,
   useOrders,
   useTransitionOrder,
 } from "@/lib/hooks";
+import { filterIncomingWork } from "@/lib/incoming-work";
 import { errorMessage, toast } from "@/lib/toast";
 import {
   readForegroundPosition,
@@ -46,10 +46,8 @@ import {
   useShareLocationWhileEnRoute,
 } from "@/lib/location";
 import { distanceKm } from "@/lib/nearby";
+import { useWorkMode } from "@/lib/work-mode";
 import { useQueryClient } from "@tanstack/react-query";
-
-/** Mesmo TTL do backend (waiting / offerExpiresAt em open request). */
-const OPEN_REQUEST_TTL_MS = 4 * 60 * 60 * 1000;
 
 import { clientFloatingTabBarStyle } from "./_layout";
 
@@ -61,7 +59,8 @@ const ACTIVE: OrderStatus[] = [
 ];
 
 function helpTitle(order: Order): string {
-  return order.description?.trim() || order.category?.name || "Ajuda";
+  if (order.isOpenRequest) return order.description?.trim() || order.category?.name || "Ajuda";
+  return order.service?.name ?? order.category?.name ?? order.description?.trim() ?? "Chamada";
 }
 
 function needsPayment(order: Order): boolean {
@@ -144,14 +143,16 @@ function myHelpHomeAction(order: Order): {
   };
 }
 
-function helperNextAction(
+// Próxima ação de quem atende para a chamada ativa. Em EN_ROUTE, só libera
+// "começar" quando a posição chegou perto do destino.
+function workNextAction(
   order: Order,
 ): { action: OrderAction; label: string; disabled?: boolean } | null {
   const paid =
     order.payment?.status === "PAID" || order.payment?.method === "CASH";
   switch (order.status) {
     case "ACCEPTED":
-      // Ajuda aberta: pagamento libera o trajeto (endereço já veio no pedido).
+      // Pagamento libera o trajeto (endereço já veio no pedido).
       if (!paid)
         return {
           action: "start_route",
@@ -176,7 +177,7 @@ function helperNextAction(
   }
 }
 
-function helperHomeMeta(order: Order): string {
+function workHomeMeta(order: Order): string {
   const price = moneyFromCents(order.priceCents);
   const paid =
     order.payment?.status === "PAID" || order.payment?.method === "CASH";
@@ -196,28 +197,30 @@ export default function ClientHome() {
   const { width: windowWidth } = useWindowDimensions();
   const bottomWidth = windowWidth - 40;
   const { user } = useAuth();
-  const helper = useHelperMode();
+  const work = useWorkMode();
   const attendButton = useAttendButtonVisibility();
   const myLocation = useCurrentLocation();
   const queryClient = useQueryClient();
   const { data: addresses = [] } = useAddresses();
   const { data: notifications } = useNotifications();
   const hasUnread = (notifications?.unreadCount ?? 0) > 0;
-  const canPollHelps = user?.role === "BOTH";
+  // Quem tem perfil de quem atende (helper ou prestador) acompanha as chamadas do seu lado.
+  const canPollWork = work.hasProfile;
   const { data: clientOrders = [] } = useOrders("client", { poll: true });
-  const { data: helperOrders = [] } = useOrders("provider", {
-    poll: canPollHelps,
-    enabled: canPollHelps,
+  const { data: workOrders = [] } = useOrders("provider", {
+    poll: canPollWork,
+    enabled: canPollWork,
   });
   const transition = useTransitionOrder();
 
   // Ao ligar o modo, força lista alinhada à posição atual (evita “N no mapa” fantasma).
   useEffect(() => {
-    if (!helper.isOn || !canPollHelps) return;
+    if (!work.isOn || !canPollWork) return;
     void queryClient.invalidateQueries({ queryKey: ["orders", "provider"] });
-  }, [helper.isOn, canPollHelps, queryClient]);
+  }, [work.isOn, canPollWork, queryClient]);
 
   const [selectedHelpId, setSelectedHelpId] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<"accept" | "reject" | null>(null);
   const [liveOrigin, setLiveOrigin] = useState<{
     lat: number;
     lng: number;
@@ -247,11 +250,11 @@ export default function ClientHome() {
     }
   };
 
-  useShareIdleLocation(helper.isOn);
+  useShareIdleLocation(work.isOn);
 
   // Ao ligar o modo atender: centraliza primeiro e só então libera o radar.
   useEffect(() => {
-    const attendingNow = helper.isOn || helper.arming;
+    const attendingNow = work.isOn || work.arming;
     if (!attendingNow) {
       wasAttendingRef.current = false;
       setRadarReady(false);
@@ -268,13 +271,13 @@ export default function ClientHome() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- só reage à transição de ligar o modo
-  }, [helper.isOn, helper.arming]);
+  }, [work.isOn, work.arming]);
 
-  const activeOrder = helperOrders.find((order) =>
+  const activeOrder = workOrders.find((order) =>
     ACTIVE.includes(order.status),
   );
   // Pedido que o usuário fez (solicitante) — aparece no mapa quando não está
-  // atendendo outra ajuda.
+  // atendendo outra chamada.
   const myActiveOrder = clientOrders.find((order) => isOrderActive(order.status));
   const myHelp = myActiveOrder ? myHelpHomeAction(myActiveOrder) : null;
   useShareLocationWhileEnRoute(
@@ -285,7 +288,7 @@ export default function ClientHome() {
 
   const prevStatusRef = useRef<Map<string, OrderStatus>>(new Map());
   useEffect(() => {
-    for (const order of helperOrders) {
+    for (const order of workOrders) {
       const prev = prevStatusRef.current.get(order.id);
       if (prev === "AWAITING_CONFIRMATION" && order.status === "COMPLETED") {
         router.push({
@@ -295,9 +298,9 @@ export default function ClientHome() {
       }
     }
     prevStatusRef.current = new Map(
-      helperOrders.map((order) => [order.id, order.status]),
+      workOrders.map((order) => [order.id, order.status]),
     );
-  }, [helperOrders]);
+  }, [workOrders]);
 
   useEffect(() => {
     navigation.setOptions({ tabBarStyle: { display: "none" } });
@@ -313,36 +316,28 @@ export default function ClientHome() {
       ? "Sua localização"
       : "Definir endereço";
 
-  const serviceRadiusKm = helper.profile?.serviceRadiusKm ?? 15;
+  const serviceRadiusKm = work.profile?.serviceRadiusKm ?? 15;
 
-  const openHelps = useMemo(() => {
-    if (!helper.isOn) return [];
-    const now = Date.now();
-    return helperOrders.filter((order) => {
-      if (order.status !== "CREATED" || !order.isOpenRequest || order.provider) {
-        return false;
-      }
-      const age = now - new Date(order.createdAt).getTime();
-      if (!Number.isFinite(age) || age > OPEN_REQUEST_TTL_MS) return false;
-      // Conta só o que está perto da posição atual do mapa (mesmo critério do raio).
-      if (origin) {
-        const d = distanceKm(origin, {
-          lat: order.address.lat,
-          lng: order.address.lng,
-        });
-        if (d > serviceRadiusKm) return false;
-      }
-      return true;
-    });
-  }, [helper.isOn, helperOrders, origin, serviceRadiusKm]);
+  // Ajudas abertas (modo ligado, no raio) + chamadas diretas para mim (sempre).
+  const incoming = useMemo(
+    () =>
+      filterIncomingWork(workOrders, {
+        isOn: work.isOn,
+        acceptsDirect: work.hasProfile,
+        origin,
+        radiusKm: serviceRadiusKm,
+      }),
+    [work.isOn, work.hasProfile, workOrders, origin, serviceRadiusKm],
+  );
+  const directIncoming = incoming.filter((order) => !order.isOpenRequest);
 
   const helpBounds = useMemo((): [number, number, number, number] | undefined => {
-    if (!helper.isOn || !origin || openHelps.length === 0) return undefined;
+    if (!origin || incoming.length === 0) return undefined;
     let west = origin.lng;
     let east = origin.lng;
     let south = origin.lat;
     let north = origin.lat;
-    for (const order of openHelps) {
+    for (const order of incoming) {
       west = Math.min(west, order.address.lng);
       east = Math.max(east, order.address.lng);
       south = Math.min(south, order.address.lat);
@@ -359,10 +354,10 @@ export default function ClientHome() {
       north += pad / 2;
     }
     return [west, south, east, north];
-  }, [helper.isOn, origin, openHelps]);
+  }, [origin, incoming]);
 
   const selectedHelp =
-    openHelps.find((order) => order.id === selectedHelpId) ?? null;
+    incoming.find((order) => order.id === selectedHelpId) ?? null;
   const selectedDistance =
     selectedHelp && origin
       ? distanceKm(origin, {
@@ -385,7 +380,7 @@ export default function ClientHome() {
   };
 
   const markers = [
-    ...openHelps.map((order) => ({
+    ...incoming.map((order) => ({
       id: order.id,
       lngLat: [order.address.lng, order.address.lat] as [number, number],
       render: () => <HelpMarker highlighted={order.id === selectedHelpId} />,
@@ -404,6 +399,7 @@ export default function ClientHome() {
 
   const acceptHelp = () => {
     if (!selectedHelp) return;
+    setPendingAction("accept");
     transition.mutate(
       { id: selectedHelp.id, action: "accept" },
       {
@@ -417,13 +413,39 @@ export default function ClientHome() {
         },
         onError: (err) =>
           toast.error(errorMessage(err, "Não foi possível atender agora.")),
+        onSettled: () => setPendingAction(null),
       },
     );
   };
 
+  // Só chamada direta se recusa; ajuda aberta a gente ignora (o backend devolve 409).
+  const rejectHelp = () => {
+    if (!selectedHelp || selectedHelp.isOpenRequest) return;
+    setPendingAction("reject");
+    transition.mutate(
+      { id: selectedHelp.id, action: "reject" },
+      {
+        onSuccess: () => {
+          setSelectedHelpId(null);
+          helpSheetRef.current?.close();
+          toast.success("Chamada recusada");
+        },
+        onError: (err) =>
+          toast.error(errorMessage(err, "Não foi possível recusar agora.")),
+        onSettled: () => setPendingAction(null),
+      },
+    );
+  };
+
+  const proposeHelp = () => {
+    if (!selectedHelp) return;
+    helpSheetRef.current?.close();
+    router.push({ pathname: "/client/propose/[id]", params: { id: selectedHelp.id } });
+  };
+
   const runActive = () => {
     if (!activeOrder) return;
-    const next = helperNextAction(activeOrder);
+    const next = workNextAction(activeOrder);
     if (!next) return;
     if (next.disabled) {
       if (
@@ -454,19 +476,38 @@ export default function ClientHome() {
     );
   };
 
-  const next = activeOrder ? helperNextAction(activeOrder) : null;
-  const attending = helper.isOn || helper.arming || activeOrder != null;
+  const next = activeOrder ? workNextAction(activeOrder) : null;
+  const attending = work.isOn || work.arming || activeOrder != null;
   const showAttendEntry = attendButton.ready && !attendButton.hidden;
   // Ajuda que eu pedi tem prioridade sobre “ligar modo” / radar vazio.
   const showMyHelpCard = !activeOrder && myActiveOrder != null && myHelp != null;
+  // Chamada direta com o modo desligado: avisa mesmo sem radar.
+  const showDirectCard =
+    !activeOrder && !showMyHelpCard && !work.isOn && !work.arming && directIncoming.length > 0;
   const showTurnOnCard =
     showAttendEntry &&
-    !helper.isOn &&
-    !helper.arming &&
+    !work.isOn &&
+    !work.arming &&
     !activeOrder &&
-    !showMyHelpCard;
+    !showMyHelpCard &&
+    !showDirectCard;
   const showSearchingCard =
-    (helper.isOn || helper.arming) && !activeOrder && !showMyHelpCard;
+    (work.isOn || work.arming) && !activeOrder && !showMyHelpCard;
+
+  // Vocabulário: helper atende "ajudas"; prestador recebe "chamadas".
+  const searchingTitle = work.arming
+    ? "Obtendo sua localização"
+    : incoming.length === 0
+      ? work.isHelper
+        ? "Procurando ajudas perto"
+        : "Aguardando chamadas"
+      : incoming.length === 1
+        ? work.isHelper
+          ? "Ajuda disponível perto"
+          : "Chamada para você"
+        : work.isHelper
+          ? "Ajudas disponíveis perto"
+          : "Chamadas para você";
 
   return (
     <Screen>
@@ -475,11 +516,11 @@ export default function ClientHome() {
         markers={markers}
         center={origin ? [origin.lng, origin.lat] : undefined}
         bounds={helpBounds}
-        cameraKey={helpBounds ? `helps-${openHelps.length}` : "me"}
+        cameraKey={helpBounds ? `helps-${incoming.length}` : "me"}
         variant="dark"
         zoom={14}
       />
-      {(helper.isOn || helper.arming) && !activeOrder && radarReady && (
+      {(work.isOn || work.arming) && !activeOrder && radarReady && (
         <AttendRadar />
       )}
 
@@ -560,7 +601,7 @@ export default function ClientHome() {
           <MapStatusCard
             kicker="Atendendo..."
             title={helpTitle(activeOrder)}
-            meta={helperHomeMeta(activeOrder)}
+            meta={workHomeMeta(activeOrder)}
             actionLabel={next.label}
             onAction={runActive}
             actionDisabled={next.disabled || transition.isPending}
@@ -583,36 +624,38 @@ export default function ClientHome() {
             onPress={() => router.push(myHelp.href as never)}
             accentColor={theme.colors.primary}
           />
+        ) : showDirectCard ? (
+          <MapStatusCard
+            kicker={directIncoming.length === 1 ? "Nova chamada" : `${directIncoming.length} novas chamadas`}
+            title={helpTitle(directIncoming[0])}
+            meta={`${directIncoming[0].client.name} · ${moneyFromCents(directIncoming[0].priceCents)}`}
+            actionLabel="Ver chamada"
+            onAction={() => openHelp(directIncoming[0])}
+            onPress={() => openHelp(directIncoming[0])}
+            accentColor={theme.colors.primary}
+          />
         ) : showSearchingCard ? (
           <MapStatusCard
-            title={
-              helper.arming
-                ? "Obtendo sua localização"
-                : openHelps.length === 0
-                  ? "Procurando ajudas perto"
-                  : openHelps.length === 1
-                    ? "Ajuda disponível perto"
-                    : "Ajudas disponíveis perto"
-            }
+            title={searchingTitle}
             meta={
-              helper.arming
+              work.arming
                 ? undefined
-                : openHelps.length === 0
+                : incoming.length === 0
                   ? "Nenhuma por perto agora"
-                  : openHelps.length === 1
+                  : incoming.length === 1
                     ? "1 no mapa"
-                    : `${openHelps.length} no mapa`
+                    : `${incoming.length} no mapa`
             }
             swipeLabel="Arraste para desligar"
-            onSwipe={helper.toggle}
-            swipeDisabled={helper.pending}
+            onSwipe={work.toggle}
+            swipeDisabled={work.pending}
             accentColor={theme.colors.primary}
           />
         ) : showTurnOnCard ? (
           <AttendTurnOn
-            needsSignup={helper.needsSignup}
-            pending={helper.pending}
-            onSwipe={helper.toggle}
+            needsSignup={work.needsSignup}
+            pending={work.pending}
+            onSwipe={work.toggle}
           />
         ) : null}
 
@@ -627,11 +670,16 @@ export default function ClientHome() {
       <HelpSheet
         ref={helpSheetRef}
         order={selectedHelp}
+        kind={selectedHelp?.isOpenRequest === false ? "direct" : "open"}
+        canNegotiate={!!work.profile?.allowsNegotiation}
         distanceKm={selectedDistance}
         minutesAgo={selectedMinutes}
-        accepting={transition.isPending && selectedHelp != null}
-        blockedLabel={activeOrder ? "Termine a ajuda atual" : null}
+        accepting={pendingAction === "accept" && selectedHelp != null}
+        rejecting={pendingAction === "reject" && selectedHelp != null}
+        blockedLabel={activeOrder ? "Termine a chamada atual" : null}
         onAccept={acceptHelp}
+        onReject={rejectHelp}
+        onPropose={proposeHelp}
         onClose={() => setSelectedHelpId(null)}
       />
     </Screen>

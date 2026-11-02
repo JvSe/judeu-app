@@ -29,7 +29,7 @@ export default function VagaAiChat() {
           <Text style={styles.headerName}>Nova vaga</Text>
           <Text style={styles.headerSub}>responde no seu aparelho</Text>
         </View>
-        <Pressable onPress={() => router.push("/provider/vaga/new")} hitSlop={8}>
+        <Pressable onPress={() => router.push("/client/vaga/new")} hitSlop={8}>
           <Text style={styles.manualLink}>Manual</Text>
         </Pressable>
       </View>
@@ -44,7 +44,7 @@ export default function VagaAiChat() {
           </Text>
           <Pressable
             style={({ pressed }) => [styles.unavailableButton, { opacity: pressed ? 0.9 : 1 }]}
-            onPress={() => router.replace("/provider/vaga/new")}
+            onPress={() => router.replace("/client/vaga/new")}
           >
             <Text style={styles.unavailableButtonText}>Preencher manualmente</Text>
           </Pressable>

@@ -11,7 +11,7 @@ import { fonts } from "@/constants/fonts";
 import { useAuth } from "@/lib/auth-context";
 import { initialsOf } from "@/lib/format";
 import { useAttendButtonVisibility } from "@/lib/attend-button";
-import { useHelperMode } from "@/lib/helper-mode";
+import { useWorkMode } from "@/lib/work-mode";
 import { useClientStats } from "@/lib/hooks";
 import { Avatar } from "@/components/ui/avatar";
 import { JudeuIcon } from "@/components/ui/judeu-icon";
@@ -24,17 +24,39 @@ type MenuItem = {
   href?: string;
 };
 
-// Quem tem perfil de quem atende (helper ou prestador) também vê as vagas de
-// empresas — mesmo atalho que existia só no perfil do prestador.
-function buildMenu(hasWorkProfile: boolean): MenuItem[] {
-  return [
+const STATUS_LABEL: Record<string, string> = {
+  PENDING: "Cadastro em análise",
+  APPROVED: "Verificado",
+  BLOCKED: "Bloqueado",
+};
+
+// O menu muda conforme o perfil de quem atende: prestador profissional vê o
+// cadastro profissional (KYC); empresa vê suas vagas; quem tem qualquer perfil
+// vê as vagas de empresas.
+function buildMenu(work: {
+  hasProfile: boolean;
+  isProfessional: boolean;
+  profile: { isCompany: boolean; headline: string | null } | null;
+}): MenuItem[] {
+  const items: MenuItem[] = [
     { id: "edit", icon: "person-outline", label: "Editar perfil", href: "/client/edit-profile" },
     { id: "addresses", icon: "location-outline", label: "Meus endereços", href: "/client/addresses" },
-    ...(hasWorkProfile
-      ? [{ id: "jobs", icon: "briefcase-outline", label: "Vagas de emprego", href: "/jobs" } as MenuItem]
-      : []),
-    { id: "support", icon: "help-circle-outline", label: "Ajuda e suporte", href: "/client/support" },
   ];
+  if (work.isProfessional) {
+    items.push({
+      id: "kyc",
+      icon: "shield-checkmark-outline",
+      label: work.profile?.headline ? "Cadastro profissional" : "Completar cadastro profissional",
+      href: "/client/kyc",
+    });
+  }
+  if (work.profile?.isCompany) {
+    items.push({ id: "vagas", icon: "briefcase-outline", label: "Minhas vagas", href: "/client/vaga" });
+  } else if (work.hasProfile) {
+    items.push({ id: "jobs", icon: "briefcase-outline", label: "Vagas de emprego", href: "/jobs" });
+  }
+  items.push({ id: "support", icon: "help-circle-outline", label: "Ajuda e suporte", href: "/client/support" });
+  return items;
 }
 
 export default function ClientProfile() {
@@ -42,10 +64,15 @@ export default function ClientProfile() {
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
   const { data: stats } = useClientStats();
-  const helper = useHelperMode();
+  const helper = useWorkMode();
   const attendButton = useAttendButtonVisibility();
-  const hasWorkProfile = !!helper.profile;
-  const menu = buildMenu(hasWorkProfile);
+  const menu = buildMenu(helper);
+  const statusColor =
+    helper.profile?.status === "APPROVED"
+      ? theme.colors.success
+      : helper.profile?.status === "BLOCKED"
+        ? theme.colors.destructive
+        : theme.colors.primary;
 
   const memberSince = user?.createdAt ? new Date(user.createdAt).getFullYear() : null;
 
@@ -83,6 +110,14 @@ export default function ClientProfile() {
                 )}
               </View>
               {memberSince && <Text style={styles.memberSince}>Membro desde {memberSince}</Text>}
+              {helper.isProfessional && helper.profile && (
+                <View style={[styles.statusChip, { backgroundColor: `${statusColor}22` }]}>
+                  <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+                  <Text style={[styles.statusText, { color: statusColor }]}>
+                    {STATUS_LABEL[helper.profile.status]}
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
 
@@ -113,10 +148,18 @@ export default function ClientProfile() {
                   {helper.pending
                     ? "Atualizando..."
                     : helper.isOn
-                      ? "Procurando ajudas perto de você"
-                      : "Atender ajudas"}
+                      ? helper.isProfessional
+                        ? "Disponível para chamadas"
+                        : "Procurando ajudas perto de você"
+                      : helper.isProfessional
+                        ? "Receber chamadas"
+                        : "Atender ajudas"}
                 </Text>
-                <Text style={styles.menuHint}>Receba pedidos de ajuda perto de você</Text>
+                <Text style={styles.menuHint}>
+                  {helper.isProfessional
+                    ? "Fique disponível para clientes te chamarem"
+                    : "Receba pedidos de ajuda perto de você"}
+                </Text>
               </View>
               <View style={[styles.switchTrack, helper.isOn && styles.switchTrackOn]}>
                 <View style={[styles.switchKnob, helper.isOn && styles.switchKnobOn]} />
@@ -356,5 +399,24 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 15,
     fontFamily: fonts.bold,
     color: "#ff6b6b",
+  },
+  statusChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 6,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 6,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontSize: 11.5,
+    fontFamily: fonts.extraBold,
   },
 }));

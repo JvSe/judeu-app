@@ -46,7 +46,7 @@ export default function NewJobPosting() {
             try {
               const job = await createJob.mutateAsync(input);
               toast.success("Vaga publicada");
-              router.replace({ pathname: "/provider/vaga/[id]", params: { id: job.id } });
+              router.replace({ pathname: "/client/vaga/[id]", params: { id: job.id } });
             } catch (e) {
               const message = errorMessage(e, "Não foi possível publicar a vaga.");
               setSubmitError(message);

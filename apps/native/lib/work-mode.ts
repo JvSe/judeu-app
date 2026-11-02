@@ -9,7 +9,10 @@ import { errorMessage, toast } from "@/lib/toast";
 
 const LOCATION_MESSAGE = "Precisamos saber onde você está para achar pedidos perto.";
 
-export function useHelperMode() {
+// "Modo trabalho" de quem atende pelo app — helper (cliente que atende ajudas
+// abertas) ou prestador profissional (KYC). A UI decide pelo perfil, não pelo
+// papel: o que muda entre os dois é só o gate de aprovação e o vocabulário.
+export function useWorkMode() {
   const { user } = useAuth();
   const profileQuery = useMyProviderProfile();
   const setAvailability = useSetAvailability();
@@ -22,11 +25,16 @@ export function useHelperMode() {
   const profile =
     role === "BOTH" || role === "PROVIDER" ? (profileQuery.data ?? null) : null;
 
-  const isHelper = role === "BOTH" && profile?.isHelper === true;
-  // Só CLIENT precisa do formulário; BOTH helper já passou por ele.
-  const needsSignup = role === "CLIENT";
+  const hasProfile = profile != null;
+  const isHelper = hasProfile && profile.isHelper === true;
+  const isProfessional = hasProfile && profile.isHelper !== true;
+  const approved = profile?.status === "APPROVED";
   const blocked = profile?.status === "BLOCKED";
-  const isOn = isHelper && profile?.isAvailable === true && !blocked;
+  // Só CLIENT sem perfil passa pelo formulário de helper; prestador nasce com perfil (vazio).
+  const needsSignup = !hasProfile && role === "CLIENT";
+  // Profissional só fica disponível depois do KYC aprovado (o backend também barra).
+  const needsApproval = isProfessional && !approved && !blocked;
+  const isOn = hasProfile && profile.isAvailable === true && !blocked;
   const profileLoading =
     (role === "BOTH" || role === "PROVIDER") && profileQuery.isLoading;
   const pending = setAvailability.isPending || updateLocation.isPending || profileLoading;
@@ -34,24 +42,27 @@ export function useHelperMode() {
   const turnOn = async () => {
     if (profileLoading) return;
 
-    // Prestador profissional (não-helper) não usa este fluxo.
-    if (role === "PROVIDER" || (profile && !profile.isHelper)) {
-      toast.info("Você já atende como prestador", {
-        description: "Use a área de quem trabalha para receber chamadas.",
-      });
-      return;
-    }
-
-    // Conta nova / ainda sem cadastro de helper → formulário obrigatório.
-    if (!isHelper) {
-      router.push("/client/helper-signup" as never);
-      return;
-    }
-
     if (blocked) {
       toast.error("Cadastro bloqueado", {
         description: "Fale com o suporte para entender o motivo.",
       });
+      return;
+    }
+
+    // Sem perfil: CLIENT faz o cadastro de helper; PROVIDER (caso raro) o profissional.
+    if (!hasProfile) {
+      router.push((role === "CLIENT" ? "/client/helper-signup" : "/client/kyc") as never);
+      return;
+    }
+
+    if (needsApproval) {
+      const incomplete = !profile.headline;
+      toast.info(incomplete ? "Complete seu cadastro profissional" : "Cadastro em análise", {
+        description: incomplete
+          ? "Você só recebe chamadas depois do cadastro aprovado."
+          : "Assim que for aprovado, você pode ficar disponível.",
+      });
+      if (incomplete) router.push("/client/kyc" as never);
       return;
     }
 
@@ -64,8 +75,8 @@ export function useHelperMode() {
     }
     try {
       const pos = await readForegroundPosition();
-      const lat = pos?.lat ?? profile?.baseLat ?? null;
-      const lng = pos?.lng ?? profile?.baseLng ?? null;
+      const lat = pos?.lat ?? profile.baseLat ?? null;
+      const lng = pos?.lng ?? profile.baseLng ?? null;
       if (lat == null || lng == null) {
         setArming(false);
         toast.warning("Localização", {
@@ -105,5 +116,18 @@ export function useHelperMode() {
     else void turnOn();
   };
 
-  return { isHelper, isOn, pending, blocked, arming, needsSignup, toggle, profile };
+  return {
+    profile,
+    hasProfile,
+    isHelper,
+    isProfessional,
+    approved,
+    needsApproval,
+    blocked,
+    isOn,
+    pending,
+    arming,
+    needsSignup,
+    toggle,
+  };
 }

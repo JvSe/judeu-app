@@ -37,14 +37,6 @@ export type AttendingRoutes = {
   rating: string;
 };
 
-export const PROVIDER_ATTENDING_ROUTES: AttendingRoutes = {
-  chat: "/provider/chat/[id]",
-  delivery: "/provider/delivery/[id]",
-  propose: "/provider/propose/[id]",
-  supportNew: "/provider/support-ticket-new",
-  rating: "/provider/rating/[id]",
-};
-
 export const CLIENT_ATTENDING_ROUTES: AttendingRoutes = {
   chat: "/client/chat/[id]",
   delivery: "/client/attend/[id]",

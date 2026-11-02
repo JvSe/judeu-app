@@ -30,7 +30,7 @@ function iconFor(type: NotificationItem["type"]): React.ComponentProps<typeof Io
   return type === "MESSAGE" ? "chatbubble-ellipses" : "cube-outline";
 }
 
-export function NotificationsScreen({ home }: { home?: "client" | "provider" }) {
+export function NotificationsScreen() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<Filter>("all");
@@ -57,7 +57,7 @@ export function NotificationsScreen({ home }: { home?: "client" | "provider" }) 
 
   const openNotification = (item: NotificationItem) => {
     if (!item.readAt) markRead.mutate(item.id);
-    const path = pathForNotification(item.data ?? {}, { home });
+    const path = pathForNotification(item.data ?? {});
     if (path) router.push(path as never);
   };
 

@@ -93,7 +93,7 @@ export default function Signup() {
         acceptedTerms: true,
       });
       toast.success("Conta criada");
-      router.replace(role === "PROVIDER" ? "/provider/kyc" : "/client");
+      router.replace(role === "PROVIDER" ? "/client/kyc" : "/client");
     } catch (e) {
       const message = errorMessage(e, "Não foi possível criar a conta");
       setSubmitError(message);
