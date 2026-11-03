@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type Stripe from "stripe";
 
 import { supabase } from "./db";
 import { notifyUser } from "./notifications";
@@ -73,6 +74,7 @@ type AuthorizedOrder = {
     amountCents: number;
     gatewayRef: string | null;
     createdAt: string;
+    updatedAt?: string;
   } | null;
 };
 
@@ -88,16 +90,24 @@ async function loadAuthorizedOrder(
     .maybeSingle();
   if (!order) return { ok: false, error: "Pedido não encontrado", status: 404 };
 
-  const row = order as unknown as AuthorizedOrder;
-  const isClient = row.clientId === userId;
-  const isProvider = row.provider?.userId === userId;
+  const row = order as unknown as AuthorizedOrder & {
+    payment?: AuthorizedOrder["payment"] | AuthorizedOrder["payment"][];
+    provider?: AuthorizedOrder["provider"] | AuthorizedOrder["provider"][];
+  };
+  // PostgREST às vezes devolve relação 1:1 como array — normaliza.
+  const payment = Array.isArray(row.payment) ? (row.payment[0] ?? null) : (row.payment ?? null);
+  const provider = Array.isArray(row.provider) ? (row.provider[0] ?? null) : (row.provider ?? null);
+  const normalized: AuthorizedOrder = { ...row, payment, provider };
+
+  const isClient = normalized.clientId === userId;
+  const isProvider = normalized.provider?.userId === userId;
   if (requireClient && !isClient) {
     return { ok: false, error: "Ação permitida apenas ao cliente do pedido", status: 403 };
   }
   if (!requireClient && !isClient && !isProvider) {
     return { ok: false, error: "Você não participou deste pedido", status: 403 };
   }
-  return { ok: true, order: row };
+  return { ok: true, order: normalized };
 }
 
 async function upsertPayment(data: {
@@ -109,18 +119,20 @@ async function upsertPayment(data: {
 }) {
   const { data: existing } = await supabase
     .from("payment")
-    .select("id")
+    .select("*")
     .eq("orderId", data.orderId)
     .maybeSingle();
   const now = new Date().toISOString();
   if (existing) {
+    // Nunca rebaixa um pagamento já confirmado.
+    if (existing.status === "PAID") return existing;
     const { data: payment, error } = await supabase
       .from("payment")
       .update({
         method: data.method,
         status: data.status,
         amountCents: data.amountCents,
-        gatewayRef: data.gatewayRef ?? null,
+        gatewayRef: data.gatewayRef ?? existing.gatewayRef,
         updatedAt: now,
       })
       .eq("orderId", data.orderId)
@@ -147,6 +159,134 @@ async function upsertPayment(data: {
   return payment;
 }
 
+type PaymentRow = NonNullable<AuthorizedOrder["payment"]>;
+
+/** Intent ainda pode ser aberto no PaymentSheet / Pix QR. */
+const REUSABLE_INTENT = new Set([
+  "requires_payment_method",
+  "requires_confirmation",
+  "requires_action",
+]);
+
+/** Stripe já comprometeu a cobrança — grava PAID no app (inclui `processing`). */
+function intentMeansPaid(status: string): boolean {
+  return status === "succeeded" || status === "processing";
+}
+
+async function markPaymentStatus(
+  orderId: string,
+  status: PaymentDTO["status"],
+): Promise<PaymentRow> {
+  const { data, error } = await supabase
+    .from("payment")
+    .update({ status, updatedAt: new Date().toISOString() })
+    .eq("orderId", orderId)
+    .select("*")
+    .single();
+  if (error || !data) {
+    throw new Error(error?.message ?? "Falha ao atualizar status do pagamento");
+  }
+  return data as PaymentRow;
+}
+
+async function markPaidFromIntent(
+  orderId: string,
+  intentId: string,
+  payment: PaymentRow,
+): Promise<PaymentRow> {
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("payment")
+    .update({
+      status: "PAID",
+      gatewayRef: intentId,
+      updatedAt: now,
+    })
+    .eq("orderId", orderId)
+    .select("*")
+    .single();
+  if (error || !data) {
+    throw new Error(error?.message ?? "Falha ao marcar pagamento como PAID");
+  }
+  await notifyProviderIfNeeded(orderId);
+  return data as PaymentRow;
+}
+
+/** Procura intent já pago deste pedido — metadata ou recuperação por valor recente. */
+async function findPaidIntentForOrder(
+  orderId: string,
+  payment: PaymentRow,
+): Promise<Stripe.PaymentIntent | null> {
+  try {
+    const listed = await stripe.paymentIntents.list({ limit: 40 });
+    const byMeta = listed.data.find(
+      (intent) =>
+        intentMeansPaid(intent.status) && intent.metadata?.orderId === orderId,
+    );
+    if (byMeta) return byMeta;
+
+    // Pedidos antigos sem metadata: um único succeeded no mesmo valor após o payment.
+    const createdSec = Math.floor(new Date(payment.createdAt).getTime() / 1000) - 120;
+    const candidates = listed.data.filter(
+      (intent) =>
+        intentMeansPaid(intent.status) &&
+        intent.amount === payment.amountCents &&
+        intent.created >= createdSec &&
+        (!payment.gatewayRef || intent.id !== payment.gatewayRef),
+    );
+    if (candidates.length === 1) return candidates[0];
+    // Também aceita o próprio gatewayRef se a lista já refletir succeeded (race).
+    return (
+      listed.data.find(
+        (intent) => intent.id === payment.gatewayRef && intentMeansPaid(intent.status),
+      ) ?? null
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** Alinha PENDING com o Stripe — evita cobrir de novo um intent já pago. */
+async function reconcilePendingWithStripe(
+  orderId: string,
+  payment: PaymentRow,
+): Promise<PaymentRow> {
+  if (payment.status === "PAID" || payment.method === "CASH") return payment;
+  if (payment.status !== "PENDING") return payment;
+
+  try {
+    if (payment.gatewayRef) {
+      let intent = await stripe.paymentIntents.retrieve(payment.gatewayRef);
+
+      if (intent.status === "requires_capture") {
+        intent = await stripe.paymentIntents.capture(payment.gatewayRef);
+      }
+
+      if (intentMeansPaid(intent.status)) {
+        return await markPaidFromIntent(orderId, intent.id, payment);
+      }
+      if (intent.status === "canceled") {
+        // Pode existir outro intent pago do mesmo pedido (cobrança anterior).
+        const paidOther = await findPaidIntentForOrder(orderId, payment);
+        if (paidOther) return await markPaidFromIntent(orderId, paidOther.id, payment);
+        return await markPaymentStatus(orderId, "FAILED");
+      }
+
+      // gatewayRef aponta pra intent não pago, mas pode haver outro já succeeded.
+      if (REUSABLE_INTENT.has(intent.status)) {
+        const paidOther = await findPaidIntentForOrder(orderId, payment);
+        if (paidOther) return await markPaidFromIntent(orderId, paidOther.id, payment);
+      }
+    }
+
+    const paidOther = await findPaidIntentForOrder(orderId, payment);
+    if (paidOther) return await markPaidFromIntent(orderId, paidOther.id, payment);
+  } catch {
+    // Mantém PENDING se o Stripe falhar pontualmente — o confirm/poll tenta de novo.
+  }
+  return payment;
+}
+
 export async function createOrUpdatePayment(
   clientId: string,
   orderId: string,
@@ -162,9 +302,16 @@ export async function createOrUpdatePayment(
   if (order.status === "CANCELLED") {
     return { error: "Pedido cancelado, não é possível pagar", status: 409 };
   }
-  if (order.payment?.status === "PAID") {
-    return { error: "Pedido já foi pago", status: 409 };
+
+  // Idempotente: se já pagou (ou o Stripe já confirmou), devolve PAID sem nova cobrança.
+  let existing = order.payment;
+  if (existing) {
+    existing = await reconcilePendingWithStripe(orderId, existing);
+    if (existing.status === "PAID" || existing.method === "CASH") {
+      return { payment: toDTO(existing) };
+    }
   }
+
   if (await hasBlockingOpenHelpProposal(orderId)) {
     return {
       error: "Há um ajuste de valor pendente. Ambos precisam aceitar antes de pagar.",
@@ -186,6 +333,45 @@ export async function createOrUpdatePayment(
     return { payment: toDTO(payment) };
   }
 
+  // Reusa o PaymentIntent pendente — NUNCA cria outro enquanto houver um aberto/pago.
+  if (existing && existing.status === "PENDING" && existing.gatewayRef) {
+    const intent = await stripe.paymentIntents.retrieve(existing.gatewayRef);
+    if (intentMeansPaid(intent.status) || intent.status === "requires_capture") {
+      const synced = await reconcilePendingWithStripe(orderId, existing);
+      if (synced.status === "PAID") return { payment: toDTO(synced) };
+    }
+    if (REUSABLE_INTENT.has(intent.status) && existing.method === method) {
+      if (method === "CARD") {
+        return {
+          payment: toDTO(existing),
+          clientSecret: intent.client_secret ?? undefined,
+        };
+      }
+      if (method === "PIX") {
+        const qr = intent.next_action?.pix_display_qr_code;
+        return {
+          payment: toDTO(existing),
+          pix: qr?.data
+            ? {
+                data: qr.data,
+                imageUrl: qr.image_url_png ?? null,
+                expiresAt: qr.expires_at
+                  ? new Date(qr.expires_at * 1000).toISOString()
+                  : null,
+              }
+            : undefined,
+        };
+      }
+    }
+    if (intent.status !== "canceled") {
+      // Não cria cobrança nova (evita sobrescrever gatewayRef de um intent já autorizado).
+      return {
+        error: `Pagamento em andamento no Stripe (${intent.status}). Aguarde a confirmação.`,
+        status: 409,
+      };
+    }
+  }
+
   const { data: client } = await supabase
     .from("user")
     .select("fullName, email")
@@ -202,6 +388,7 @@ export async function createOrUpdatePayment(
         billing_details: { name: client?.fullName, email: client?.email },
       },
       confirm: true,
+      metadata: { orderId },
     });
     const payment = await upsertPayment({
       orderId,
@@ -228,6 +415,7 @@ export async function createOrUpdatePayment(
     amount: amountCents,
     currency: "brl",
     payment_method_types: ["card"],
+    metadata: { orderId },
   });
   const payment = await upsertPayment({
     orderId,
@@ -245,31 +433,66 @@ export async function getPayment(
 ): Promise<{ payment: PaymentDTO | null } | { error: string; status: number }> {
   const loaded = await loadAuthorizedOrder(userId, orderId, false);
   if (!loaded.ok) return { error: loaded.error, status: loaded.status };
-  let payment = loaded.order.payment;
+  const payment = loaded.order.payment;
   if (!payment) return { payment: null };
 
-  if (payment.status === "PENDING" && payment.method !== "CASH" && payment.gatewayRef) {
-    const intent = await stripe.paymentIntents.retrieve(payment.gatewayRef);
-    if (intent.status === "succeeded") {
-      const { data } = await supabase
-        .from("payment")
-        .update({ status: "PAID", updatedAt: new Date().toISOString() })
-        .eq("orderId", orderId)
-        .select("*")
-        .single();
-      payment = data;
-      await notifyProviderIfNeeded(orderId);
-    } else if (intent.status === "canceled") {
-      const { data } = await supabase
-        .from("payment")
-        .update({ status: "FAILED", updatedAt: new Date().toISOString() })
-        .eq("orderId", orderId)
-        .select("*")
-        .single();
-      payment = data;
+  const synced = await reconcilePendingWithStripe(orderId, payment);
+  return { payment: toDTO(synced) };
+}
+
+/** Usado ao listar/buscar pedido — grava PAID se o Stripe já confirmou. */
+export async function syncOrderPaymentStatus(orderId: string): Promise<void> {
+  const { data: payment } = await supabase
+    .from("payment")
+    .select("*")
+    .eq("orderId", orderId)
+    .maybeSingle();
+  if (!payment) return;
+  if (payment.status === "PAID" || payment.method === "CASH") return;
+  if (payment.status !== "PENDING") return;
+  await reconcilePendingWithStripe(orderId, payment as PaymentRow);
+}
+
+/**
+ * Confirmação explícita após PaymentSheet (cartão) / poll Pix.
+ * Força reconciliação com o Stripe e devolve o status atual.
+ */
+export async function confirmPayment(
+  userId: string,
+  orderId: string,
+): Promise<{ payment: PaymentDTO } | { error: string; status: number }> {
+  const loaded = await loadAuthorizedOrder(userId, orderId, true);
+  if (!loaded.ok) return { error: loaded.error, status: loaded.status };
+  const payment = loaded.order.payment;
+  if (!payment) {
+    return { error: "Nenhum pagamento iniciado para este pedido", status: 404 };
+  }
+  if (payment.status === "PAID" || payment.method === "CASH") {
+    return { payment: toDTO(payment) };
+  }
+
+  const synced = await reconcilePendingWithStripe(orderId, payment);
+  if (synced.status === "PAID") {
+    return { payment: toDTO(synced) };
+  }
+  if (synced.status === "FAILED") {
+    return { error: "O pagamento falhou. Tente novamente.", status: 409 };
+  }
+
+  // Ainda PENDING: inclui o status do Stripe na mensagem pra depurar.
+  let stripeStatus = "desconhecido";
+  if (synced.gatewayRef) {
+    try {
+      const intent = await stripe.paymentIntents.retrieve(synced.gatewayRef);
+      stripeStatus = intent.status;
+    } catch {
+      stripeStatus = "indisponível";
     }
   }
-  return { payment: payment ? toDTO(payment) : null };
+  return {
+    error: `Pagamento ainda não confirmado no Stripe (${stripeStatus}).`,
+    status: 409,
+  };
 }
 
 async function notifyCanStart(orderId: string, body: string) {

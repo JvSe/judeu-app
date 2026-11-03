@@ -11,7 +11,14 @@ import { Screen } from "@/components/ui/screen";
 import SpinButton from "@/components/ui/spin-button";
 import { fonts } from "@/constants/fonts";
 import type { Order, OrderStatus } from "@/lib/api";
-import { initialsOf, moneyFromCents, orderStatusLabel, shortDateTime, shortTime } from "@/lib/format";
+import {
+  initialsOf,
+  isOrderPaid,
+  moneyFromCents,
+  orderStatusLabel,
+  shortDateTime,
+  shortTime,
+} from "@/lib/format";
 import { useOrder, useOrderProposals, useRespondToProposal, useTransitionOrder } from "@/lib/hooks";
 import { errorMessage, toast } from "@/lib/toast";
 
@@ -67,10 +74,7 @@ export function OrderDetailClient() {
   const canCancel = order.status === "CREATED" || order.status === "ACCEPTED";
   const canNegotiate = order.status === "CREATED" && !!order.provider?.allowsNegotiation;
   const pendingProposal = proposals.find((p) => p.status === "PENDING");
-  const needsPay =
-    order.status === "ACCEPTED" &&
-    order.payment?.status !== "PAID" &&
-    order.payment?.method !== "CASH";
+  const needsPay = order.status === "ACCEPTED" && !isOrderPaid(order.payment);
   const openHelpPricePending =
     needsPay && order.isOpenRequest && !!pendingProposal && pendingProposal.status === "PENDING";
   const canTrack =

@@ -8,7 +8,6 @@ import {
   type CameraRef,
 } from "@maplibre/maplibre-react-native";
 import { forwardRef, useImperativeHandle, useRef, type ReactElement } from "react";
-import { Pressable } from "react-native";
 import { useUnistyles } from "react-native-unistyles";
 
 import { MapBackdrop } from "@/components/ui/map-backdrop";
@@ -131,12 +130,21 @@ export const RealMap = forwardRef<RealMapHandle, RealMapProps>(function RealMap(
       )}
 
       {markers.map((marker) => (
-        <Marker key={marker.id} id={marker.id} lngLat={marker.lngLat}>
-          {marker.onPress ? (
-            <Pressable onPress={marker.onPress}>{marker.render()}</Pressable>
-          ) : (
-            marker.render()
-          )}
+        <Marker
+          key={marker.id}
+          id={marker.id}
+          lngLat={marker.lngLat}
+          // onPress nativo: Pressable filho não recebe toque no Android (MapLibre).
+          onPress={
+            marker.onPress
+              ? (event) => {
+                  event.stopPropagation();
+                  marker.onPress?.();
+                }
+              : undefined
+          }
+        >
+          {marker.render()}
         </Marker>
       ))}
     </Map>

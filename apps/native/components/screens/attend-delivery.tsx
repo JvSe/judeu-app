@@ -13,6 +13,7 @@ import { Screen } from "@/components/ui/screen";
 import SpinButton from "@/components/ui/spin-button";
 import { fonts } from "@/constants/fonts";
 import { openGoogleMapsNavigation, openWazeNavigation } from "@/lib/external-maps";
+import { isOrderPaid } from "@/lib/format";
 import { useOrder, useTransitionOrder } from "@/lib/hooks";
 import { useShareLocationWhileEnRoute, useWatchCurrentLocation } from "@/lib/location";
 import { errorMessage, toast } from "@/lib/toast";
@@ -78,7 +79,7 @@ export function AttendDelivery({
     );
   }
 
-  const canStart = order.payment?.status === "PAID" || order.payment?.method === "CASH";
+  const canStart = isOrderPaid(order.payment);
 
   const goingToPickup =
     !!order.pickupAddress && (order.status === "ACCEPTED" || order.status === "EN_ROUTE");

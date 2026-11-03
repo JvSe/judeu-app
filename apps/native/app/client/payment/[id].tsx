@@ -14,7 +14,12 @@ import SpinButton from "@/components/ui/spin-button";
 import { fonts } from "@/constants/fonts";
 import type { Order, Payment, PaymentMethodOption, PixDisplay } from "@/lib/api";
 import { moneyFromCents } from "@/lib/format";
-import { useCreatePayment, useOrder, useOrderPayment } from "@/lib/hooks";
+import {
+  useConfirmPayment,
+  useCreatePayment,
+  useOrder,
+  useOrderPayment,
+} from "@/lib/hooks";
 import { errorMessage, toast } from "@/lib/toast";
 
 const paymentMethods: {
@@ -52,8 +57,9 @@ export default function Payment() {
   const redirectedRef = useRef(false);
 
   const { data: order, isLoading } = useOrder(id, { poll: true });
-  const { data: payment, refetch: refetchPayment } = useOrderPayment(id);
+  const { data: payment } = useOrderPayment(id);
   const createPayment = useCreatePayment();
+  const confirmPayment = useConfirmPayment();
 
   const paymentDone = isPaymentSettled(payment, order?.payment ?? null);
 
@@ -68,15 +74,33 @@ export default function Payment() {
   };
 
   const markOrderPaidLocally = (paid: Payment) => {
+    const snapshot = { status: paid.status, method: paid.method } as Order["payment"];
     queryClient.setQueryData(["payment", id], paid);
     queryClient.setQueryData<Order>(["order", id], (current) =>
-      current
-        ? {
-            ...current,
-            payment: { status: paid.status, method: paid.method },
-          }
-        : current,
+      current ? { ...current, payment: snapshot } : current,
     );
+    queryClient.setQueryData<Order[]>(["orders", "client"], (list) =>
+      list?.map((item) => (item.id === id ? { ...item, payment: snapshot } : item)),
+    );
+    queryClient.setQueryData<Order[]>(["orders", "provider"], (list) =>
+      list?.map((item) => (item.id === id ? { ...item, payment: snapshot } : item)),
+    );
+  };
+
+  /** POST /payment/confirm força sync com Stripe até PAID (ou esgota tentativas). */
+  const waitUntilSettled = async (): Promise<Payment | null> => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 12; attempt++) {
+      try {
+        const confirmed = await confirmPayment.mutateAsync(order!.id);
+        if (isPaymentSettled(confirmed, null)) return confirmed;
+      } catch (err) {
+        lastError = err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    if (lastError) throw lastError;
+    return null;
   };
 
   // Entrada com pedido já pago / confirmação via poll (Pix).
@@ -115,6 +139,14 @@ export default function Payment() {
     try {
       const result = await createPayment.mutateAsync({ orderId: order.id, method });
 
+      // Já estava pago (idempotente no backend) — só redireciona.
+      if (isPaymentSettled(result.payment, null)) {
+        markOrderPaidLocally(result.payment);
+        toast.success("Pagamento confirmado");
+        goToDetails();
+        return;
+      }
+
       if (method === "CASH") {
         markOrderPaidLocally(result.payment);
         toast.success("Pagamento em dinheiro confirmado");
@@ -151,13 +183,18 @@ export default function Payment() {
         return;
       }
 
-      const synced = await refetchPayment();
-      const settled = isPaymentSettled(synced.data, order.payment);
-      if (settled && synced.data) {
-        markOrderPaidLocally(synced.data);
+      const settled = await waitUntilSettled();
+      if (!settled || !isPaymentSettled(settled, null)) {
+        const message =
+          "O cartão foi autorizado, mas a confirmação ainda não chegou. Não pague de novo — abra o pedido em alguns segundos.";
+        setErrorMsg(message);
+        toast.info("Confirmando pagamento…", {
+          description: "Não tente pagar de novo; estamos sincronizando.",
+        });
+        return;
       }
+      markOrderPaidLocally(settled);
       toast.success("Pagamento confirmado");
-      // Cartão: mesmo se o sync ainda estiver PENDING, segue — o webhook confirma depois.
       goToDetails();
     } catch (e) {
       const message = errorMessage(e, "Não foi possível processar o pagamento.");

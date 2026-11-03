@@ -74,6 +74,16 @@ export function useWorkMode() {
       return;
     }
     try {
+      const servicesOn = await Location.hasServicesEnabledAsync().catch(() => true);
+      if (!servicesOn) {
+        setArming(false);
+        toast.warning("Localização", {
+          description:
+            "A Localização do sistema está desligada. Ligue em Ajustes e tente de novo.",
+        });
+        return;
+      }
+
       const pos = await readForegroundPosition();
       const lat = pos?.lat ?? profile.baseLat ?? null;
       const lng = pos?.lng ?? profile.baseLng ?? null;
@@ -81,7 +91,7 @@ export function useWorkMode() {
         setArming(false);
         toast.warning("Localização", {
           description:
-            "Não consegui ler o GPS agora. Ligue a Localização do celular e tente de novo.",
+            "Não consegui ler o GPS agora. No emulador, defina um ponto em ⋯ → Location → Set Location e tente de novo.",
         });
         return;
       }
@@ -91,12 +101,14 @@ export function useWorkMode() {
       toast.success("Modo atendimento ligado");
     } catch (err) {
       setArming(false);
-      const raw = err instanceof Error ? err.message : "";
-      const locationFailed = /kCLError|getCurrentPosition|location/i.test(raw);
+      const raw = errorMessage(err, "");
+      const locationFailed = /kCLErrorDomain|Current location is unavailable|getCurrentPositionAsync/i.test(
+        raw,
+      );
       toast.error(
-        locationFailed || !raw
+        locationFailed
           ? "Não consegui ler o GPS agora. Ligue a Localização do celular e tente de novo."
-          : raw,
+          : errorMessage(err, "Não foi possível ligar o modo atendimento."),
       );
     }
   };

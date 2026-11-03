@@ -1,4 +1,5 @@
 import * as Location from "expo-location";
+import { Platform } from "react-native";
 import { useEffect, useRef, useState } from "react";
 
 import { useUpdateOrderLocation, useUpdateProviderLocation } from "@/lib/hooks";
@@ -12,6 +13,9 @@ export const FOREGROUND_LOCATION_WATCH = {
 export type LatLng = { lat: number; lng: number };
 
 const FRESH_MS = 5 * 60 * 1000;
+
+// Mesmo centro do mapa — só entra em __DEV__ quando o emulador não entrega GPS.
+const DEV_FALLBACK_POSITION: LatLng = { lat: -10.1841, lng: -48.3336 };
 
 function toLatLng(pos: Location.LocationObject | null): LatLng | null {
   if (!pos) return null;
@@ -36,7 +40,10 @@ export async function readLastKnownPosition(): Promise<LatLng | null> {
   return known?.point ?? null;
 }
 
-function watchFirstFix(timeoutMs: number): Promise<LatLng | null> {
+function watchFirstFix(
+  timeoutMs: number,
+  accuracy: Location.Accuracy = Location.Accuracy.Balanced,
+): Promise<LatLng | null> {
   return new Promise((resolve) => {
     let settled = false;
     let subscription: Location.LocationSubscription | null = null;
@@ -50,7 +57,7 @@ function watchFirstFix(timeoutMs: number): Promise<LatLng | null> {
     const timer = setTimeout(() => finish(null), timeoutMs);
 
     Location.watchPositionAsync(
-      { accuracy: Location.Accuracy.Low, timeInterval: 1000, distanceInterval: 0 },
+      { accuracy, timeInterval: 500, distanceInterval: 0, mayShowUserSettingsDialog: true },
       (pos) => finish(toLatLng(pos)),
     )
       .then((sub) => {
@@ -61,20 +68,69 @@ function watchFirstFix(timeoutMs: number): Promise<LatLng | null> {
   });
 }
 
-// Uma leitura só. O getCurrentPositionAsync do iOS falha com kCLErrorDomain 0
-// quando ainda não há fix; a última posição e um watch curto cobrem esse caso.
+async function readCurrentPosition(
+  timeoutMs: number,
+  accuracy: Location.Accuracy,
+): Promise<LatLng | null> {
+  try {
+    const pos = await Promise.race([
+      Location.getCurrentPositionAsync({ accuracy, mayShowUserSettingsDialog: true }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+    ]);
+    return toLatLng(pos);
+  } catch {
+    return null;
+  }
+}
+
+async function warmAndroidNetworkProvider() {
+  if (Platform.OS !== "android") return;
+  try {
+    await Location.enableNetworkProviderAsync();
+  } catch {
+    // Emulador / aparelho sem diálogo de precisão — segue sem bloquear.
+  }
+}
+
+// Uma leitura só. Preferimos last-known fresco; senão pedimos fix atual e um
+// watch curto. Em __DEV__, se o emulador não entregar GPS, cai em Palmas/TO.
 export async function readForegroundPosition(): Promise<LatLng | null> {
   const known = await readLastKnown();
   try {
     const enabled = await Location.hasServicesEnabledAsync();
-    if (!enabled) return known?.point ?? null;
+    if (!enabled) {
+      if (known?.point) return known.point;
+      if (__DEV__) {
+        console.warn("[location] serviços de localização desligados; fallback de desenvolvimento");
+        return DEV_FALLBACK_POSITION;
+      }
+      return null;
+    }
   } catch {
-    return known?.point ?? null;
+    if (known?.point) return known.point;
   }
   if (known?.fresh) return known.point;
 
-  const watched = await watchFirstFix(6000);
-  return watched ?? known?.point ?? null;
+  await warmAndroidNetworkProvider();
+
+  // No Android o watch liga o provider; sem isso o geo fix do emulador não grava.
+  const watched = await watchFirstFix(10000, Location.Accuracy.Balanced);
+  if (watched) return watched;
+
+  const current =
+    (await readCurrentPosition(6000, Location.Accuracy.Low)) ??
+    (await readCurrentPosition(6000, Location.Accuracy.Balanced));
+  if (current) return current;
+
+  if (known?.point) return known.point;
+
+  if (__DEV__) {
+    console.warn(
+      "[location] GPS indisponível (comum em emulador sem fix); usando Palmas/TO em desenvolvimento",
+    );
+    return DEV_FALLBACK_POSITION;
+  }
+  return null;
 }
 
 // Posição ao vivo (foreground) — mapa do prestador durante a entrega.

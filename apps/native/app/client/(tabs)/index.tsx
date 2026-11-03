@@ -29,6 +29,7 @@ import {
   formatAddressLine,
   initialsOf,
   isOrderActive,
+  isOrderPaid,
   moneyFromCents,
 } from "@/lib/format";
 import {
@@ -64,11 +65,7 @@ function helpTitle(order: Order): string {
 }
 
 function needsPayment(order: Order): boolean {
-  return (
-    order.status === "ACCEPTED" &&
-    order.payment?.status !== "PAID" &&
-    order.payment?.method !== "CASH"
-  );
+  return order.status === "ACCEPTED" && !isOrderPaid(order.payment);
 }
 
 /** Destino + CTA da ajuda que o usuário pediu (papel de solicitante). */
@@ -148,8 +145,7 @@ function myHelpHomeAction(order: Order): {
 function workNextAction(
   order: Order,
 ): { action: OrderAction; label: string; disabled?: boolean } | null {
-  const paid =
-    order.payment?.status === "PAID" || order.payment?.method === "CASH";
+  const paid = isOrderPaid(order.payment);
   switch (order.status) {
     case "ACCEPTED":
       // Pagamento libera o trajeto (endereço já veio no pedido).
@@ -179,8 +175,7 @@ function workNextAction(
 
 function workHomeMeta(order: Order): string {
   const price = moneyFromCents(order.priceCents);
-  const paid =
-    order.payment?.status === "PAID" || order.payment?.method === "CASH";
+  const paid = isOrderPaid(order.payment);
   if (order.status === "ACCEPTED" && paid) {
     return `Pode iniciar o trajeto · ${price}`;
   }

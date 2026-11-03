@@ -55,6 +55,14 @@ export function isOrderActive(status: OrderStatus): boolean {
   return status !== "COMPLETED" && status !== "CANCELLED";
 }
 
+/** Pagamento liberado pra seguir o fluxo (PAID ou dinheiro no local). */
+export function isOrderPaid(
+  payment: { status?: string | null; method?: string | null } | null | undefined,
+): boolean {
+  if (!payment) return false;
+  return payment.status === "PAID" || payment.method === "CASH";
+}
+
 export function formatAddressLine(addr: {
   label?: string | null;
   street: string;

@@ -6,7 +6,7 @@ import { effectiveProviderPosition } from "./catalog";
 import { supabase } from "./db";
 import { haversineKm, routeBetween } from "./geo";
 import { notifyUser } from "./notifications";
-import { creditProviderWallet, refundIfPaid } from "./payments";
+import { creditProviderWallet, refundIfPaid, syncOrderPaymentStatus } from "./payments";
 import { batchClientStats } from "./profile";
 
 export const PLATFORM_FEE_RATE = 0.08;
@@ -100,6 +100,8 @@ const ORDER_SELECT = `
   payment:payment(status, method)
 `;
 
+type PaymentEmbed = { status: PaymentStatus; method: PaymentMethod };
+
 type OrderFull = {
   id: string;
   clientId: string;
@@ -144,8 +146,18 @@ type OrderFull = {
     emailVerified: boolean;
   };
   events: { status: OrderStatus; note: string | null; createdAt: string }[];
-  payment: { status: PaymentStatus; method: PaymentMethod } | null;
+  payment: PaymentEmbed | PaymentEmbed[] | null;
 };
+
+/** PostgREST pode devolver 1:1 como objeto ou array — normaliza pro DTO. */
+function paymentFromEmbed(
+  payment: OrderFull["payment"],
+): { status: PaymentStatus; method: PaymentMethod } | null {
+  if (!payment) return null;
+  const row = Array.isArray(payment) ? payment[0] : payment;
+  if (!row?.status || !row?.method) return null;
+  return { status: row.status, method: row.method };
+}
 
 function trackingDestination(order: {
   status: OrderStatus;
@@ -262,7 +274,7 @@ function toDTO(o: OrderFull, unreadMessages = 0): OrderDTO {
       cancelledOrders: 0,
       totalOrders: 0,
     },
-    payment: o.payment ? { status: o.payment.status, method: o.payment.method } : null,
+    payment: paymentFromEmbed(o.payment),
     address: toAddressDTO(o.address),
     pickupAddress: o.pickupAddress ? toAddressDTO(o.pickupAddress) : null,
     events: [...(o.events ?? [])]
@@ -329,6 +341,21 @@ async function fetchOrder(id: string): Promise<OrderFull | null> {
   const { data, error } = await supabase.from("order").select(ORDER_SELECT).eq("id", id).maybeSingle();
   if (error) throw new Error(error.message);
   return data as unknown as OrderFull | null;
+}
+
+/** Se o Stripe já confirmou e o banco ainda está PENDING, alinha antes do DTO. */
+async function withSyncedPayment(order: OrderFull): Promise<OrderFull> {
+  const pay = paymentFromEmbed(order.payment);
+  if (
+    order.status !== "ACCEPTED" &&
+    order.status !== "EN_ROUTE" &&
+    order.status !== "IN_PROGRESS"
+  ) {
+    return order;
+  }
+  if (!pay || pay.status !== "PENDING" || pay.method === "CASH") return order;
+  await syncOrderPaymentStatus(order.id);
+  return (await fetchOrder(order.id)) ?? order;
 }
 
 export type CreateOrderInput = {
@@ -508,7 +535,9 @@ export async function listClientOrders(clientId: string): Promise<OrderDTO[]> {
     .eq("clientId", clientId)
     .order("createdAt", { ascending: false });
   if (error) throw new Error(error.message);
-  const list = (rows ?? []) as unknown as OrderFull[];
+  const list = await Promise.all(
+    ((rows ?? []) as unknown as OrderFull[]).map((o) => withSyncedPayment(o)),
+  );
   const unread = await unreadMessageCounts(
     list.map((o) => o.id),
     clientId,
@@ -568,12 +597,13 @@ export async function listProviderOrders(userId: string): Promise<OrderDTO[]> {
   ]);
 
   const seen = new Set<string>();
-  const rows: OrderFull[] = [];
+  const merged: OrderFull[] = [];
   for (const row of [...open, ...((assigned ?? []) as unknown as OrderFull[])]) {
     if (seen.has(row.id)) continue;
     seen.add(row.id);
-    rows.push(row);
+    merged.push(row);
   }
+  const rows = await Promise.all(merged.map((o) => withSyncedPayment(o)));
   rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const unread = await unreadMessageCounts(
     rows.map((o) => o.id),
@@ -592,8 +622,9 @@ async function canViewOpenRequest(userId: string): Promise<boolean> {
 }
 
 export async function getOrder(id: string, userId: string): Promise<OrderDTO | null> {
-  const o = await fetchOrder(id);
+  let o = await fetchOrder(id);
   if (!o) return null;
+  o = await withSyncedPayment(o);
   const isClient = o.clientId === userId;
   const isProvider = o.provider?.userId === userId;
   const openPool = o.isOpenRequest && !o.providerId && o.status === "CREATED";
@@ -703,7 +734,10 @@ export async function transitionOrder(
     return { error: `Transição inválida a partir de ${order.status}`, status: 409 };
   }
   if (action === "start_route") {
-    const paid = order.payment?.status === "PAID" || order.payment?.method === "CASH";
+    // Sync Stripe → DB e normaliza embed (PostgREST pode devolver payment como array).
+    let paidOrder = await withSyncedPayment(order);
+    const pay = paymentFromEmbed(paidOrder.payment);
+    const paid = pay?.status === "PAID" || pay?.method === "CASH";
     if (!paid) {
       return { error: "Aguardando o cliente confirmar o pagamento", status: 409 };
     }
@@ -743,13 +777,14 @@ export async function transitionOrder(
   if (!updated) return { error: "Pedido não encontrado", status: 404 };
 
   if (rule.to === "COMPLETED" && updated.provider) {
-    if (order.payment?.method === "CASH") {
+    const pay = paymentFromEmbed(order.payment);
+    if (pay?.method === "CASH") {
       await supabase
         .from("payment")
         .update({ status: "PAID", updatedAt: now })
         .eq("orderId", id);
     }
-    if (order.payment?.method === "CASH" || order.payment?.status === "PAID") {
+    if (pay?.method === "CASH" || pay?.status === "PAID") {
       await creditProviderWallet(updated.provider.userId, updated.priceCents, updated.id);
     }
   }

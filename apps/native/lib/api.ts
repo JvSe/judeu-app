@@ -654,6 +654,12 @@ export const paymentsApi = {
       body: { method },
     });
   },
+  /** Após PaymentSheet / Pix: força sync com Stripe e grava PAID se já autorizou. */
+  confirm(orderId: string) {
+    return apiFetch<{ payment: Payment }>(`/api/orders/${orderId}/payment/confirm`, {
+      method: "POST",
+    }).then((r) => r.payment);
+  },
 };
 
 // ---- Carteira do prestador (saldo + ganhos + extrato) ----

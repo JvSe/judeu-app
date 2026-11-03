@@ -8,7 +8,14 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import type { Order } from "@/lib/api";
 import { fonts } from "@/constants/fonts";
-import { initialsOf, isOrderActive, moneyFromCents, orderStatusLabel, shortTime } from "@/lib/format";
+import {
+  initialsOf,
+  isOrderActive,
+  isOrderPaid,
+  moneyFromCents,
+  orderStatusLabel,
+  shortTime,
+} from "@/lib/format";
 import { useMyProviderProfile, useOrders } from "@/lib/hooks";
 import { Avatar } from "@/components/ui/avatar";
 import { Screen } from "@/components/ui/screen";
@@ -262,10 +269,7 @@ function AskedActiveCard({ order }: { order: Order }) {
   const { theme } = useUnistyles();
   const enRoute = order.status === "EN_ROUTE" || order.status === "IN_PROGRESS";
   const waiting = order.status === "CREATED";
-  const needsPay =
-    order.status === "ACCEPTED" &&
-    order.payment?.status !== "PAID" &&
-    order.payment?.method !== "CASH";
+  const needsPay = order.status === "ACCEPTED" && !isOrderPaid(order.payment);
   const isHelpAsk = order.isOpenRequest;
   const canTrackOnMap =
     !!order.provider &&

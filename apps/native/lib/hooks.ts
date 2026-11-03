@@ -288,6 +288,28 @@ export function useCreatePayment() {
   });
 }
 
+export function useConfirmPayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (orderId: string) => paymentsApi.confirm(orderId),
+    onSuccess: (payment, orderId) => {
+      const snapshot = { status: payment.status, method: payment.method };
+      qc.setQueryData(["payment", orderId], payment);
+      qc.setQueryData(["order", orderId], (current: { payment?: unknown } | undefined) =>
+        current ? { ...current, payment: snapshot } : current,
+      );
+      for (const as of ["client", "provider"] as const) {
+        qc.setQueryData(["orders", as], (list: { id: string; payment?: unknown }[] | undefined) =>
+          list?.map((item) => (item.id === orderId ? { ...item, payment: snapshot } : item)),
+        );
+      }
+      qc.invalidateQueries({ queryKey: ["payment", orderId] });
+      qc.invalidateQueries({ queryKey: ["order", orderId] });
+      qc.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+}
+
 // ---- Carteira do prestador ----
 export function useWallet() {
   return useQuery({ queryKey: ["wallet"], queryFn: () => walletApi.summary() });
