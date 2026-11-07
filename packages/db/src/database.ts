@@ -52,6 +52,7 @@ export type PasswordResetTokenRow = {
   tokenHash: string;
   expiresAt: string;
   usedAt: string | null;
+  attempts: number;
   createdAt: string;
 };
 
@@ -98,6 +99,7 @@ export type CategoryRow = {
   slug: string;
   name: string;
   icon: string | null;
+  feeRate: number | null;
   createdAt: string;
 };
 
@@ -148,6 +150,8 @@ export type OrderRow = {
   priceCents: number;
   platformFeeCents: number;
   totalCents: number;
+  feeRate: number;
+  feePayer: "CLIENT" | "PROVIDER";
   couponCode: string | null;
   cancelReason: string | null;
   acceptedAt: string | null;

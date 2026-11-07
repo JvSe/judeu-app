@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3001",
+    "dev": "TZ=UTC next dev --port 3001",
     "build": "opennextjs-cloudflare build",
-    "start": "next start",
+    "start": "TZ=UTC next start",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare deploy",
     "check-types": "tsc --noEmit",

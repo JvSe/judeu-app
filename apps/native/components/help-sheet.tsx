@@ -151,7 +151,7 @@ export const HelpSheet = forwardRef<BottomSheetMethods, HelpSheetProps>(
           <View style={styles.body}>
             <View style={styles.top}>
               <Text style={styles.earnLabel}>Você recebe</Text>
-              <Text style={styles.earnValue}>{moneyFromCents(order.priceCents)}</Text>
+              <Text style={styles.earnValue}>{moneyFromCents(order.providerNetCents)}</Text>
               <Text style={styles.title} numberOfLines={3}>
                 {direct
                   ? (order.service?.name ?? order.category?.name ?? order.description?.trim() ?? "Chamada")

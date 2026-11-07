@@ -1,6 +1,8 @@
 import { env } from "@judeu/env/server";
 import { NextResponse } from "next/server";
 
+import { withUtcTimestamps } from "./dates";
+
 // CORS: o app nativo (Expo) chama a API de outra origem.
 export const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": env.CORS_ORIGIN,
@@ -10,7 +12,7 @@ export const corsHeaders: Record<string, string> = {
 };
 
 export function json<T>(data: T, init?: ResponseInit) {
-  return NextResponse.json(data, {
+  return NextResponse.json(withUtcTimestamps(data), {
     ...init,
     headers: { ...corsHeaders, ...(init?.headers ?? {}) },
   });

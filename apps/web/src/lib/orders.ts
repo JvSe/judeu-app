@@ -2,13 +2,17 @@ import { randomUUID } from "node:crypto";
 
 import type { Json, OrderRow, OrderStatus, PaymentMethod, PaymentStatus } from "@judeu/db";
 
-import { effectiveProviderPosition } from "./catalog";
+import { coarsen, effectiveProviderPosition } from "./catalog";
+import { getConfig } from "./config";
+import { ensureUtcIso } from "./dates";
+import { completionWalletMovement, computeFees, feeRuleOf, resolveFeeRule } from "./fees";
 import { supabase } from "./db";
 import { haversineKm, routeBetween } from "./geo";
 import { notifyUser } from "./notifications";
-import { creditProviderWallet, refundIfPaid, syncOrderPaymentStatus } from "./payments";
+import { applyWalletMovement, refundIfPaid, syncOrderPaymentStatus } from "./payments";
 import { batchClientStats } from "./profile";
 
+/** Taxa dos pedidos antigos (regra legada). Pedidos novos usam a configuração — ver fees.ts. */
 export const PLATFORM_FEE_RATE = 0.08;
 export const FALLBACK_LAT = -10.1841;
 export const FALLBACK_LNG = -48.3336;
@@ -112,6 +116,8 @@ type OrderFull = {
   priceCents: number;
   platformFeeCents: number;
   totalCents: number;
+  feeRate?: number | null;
+  feePayer?: string | null;
   cancelReason: string | null;
   createdAt: string;
   isOpenRequest: boolean;
@@ -178,6 +184,11 @@ export type OrderDTO = {
   priceCents: number;
   platformFeeCents: number;
   totalCents: number;
+  /** Quem paga a taxa neste pedido (snapshot): CLIENT = somada; PROVIDER = descontada do repasse. */
+  feePayer: "CLIENT" | "PROVIDER";
+  feeRate: number;
+  /** O que quem atende recebe por este pedido. */
+  providerNetCents: number;
   cancelReason: string | null;
   createdAt: string;
   offerExpiresAt: string;
@@ -227,7 +238,7 @@ export type OrderDTO = {
 function toDTO(o: OrderFull, unreadMessages = 0): OrderDTO {
   const dest = trackingDestination(o);
   const openWait = o.isOpenRequest && !o.providerId && o.status === "CREATED";
-  const createdAtMs = new Date(o.createdAt).getTime();
+  const createdAtMs = new Date(ensureUtcIso(o.createdAt)).getTime();
   return {
     id: o.id,
     status: o.status,
@@ -236,6 +247,10 @@ function toDTO(o: OrderFull, unreadMessages = 0): OrderDTO {
     priceCents: o.priceCents,
     platformFeeCents: o.platformFeeCents,
     totalCents: o.totalCents,
+    feePayer: feeRuleOf(o).payer,
+    feeRate: feeRuleOf(o).rate,
+    providerNetCents:
+      feeRuleOf(o).payer === "PROVIDER" ? o.priceCents - o.platformFeeCents : o.priceCents,
     cancelReason: o.cancelReason,
     createdAt: o.createdAt,
     offerExpiresAt: new Date(
@@ -289,6 +304,33 @@ function toDTO(o: OrderFull, unreadMessages = 0): OrderDTO {
       route: null,
       arrived: hasArrivedAt(o.providerLat, o.providerLng, dest),
     },
+  };
+}
+
+export const REDACTED_STREET = "Endereço exato liberado após o aceite";
+
+function redactAddress(a: OrderDTO["address"]): OrderDTO["address"] {
+  return {
+    ...a,
+    label: null,
+    street: REDACTED_STREET,
+    number: null,
+    lat: coarsen(a.lat) as number,
+    lng: coarsen(a.lng) as number,
+  };
+}
+
+/**
+ * Visão de uma ajuda aberta para quem ainda não aceitou (QA A-07/P-07): sem
+ * telefone e sem endereço exato. Bairro, cidade e posição aproximada bastam
+ * para decidir; o resto é liberado no aceite.
+ */
+export function redactOpenPoolOrder(dto: OrderDTO): OrderDTO {
+  return {
+    ...dto,
+    client: { ...dto.client, phone: null },
+    address: redactAddress(dto.address),
+    pickupAddress: dto.pickupAddress ? redactAddress(dto.pickupAddress) : null,
   };
 }
 
@@ -497,6 +539,15 @@ export async function createOrder(
     if (!found || found.status !== "APPROVED" || !found.isAvailable) {
       return { error: "Essa pessoa não está disponível agora", status: 400 };
     }
+    // Helper não tem catálogo: só atende ajudas abertas (QA C-06/H-03).
+    if (found.isHelper) {
+      return { error: "Essa pessoa atende só pedidos de ajuda abertos", status: 400 };
+    }
+    // Sem serviço escolhido o pedido nascia com R$ 0. Só vale sem serviço quando
+    // o prestador aceita negociar (o valor sai do orçamento).
+    if (!input.serviceId && !found.allowsNegotiation) {
+      return { error: "Escolha um dos serviços do prestador", status: 400 };
+    }
     const { data: busy } = await supabase
       .from("order")
       .select("id")
@@ -516,8 +567,13 @@ export async function createOrder(
     priceCents = input.priceCents!;
   }
 
-  const platformFeeCents = Math.round(priceCents * PLATFORM_FEE_RATE);
-  const totalCents = priceCents + platformFeeCents;
+  // Snapshot da regra de cobrança: o pedido fica com ela até o fim.
+  const config = await getConfig();
+  const { data: category } = input.categoryId
+    ? await supabase.from("category").select("feeRate").eq("id", input.categoryId).maybeSingle()
+    : { data: null };
+  const feeRule = resolveFeeRule(config, category);
+  const { platformFeeCents, totalCents } = computeFees(priceCents, feeRule);
   const orderId = randomUUID();
 
   const { data: created, error } = await supabase.rpc("create_order_with_event", {
@@ -535,6 +591,8 @@ export async function createOrder(
       priceCents,
       platformFeeCents,
       totalCents,
+      feeRate: feeRule.rate,
+      feePayer: feeRule.payer,
       status: "CREATED",
     } as Json,
     p_event_note: isOpenRequest ? "Solicitação publicada" : "Chamada enviada",
@@ -634,13 +692,15 @@ export async function listProviderOrders(userId: string): Promise<OrderDTO[]> {
     .maybeSingle();
   if (!profile) return [];
 
+  // Só perfil aprovado vê o pool de ajudas abertas (QA A-07/P-07), como no detalhe.
+  const canSeePool = profile.status === "APPROVED";
   const [{ data: assigned }, open] = await Promise.all([
     supabase
       .from("order")
       .select(ORDER_SELECT)
       .eq("providerId", profile.id)
       .order("createdAt", { ascending: false }),
-    listNearbyOpenRequests(userId, profile),
+    canSeePool ? listNearbyOpenRequests(userId, profile) : Promise.resolve([] as OrderFull[]),
   ]);
 
   const seen = new Set<string>();
@@ -656,7 +716,12 @@ export async function listProviderOrders(userId: string): Promise<OrderDTO[]> {
     rows.map((o) => o.id),
     userId,
   );
-  return withOpenRequestClientStats(rows.map((o) => toDTO(o, unread.get(o.id) ?? 0)));
+  return withOpenRequestClientStats(
+    rows.map((o) => {
+      const dto = toDTO(o, unread.get(o.id) ?? 0);
+      return o.providerId === profile.id ? dto : redactOpenPoolOrder(dto);
+    }),
+  );
 }
 
 async function canViewOpenRequest(userId: string): Promise<boolean> {
@@ -675,7 +740,8 @@ export async function getOrder(id: string, userId: string): Promise<OrderDTO | n
   const isClient = o.clientId === userId;
   const isProvider = o.provider?.userId === userId;
   const openPool = o.isOpenRequest && !o.providerId && o.status === "CREATED";
-  if (!isClient && !isProvider) {
+  const poolViewer = !isClient && !isProvider;
+  if (poolViewer) {
     if (!openPool || o.clientId === userId) return null;
     if (!(await canViewOpenRequest(userId))) return null;
   }
@@ -687,7 +753,8 @@ export async function getOrder(id: string, userId: string): Promise<OrderDTO | n
     .is("readAt", null);
   const dto = await withRoute(o, toDTO(o, count ?? 0));
   const [enriched] = await withOpenRequestClientStats([dto]);
-  return enriched ?? dto;
+  const result = enriched ?? dto;
+  return poolViewer ? redactOpenPoolOrder(result) : result;
 }
 
 export async function updateOrderLocation(
@@ -730,6 +797,19 @@ const ACTION_NOTES: Record<OrderAction, string> = {
   cancel: "Chamada cancelada",
 };
 
+/** Quem atende já tem outra chamada em andamento? (ignora o próprio pedido) */
+async function isProviderBusy(providerId: string, exceptOrderId: string): Promise<boolean> {
+  const { data: busy } = await supabase
+    .from("order")
+    .select("id")
+    .eq("providerId", providerId)
+    .in("status", [...BUSY_ORDER_STATUSES])
+    .neq("id", exceptOrderId)
+    .limit(1)
+    .maybeSingle();
+  return !!busy;
+}
+
 export async function transitionOrder(
   id: string,
   userId: string,
@@ -759,17 +839,30 @@ export async function transitionOrder(
     if (!profile.isAvailable) {
       return { error: "Fique disponível para atender solicitações", status: 409 };
     }
-    const { data: busy } = await supabase
-      .from("order")
-      .select("id")
-      .eq("providerId", profile.id)
-      .in("status", [...BUSY_ORDER_STATUSES])
-      .limit(1)
-      .maybeSingle();
-    if (busy) return { error: "Você já está em uma chamada", status: 409 };
+    if (await isProviderBusy(profile.id, order.id)) {
+      return { error: "Você já está em uma chamada", status: 409 };
+    }
+    // Profissional só pega ajuda da própria categoria; helper pega qualquer uma
+    // (mesma regra do push — QA P-08/C-13).
+    if (!profile.isHelper && order.category?.id) {
+      const { data: link } = await supabase
+        .from("providercategory")
+        .select("categoryId")
+        .eq("providerId", profile.id)
+        .eq("categoryId", order.category.id)
+        .maybeSingle();
+      if (!link) {
+        return { error: "Essa solicitação é de uma categoria que você não atende", status: 403 };
+      }
+    }
     claimProviderId = profile.id;
   } else if (rule.by === "provider" && !isProvider) {
     return { error: "Ação permitida apenas ao prestador", status: 403 };
+  } else if (action === "accept" && order.providerId) {
+    // Chamada direta: a mesma trava de "ocupado" da ajuda aberta (QA A-01/H-02/P-09).
+    if (await isProviderBusy(order.providerId, order.id)) {
+      return { error: "Termine a chamada em andamento antes de aceitar outra", status: 409 };
+    }
   }
   if (rule.by === "client" && !isClient) {
     return { error: "Ação permitida apenas ao cliente", status: 403 };
@@ -831,9 +924,12 @@ export async function transitionOrder(
         .update({ status: "PAID", updatedAt: now })
         .eq("orderId", id);
     }
-    if (pay?.method === "CASH" || pay?.status === "PAID") {
-      await creditProviderWallet(updated.provider.userId, updated.priceCents, updated.id);
-    }
+    const movement = completionWalletMovement(
+      feeRuleOf(updated),
+      updated,
+      pay ? { method: pay.method, paid: pay.status === "PAID" } : null,
+    );
+    if (movement) await applyWalletMovement(updated.provider.userId, movement, updated.id);
   }
   if (rule.to === "CANCELLED") {
     await refundIfPaid(id);

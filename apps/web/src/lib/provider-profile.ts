@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 
+import { getConfig } from "./config";
 import { supabase } from "./db";
+import { notifyUser } from "./notifications";
 import { uploadKycDocument } from "./storage";
 import { publicUser, type PublicUser } from "./user";
 
@@ -96,31 +98,59 @@ export async function getMyProviderProfile(userId: string): Promise<MyProviderPr
   return profile ? toDTO(profile) : null;
 }
 
+type ExistingProfileForUpsert = {
+  isHelper: boolean;
+  status: MyProviderProfileDTO["status"];
+  baseLat: number | null;
+  baseLng: number | null;
+};
+
+/**
+ * Campos que o upsert profissional grava além dos dados do formulário.
+ * - Helper que vira profissional volta para PENDING: o helper não passou por
+ *   KYC e não pode herdar o APPROVED (QA H-01). BLOCKED continua BLOCKED.
+ * - Profissional que só edita o cadastro mantém o status (sem nova análise).
+ * - Base (baseLat/baseLng) só muda quando o app envia; senão preserva (QA P-14).
+ */
+export function professionalUpsertOverrides(
+  existing: ExistingProfileForUpsert | null,
+  input: Pick<UpsertProviderProfileInput, "baseLat" | "baseLng">,
+): { status?: "PENDING"; baseLat: number | null; baseLng: number | null } {
+  const hasBase = input.baseLat != null && input.baseLng != null;
+  const base = hasBase
+    ? { baseLat: input.baseLat!, baseLng: input.baseLng! }
+    : { baseLat: existing?.baseLat ?? null, baseLng: existing?.baseLng ?? null };
+  if (existing?.isHelper && existing.status !== "BLOCKED") {
+    return { status: "PENDING", ...base };
+  }
+  return base;
+}
+
 export async function upsertMyProviderProfile(
   userId: string,
   input: UpsertProviderProfileInput,
 ): Promise<MyProviderProfileDTO> {
   const now = new Date().toISOString();
+
+  const { data: existing } = await supabase
+    .from("providerprofile")
+    .select("id, isHelper, status, baseLat, baseLng")
+    .eq("userId", userId)
+    .maybeSingle();
+
   const payload = {
     headline: input.headline,
     bio: input.bio ?? null,
     yearsExperience: input.yearsExperience,
     serviceRadiusKm: input.serviceRadiusKm,
-    baseLat: input.baseLat ?? null,
-    baseLng: input.baseLng ?? null,
     allowsNegotiation: input.allowsNegotiation ?? false,
     isHelper: false,
     isCompany: input.isCompany ?? false,
     companyName: input.isCompany ? (input.companyName ?? null) : null,
     responsibleName: input.isCompany ? (input.responsibleName ?? null) : null,
     updatedAt: now,
+    ...professionalUpsertOverrides(existing, input),
   };
-
-  const { data: existing } = await supabase
-    .from("providerprofile")
-    .select("id")
-    .eq("userId", userId)
-    .maybeSingle();
 
   let providerId: string;
   if (existing) {
@@ -197,13 +227,17 @@ export async function setProviderAvailability(
   if (isAvailable && existing.status === "BLOCKED") {
     return { error: "Cadastro bloqueado. Fale com o suporte.", status: 403 };
   }
-  // Helper precisa ter passado pelo registerHelper; prestador profissional
-  // usa o mesmo endpoint, mas nunca criamos perfil “vazio” aqui.
-  if (isAvailable && existing.isHelper !== true && existing.status !== "APPROVED") {
+  // Helper e profissional só ficam disponíveis depois de aprovados. Antes, o
+  // helper nascia APPROVED e passava direto (pitch × app, item "cadastro verificado").
+  if (isAvailable && existing.status !== "APPROVED") {
     return {
       error: "Seu cadastro ainda não foi aprovado.",
       status: 403,
     };
+  }
+  if (isAvailable) {
+    const debt = await cashFeeDebtBlock(userId);
+    if (debt) return debt;
   }
   const now = new Date().toISOString();
   await supabase
@@ -213,6 +247,25 @@ export async function setProviderAvailability(
   const profile = await loadProfile(userId);
   if (!profile) throw new Error("Perfil não encontrado");
   return toDTO(profile);
+}
+
+/**
+ * Taxas de pedidos em dinheiro viram saldo negativo na carteira. Acima do
+ * limite configurado, quem atende precisa acertar antes de ficar disponível.
+ */
+export function cashDebtError(balanceCents: number, limitCents: number): string | null {
+  if (balanceCents >= -limitCents) return null;
+  const owed = (-balanceCents / 100).toFixed(2).replace(".", ",");
+  return `Você tem R$ ${owed} em taxas de pedidos em dinheiro a acertar. Fale com o suporte para regularizar.`;
+}
+
+async function cashFeeDebtBlock(userId: string): Promise<{ error: string; status: number } | null> {
+  const [{ data: wallet }, config] = await Promise.all([
+    supabase.from("wallet").select("balanceCents").eq("userId", userId).maybeSingle(),
+    getConfig(),
+  ]);
+  const message = cashDebtError(wallet?.balanceCents ?? 0, config.cashDebtLimitCents);
+  return message ? { error: message, status: 409 } : null;
 }
 
 export type RegisterHelperInput = {
@@ -263,9 +316,11 @@ export async function registerHelper(
     })
     .eq("id", userId);
 
+  // Cadastro novo de helper nasce PENDING e espera aprovação no painel admin.
+  // Helper que já existe mantém o status (quem já estava aprovado continua).
   const profilePayload = {
     isHelper: true,
-    status: "APPROVED" as const,
+    ...(existing ? {} : { status: "PENDING" as const }),
     isAvailable: false,
     headline: "Ajuda perto de você",
     bio: input.bio?.trim() || null,
@@ -414,9 +469,31 @@ export async function setProviderProfileStatus(
   providerId: string,
   status: "PENDING" | "APPROVED" | "BLOCKED",
 ): Promise<void> {
+  const { data: before } = await supabase
+    .from("providerprofile")
+    .select("userId, status")
+    .eq("id", providerId)
+    .maybeSingle();
   const { error } = await supabase
     .from("providerprofile")
-    .update({ status, updatedAt: new Date().toISOString() })
+    .update({
+      status,
+      // Bloqueado sai do ar na hora.
+      ...(status === "BLOCKED" ? { isAvailable: false } : {}),
+      updatedAt: new Date().toISOString(),
+    })
     .eq("id", providerId);
   if (error) throw new Error(error.message);
+
+  // Avisa quem atende (QA P-05): antes ninguém sabia que tinha sido aprovado.
+  if (before && before.status !== status && status !== "PENDING") {
+    void notifyUser(before.userId, "SUPPORT", {
+      title: status === "APPROVED" ? "Cadastro aprovado" : "Cadastro bloqueado",
+      body:
+        status === "APPROVED"
+          ? "Você já pode ligar o modo atendimento e receber pedidos perto de você."
+          : "Seu cadastro para atender foi bloqueado. Fale com o suporte para entender o motivo.",
+      data: { type: "provider_status", status },
+    });
+  }
 }

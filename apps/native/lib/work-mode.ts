@@ -33,7 +33,8 @@ export function useWorkMode() {
   // Só CLIENT sem perfil passa pelo formulário de helper; prestador nasce com perfil (vazio).
   const needsSignup = !hasProfile && role === "CLIENT";
   // Profissional só fica disponível depois do KYC aprovado (o backend também barra).
-  const needsApproval = isProfessional && !approved && !blocked;
+  // Helper também passa por aprovação (cadastro novo nasce PENDING).
+  const needsApproval = hasProfile && !approved && !blocked;
   const isOn = hasProfile && profile.isAvailable === true && !blocked;
   const profileLoading =
     (role === "BOTH" || role === "PROVIDER") && profileQuery.isLoading;

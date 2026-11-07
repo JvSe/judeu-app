@@ -8,6 +8,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import type { Order, OrderStatus } from "@/lib/api";
 import { fonts } from "@/constants/fonts";
+import { percentLabel } from "@/lib/fees";
 import { initialsOf, moneyFromCents, orderStatusLabel, shortDateTime, shortTime } from "@/lib/format";
 import { useMyProviderProfile, useOrder } from "@/lib/hooks";
 import { Avatar } from "@/components/ui/avatar";
@@ -183,19 +184,43 @@ export function OrderDetailAttending({ routes }: { routes: AttendingRoutes }) {
         )}
 
         <View style={styles.costCard}>
-          <View style={styles.costRow}>
-            <Text style={styles.costLabel}>Valor do serviço (você recebe)</Text>
-            <Text style={styles.costValue}>{moneyFromCents(order.priceCents)}</Text>
-          </View>
-          <View style={styles.costDivider} />
-          <View style={styles.costRow}>
-            <Text style={styles.costLabelSecondary}>Taxa da plataforma</Text>
-            <Text style={styles.costValueSecondary}>{moneyFromCents(order.platformFeeCents)}</Text>
-          </View>
-          <View style={styles.costRow}>
-            <Text style={styles.costLabelSecondary}>Total pago pelo cliente</Text>
-            <Text style={styles.costValueSecondary}>{moneyFromCents(order.totalCents)}</Text>
-          </View>
+          {order.feePayer === "PROVIDER" ? (
+            <>
+              <View style={styles.costRow}>
+                <Text style={styles.costLabel}>Você recebe</Text>
+                <Text style={styles.costValue}>{moneyFromCents(order.providerNetCents)}</Text>
+              </View>
+              <View style={styles.costDivider} />
+              <View style={styles.costRow}>
+                <Text style={styles.costLabelSecondary}>Valor pago pelo cliente</Text>
+                <Text style={styles.costValueSecondary}>{moneyFromCents(order.totalCents)}</Text>
+              </View>
+              <View style={styles.costRow}>
+                <Text style={styles.costLabelSecondary}>
+                  Taxa da plataforma ({percentLabel(order.feeRate)})
+                </Text>
+                <Text style={styles.costValueSecondary}>
+                  − {moneyFromCents(order.platformFeeCents)}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.costRow}>
+                <Text style={styles.costLabel}>Valor do serviço (você recebe)</Text>
+                <Text style={styles.costValue}>{moneyFromCents(order.priceCents)}</Text>
+              </View>
+              <View style={styles.costDivider} />
+              <View style={styles.costRow}>
+                <Text style={styles.costLabelSecondary}>Taxa da plataforma</Text>
+                <Text style={styles.costValueSecondary}>{moneyFromCents(order.platformFeeCents)}</Text>
+              </View>
+              <View style={styles.costRow}>
+                <Text style={styles.costLabelSecondary}>Total pago pelo cliente</Text>
+                <Text style={styles.costValueSecondary}>{moneyFromCents(order.totalCents)}</Text>
+              </View>
+            </>
+          )}
         </View>
 
         {order.status === "AWAITING_CONFIRMATION" && (

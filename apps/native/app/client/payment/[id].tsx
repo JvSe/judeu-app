@@ -230,10 +230,12 @@ export default function Payment() {
             <Text style={styles.breakdownLabel}>Serviço</Text>
             <Text style={styles.breakdownValue}>{moneyFromCents(order.priceCents)}</Text>
           </View>
-          <View style={styles.breakdownRow}>
-            <Text style={styles.breakdownLabel}>Taxa da plataforma</Text>
-            <Text style={styles.breakdownValue}>{moneyFromCents(order.platformFeeCents)}</Text>
-          </View>
+          {order.feePayer === "CLIENT" && (
+            <View style={styles.breakdownRow}>
+              <Text style={styles.breakdownLabel}>Taxa da plataforma</Text>
+              <Text style={styles.breakdownValue}>{moneyFromCents(order.platformFeeCents)}</Text>
+            </View>
+          )}
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total</Text>
             <Text style={styles.totalValue}>{moneyFromCents(order.totalCents)}</Text>

@@ -3,8 +3,9 @@ import { randomUUID } from "node:crypto";
 import type { ProposalStatus } from "@judeu/db";
 
 import { supabase } from "./db";
+import { firstEmbed } from "./embed";
 import { notifyUser } from "./notifications";
-import { PLATFORM_FEE_RATE } from "./orders";
+import { LEGACY_FEE_RULE, computeFees, feeRuleOf, type FeeRule } from "./fees";
 
 export type ProposalDTO = {
   id: string;
@@ -46,12 +47,16 @@ export function moneyLabel(cents: number): string {
   return `R$ ${(cents / 100).toFixed(2).replace(".", ",")}`;
 }
 
-export function computeAcceptedTotals(priceCents: number): {
+/** Totais de um novo preço acordado, com a regra de cobrança do próprio pedido. */
+export function computeAcceptedTotals(
+  priceCents: number,
+  rule: FeeRule = LEGACY_FEE_RULE,
+): {
   platformFeeCents: number;
   totalCents: number;
 } {
-  const platformFeeCents = Math.round(priceCents * PLATFORM_FEE_RATE);
-  return { platformFeeCents, totalCents: priceCents + platformFeeCents };
+  const { platformFeeCents, totalCents } = computeFees(priceCents, rule);
+  return { platformFeeCents, totalCents };
 }
 
 type NegotiableOrder = {
@@ -59,6 +64,8 @@ type NegotiableOrder = {
   clientId: string;
   status: string;
   isOpenRequest: boolean;
+  feeRate?: number | null;
+  feePayer?: string | null;
   provider: { userId: string; allowsNegotiation: boolean } | null;
   payment: { id: string; status?: string } | null;
   service: { name: string } | null;
@@ -70,7 +77,7 @@ async function findOrderForNegotiation(orderId: string): Promise<NegotiableOrder
     .from("order")
     .select(
       `
-      id, clientId, status, isOpenRequest,
+      id, clientId, status, isOpenRequest, feeRate, feePayer,
       provider:providerprofile(userId, allowsNegotiation),
       payment:payment(id, status),
       service:service(name),
@@ -79,7 +86,12 @@ async function findOrderForNegotiation(orderId: string): Promise<NegotiableOrder
     )
     .eq("id", orderId)
     .maybeSingle();
-  return data as unknown as NegotiableOrder | null;
+  if (!data) return null;
+  const row = data as unknown as Omit<NegotiableOrder, "payment" | "provider"> & {
+    payment: NegotiableOrder["payment"] | NonNullable<NegotiableOrder["payment"]>[];
+    provider: NegotiableOrder["provider"] | NonNullable<NegotiableOrder["provider"]>[];
+  };
+  return { ...row, payment: firstEmbed(row.payment), provider: firstEmbed(row.provider) };
 }
 
 async function loadNegotiableOrder(orderId: string, userId: string) {
@@ -126,9 +138,9 @@ export async function hasBlockingOpenHelpProposal(orderId: string): Promise<bool
   const order = data as unknown as {
     isOpenRequest: boolean;
     status: string;
-    payment: { id: string } | null;
+    payment: { id: string } | { id: string }[] | null;
   };
-  if (!order.isOpenRequest || order.status !== "ACCEPTED" || order.payment) return false;
+  if (!order.isOpenRequest || order.status !== "ACCEPTED" || firstEmbed(order.payment)) return false;
 
   const { data: pending } = await supabase
     .from("orderproposal")
@@ -259,6 +271,13 @@ export async function respondToProposal(
   const now = new Date().toISOString();
   const openHelp = isOpenHelpNegotiation(order);
 
+  // Orçamento profissional: só a outra parte responde (QA P-04 — antes, quem
+  // propôs conseguia "recusar" a própria proposta e encerrar a negociação).
+  const callerRole = isClient ? "client" : "provider";
+  if (!openHelp && proposal.byRole === callerRole) {
+    return { error: "Aguarde a resposta da outra parte", status: 403 };
+  }
+
   if (action === "reject") {
     const { data: updated, error } = await supabase
       .from("orderproposal")
@@ -316,7 +335,7 @@ export async function respondToProposal(
       return { error: "Você já confirmou. Aguarde quem ajuda aceitar.", status: 403 };
     }
 
-    const { platformFeeCents, totalCents } = computeAcceptedTotals(proposal.priceCents);
+    const { platformFeeCents, totalCents } = computeAcceptedTotals(proposal.priceCents, feeRuleOf(order));
     const { data: updatedProposal, error } = await supabase
       .from("orderproposal")
       .update({
@@ -361,7 +380,7 @@ export async function respondToProposal(
     return { error: "Você não pode responder à própria proposta", status: 403 };
   }
 
-  const { platformFeeCents, totalCents } = computeAcceptedTotals(proposal.priceCents);
+  const { platformFeeCents, totalCents } = computeAcceptedTotals(proposal.priceCents, feeRuleOf(order));
   const { data: updatedProposal, error } = await supabase
     .from("orderproposal")
     .update({

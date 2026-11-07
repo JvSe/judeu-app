@@ -14,6 +14,7 @@ import { FormInput } from "@/components/form/input";
 import { Screen } from "@/components/ui/screen";
 import SpinButton from "@/components/ui/spin-button";
 import { fonts } from "@/constants/fonts";
+import { useAuth } from "@/lib/auth-context";
 import { moneyFromCents } from "@/lib/format";
 import { useCreateProposal, useOrder, useOrderProposals, useRespondToProposal } from "@/lib/hooks";
 import { errorMessage, toast } from "@/lib/toast";
@@ -39,8 +40,10 @@ type ProposeFormInput = z.input<typeof proposeSchema>;
 type ProposeFormOutput = z.output<typeof proposeSchema>;
 
 // Orçamento profissional (CREATED) + ajuste de valor em ajuda aberta (ACCEPTED, só client propõe).
-export function ProposeForm({ role }: { role: "client" | "provider" }) {
+// Sem `role`, o lado é derivado do pedido: quem não é o cliente está atendendo (QA P-04).
+export function ProposeForm({ role: roleProp }: { role?: "client" | "provider" }) {
   const { theme } = useUnistyles();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
 
@@ -68,6 +71,8 @@ export function ProposeForm({ role }: { role: "client" | "provider" }) {
     );
   }
 
+  const role: "client" | "provider" =
+    roleProp ?? (user && order.client.id !== user.id ? "provider" : "client");
   const pending = proposals.find((p) => p.status === "PENDING");
   const openHelp =
     order.isOpenRequest && order.status === "ACCEPTED" && !order.payment;

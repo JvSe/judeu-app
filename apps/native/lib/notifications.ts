@@ -3,7 +3,7 @@
 // orders.ts/chat.ts (`{ type, orderId, role }`). O app tem uma casca só
 // (/client); `role` diz de que lado da chamada o destinatário está.
 export type NotificationData = {
-  type?: "order" | "chat" | "support" | "job";
+  type?: "order" | "chat" | "support" | "job" | "provider_status";
   orderId?: string;
   ticketId?: string;
   jobId?: string;
@@ -18,6 +18,8 @@ export function pathForNotification(data: NotificationData): string | null {
       ? `/client/vaga/applicants/${data.jobId}`
       : `/jobs/${data.jobId}`;
   }
+  // Cadastro de quem atende aprovado/bloqueado → perfil (mostra o status).
+  if (data.type === "provider_status") return "/client/profile";
   if (data.type === "support") {
     if (!data.ticketId) return null;
     return `/client/support-ticket/${data.ticketId}`;

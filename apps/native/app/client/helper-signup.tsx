@@ -121,6 +121,14 @@ export default function HelperSignup() {
       }
 
       await providerProfileApi.updateLocation(lat, lng);
+      if (res.profile.status !== "APPROVED") {
+        queryClient.setQueryData(["provider-profile", "me", res.user.id], res.profile);
+        toast.success("Cadastro enviado", {
+          description: "Vamos analisar e avisar você. Depois da aprovação, é só ligar o modo atendimento.",
+        });
+        router.replace("/client");
+        return;
+      }
       const profile = await providerProfileApi.setAvailability(true);
       queryClient.setQueryData(["provider-profile", "me", res.user.id], profile);
       toast.success("Cadastro concluído", {

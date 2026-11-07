@@ -23,3 +23,12 @@ describe("computeAcceptedTotals", () => {
     }
   });
 });
+
+describe("computeAcceptedTotals com a regra do pedido", () => {
+  it("20% do ajudante: total = preço", () => {
+    expect(computeAcceptedTotals(6000, { rate: 0.2, payer: "PROVIDER" })).toEqual({
+      platformFeeCents: 1200,
+      totalCents: 6000,
+    });
+  });
+});

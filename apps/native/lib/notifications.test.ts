@@ -53,4 +53,8 @@ describe("pathForNotification", () => {
     expect(pathForNotification({ type: "job", jobId: "j1", role: "candidate" })).toBe("/jobs/j1");
     expect(pathForNotification({ type: "job", role: "candidate" })).toBeNull();
   });
+
+  it("status do cadastro de quem atende -> perfil", () => {
+    expect(pathForNotification({ type: "provider_status" })).toBe("/client/profile");
+  });
 });
