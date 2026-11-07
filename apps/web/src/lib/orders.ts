@@ -8,6 +8,7 @@ import { ensureUtcIso } from "./dates";
 import { DOOR_CODE_MAX_ATTEMPTS, DOOR_CODE_MESSAGES, checkDoorCode, generateDoorCode } from "./door-code";
 import { recordEtaMeasurement, recordEtaPrediction } from "./eta-tracking";
 import { isUserBlocked } from "./moderation";
+import { PREFERENCES_DENIED, type OrderPreferences, hasPreferences, meetsPreferences } from "./preferences";
 import { RISK_DENIED_MESSAGE, canTakeRisk, normalizeRisk, type RiskLevel } from "./risk";
 import { trackEvent } from "./events";
 import { type FamilyEvent, newShareToken, notifyTrustedContact } from "./family";
@@ -127,6 +128,9 @@ type OrderFull = {
   doorCode?: string | null;
   doorCodeAttempts?: number | null;
   riskLevel?: number | null;
+  prefMinRating?: number | null;
+  prefMinCompleted?: number | null;
+  prefGender?: "F" | "M" | null;
   cancelReason: string | null;
   createdAt: string;
   isOpenRequest: boolean;
@@ -202,6 +206,7 @@ export type OrderDTO = {
   requiresDoorCode: boolean;
   /** 1 livre · 2 selo de reparos · 3 profissional com credencial. */
   riskLevel: number;
+  preferences: OrderPreferences;
   cancelReason: string | null;
   createdAt: string;
   offerExpiresAt: string;
@@ -266,6 +271,7 @@ function toDTO(o: OrderFull, unreadMessages = 0): OrderDTO {
       feeRuleOf(o).payer === "PROVIDER" ? o.priceCents - o.platformFeeCents : o.priceCents,
     requiresDoorCode: !!o.doorCode,
     riskLevel: normalizeRisk(o.riskLevel),
+    preferences: orderPreferences(o),
     cancelReason: o.cancelReason,
     createdAt: o.createdAt,
     offerExpiresAt: new Date(
@@ -424,6 +430,8 @@ export type CreateOrderInput = {
   addressId?: string;
   pickupAddressId?: string;
   priceCents?: number;
+  /** Preferências de quem atende (só ajuda aberta). */
+  preferences?: OrderPreferences;
 };
 
 /** Perfil elegível a push de ajuda aberta (modo atendimento ligado). */
@@ -439,6 +447,10 @@ export type OpenRequestAudienceProfile = {
   baseLng: number | null;
   categories: { categoryId: string }[];
   badges?: { type: string; expiresAt: string | null }[] | null;
+  ratingAvg?: number | null;
+  ratingCount?: number | null;
+  completedCount?: number | null;
+  gender?: string | null;
 };
 
 /**
@@ -449,10 +461,11 @@ export type OpenRequestAudienceProfile = {
  */
 export function matchesOpenRequestAudience(
   profile: OpenRequestAudienceProfile,
-  order: { categoryId: string | null; address: LatLng; riskLevel?: number },
+  order: { categoryId: string | null; address: LatLng; riskLevel?: number; preferences?: OrderPreferences | null },
   busyIds: Set<string>,
 ): boolean {
   if (busyIds.has(profile.id)) return false;
+  if (!meetsPreferences(profile, order.preferences)) return false;
   // Nível de tarefa: só quem tem a qualificação recebe/vê (pitch, rodada 3).
   if (!canTakeRisk(profile, normalizeRisk(order.riskLevel))) return false;
   const origin = effectiveProviderPosition(profile);
@@ -467,11 +480,13 @@ async function loadOpenRequestAudience(excludeUserId: string) {
   const { data: rows } = await supabase
     .from("providerprofile")
     .select(
-      "id, userId, isHelper, serviceRadiusKm, lastLat, lastLng, lastLocationAt, baseLat, baseLng, categories:providercategory(categoryId), badges:providerbadge(type, expiresAt)",
+      "id, userId, isHelper, serviceRadiusKm, lastLat, lastLng, lastLocationAt, baseLat, baseLng, ratingAvg, ratingCount, categories:providercategory(categoryId), badges:providerbadge(type, expiresAt), user:user!inner(gender)",
     )
     .eq("status", "APPROVED")
     .eq("isAvailable", true)
     .neq("userId", excludeUserId);
+  const ids = (rows ?? []).map((r) => r.id);
+  const completed = await completedCounts(ids);
 
   const { data: busy } = await supabase
     .from("order")
@@ -481,7 +496,23 @@ async function loadOpenRequestAudience(excludeUserId: string) {
   const busyIds = new Set(
     (busy ?? []).map((o) => o.providerId).filter((id): id is string => Boolean(id)),
   );
-  return { rows: (rows ?? []) as unknown as OpenRequestAudienceProfile[], busyIds };
+  const profiles = ((rows ?? []) as unknown as (OpenRequestAudienceProfile & {
+    user: { gender: string | null } | null;
+  })[]).map(({ user, ...p }) => ({ ...p, gender: user?.gender ?? null, completedCount: completed.get(p.id) ?? 0 }));
+  return { rows: profiles as OpenRequestAudienceProfile[], busyIds };
+}
+
+/** Tarefas concluídas por quem atende (filtro "mais de N tarefas"). */
+async function completedCounts(providerIds: string[]): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (providerIds.length === 0) return map;
+  const { data } = await supabase
+    .from("order")
+    .select("providerId")
+    .eq("status", "COMPLETED")
+    .in("providerId", providerIds);
+  for (const o of data ?? []) if (o.providerId) map.set(o.providerId, (map.get(o.providerId) ?? 0) + 1);
+  return map;
 }
 
 export type AvailabilitySummary = {
@@ -496,7 +527,7 @@ export type AvailabilitySummary = {
 /** Mesmo público do push de ajuda aberta, agregado (sem identificar ninguém). */
 export function summarizeAvailability(
   profiles: OpenRequestAudienceProfile[],
-  request: { categoryId: string | null; address: LatLng; riskLevel?: number },
+  request: { categoryId: string | null; address: LatLng; riskLevel?: number; preferences?: OrderPreferences | null },
   busyIds: Set<string>,
 ): AvailabilitySummary & { nearest: LatLng | null } {
   let helpers = 0;
@@ -526,6 +557,7 @@ export async function openRequestAvailability(
   clientId: string,
   point: LatLng,
   categoryId: string | null,
+  preferences: OrderPreferences | null = null,
 ): Promise<AvailabilitySummary & { etaMin: number | null }> {
   const [{ rows, busyIds }, { data: category }] = await Promise.all([
     loadOpenRequestAudience(clientId),
@@ -535,7 +567,7 @@ export async function openRequestAvailability(
   ]);
   const { nearest, ...summary } = summarizeAvailability(
     rows,
-    { categoryId, address: point, riskLevel: category?.riskLevel ?? 1 },
+    { categoryId, address: point, riskLevel: category?.riskLevel ?? 1, preferences },
     busyIds,
   );
   let etaMin: number | null = null;
@@ -569,6 +601,7 @@ async function notifyAvailableProviders(order: OrderFull) {
           categoryId,
           address: { lat: order.address.lat, lng: order.address.lng },
           riskLevel: order.riskLevel ?? 1,
+          preferences: orderPreferences(order),
         },
         busyIds,
       )
@@ -730,6 +763,13 @@ export async function createOrder(
     .from("order")
     .update({
       ...(shareToken ? { shareToken } : {}),
+      ...(isOpenRequest && hasPreferences(input.preferences)
+        ? {
+            prefMinRating: input.preferences?.minRating ?? null,
+            prefMinCompleted: input.preferences?.minCompleted ?? null,
+            prefGender: input.preferences?.gender ?? null,
+          }
+        : {}),
       riskLevel,
       expectedDurationMin: category?.expectedDurationMin ?? config.defaultExpectedDurationMin,
     })
@@ -981,6 +1021,14 @@ export async function getDoorCode(
   return { code: order.doorCode, locked: order.doorCodeAttempts >= DOOR_CODE_MAX_ATTEMPTS };
 }
 
+function orderPreferences(o: {
+  prefMinRating?: number | null;
+  prefMinCompleted?: number | null;
+  prefGender?: "F" | "M" | null;
+}): OrderPreferences {
+  return { minRating: o.prefMinRating ?? null, minCompleted: o.prefMinCompleted ?? null, gender: o.prefGender ?? null };
+}
+
 /** Quem atende já tem outra chamada em andamento? (ignora o próprio pedido) */
 async function isProviderBusy(providerId: string, exceptOrderId: string): Promise<boolean> {
   const { data: busy } = await supabase
@@ -1026,6 +1074,19 @@ export async function transitionOrder(
     }
     if (await isProviderBusy(profile.id, order.id)) {
       return { error: "Você já está em uma chamada", status: 409 };
+    }
+    // Preferências de quem pediu (nota, tarefas, gênero).
+    const prefs = orderPreferences(order);
+    if (hasPreferences(prefs)) {
+      const [{ data: me }, done] = await Promise.all([
+        supabase.from("user").select("gender").eq("id", userId).maybeSingle(),
+        completedCounts([profile.id]),
+      ]);
+      const ok = meetsPreferences(
+        { ratingAvg: profile.ratingAvg, ratingCount: profile.ratingCount, completedCount: done.get(profile.id) ?? 0, gender: me?.gender ?? null },
+        prefs,
+      );
+      if (!ok) return { error: PREFERENCES_DENIED, status: 403 };
     }
     // Nível de tarefa: confere a qualificação de quem aceita.
     const risk = normalizeRisk(order.riskLevel);

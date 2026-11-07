@@ -26,6 +26,7 @@ export async function GET(req: Request) {
 const updateSchema = z.object({
   fullName: z.string().min(2).max(120).optional(),
   phone: z.string().min(8).max(20).optional(),
+  gender: z.enum(["F", "M", "OTHER"]).nullable().optional(),
 });
 
 export async function PATCH(req: Request) {

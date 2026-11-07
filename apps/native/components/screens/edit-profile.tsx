@@ -30,6 +30,13 @@ type EditProfileForm = z.infer<typeof editProfileSchema>;
 
 const unformatPhone = (value: string) => value.replace(/\D/g, "");
 
+const GENDER_OPTIONS: { value: "F" | "M" | "OTHER" | null; label: string }[] = [
+  { value: "F", label: "Mulher" },
+  { value: "M", label: "Homem" },
+  { value: "OTHER", label: "Outro" },
+  { value: null, label: "Prefiro não dizer" },
+];
+
 export function EditProfileScreen() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
@@ -37,6 +44,7 @@ export function EditProfileScreen() {
   const updateProfile = useUpdateProfile();
   const uploadAvatar = useUploadAvatar();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [gender, setGender] = useState<"F" | "M" | "OTHER" | null>(user?.gender ?? null);
 
   const { control, handleSubmit } = useForm<EditProfileForm>({
     resolver: zodResolver(editProfileSchema),
@@ -86,6 +94,7 @@ export function EditProfileScreen() {
       await updateProfile.mutateAsync({
         fullName: data.fullName,
         phone: data.phone || undefined,
+        gender,
       });
       toast.success("Perfil salvo");
       router.back();
@@ -146,6 +155,24 @@ export function EditProfileScreen() {
         />
 
         <View style={[styles.fieldBlock, styles.fieldSpacing]}>
+          <Text style={styles.label}>Gênero (opcional)</Text>
+          <View style={styles.genderRow}>
+            {GENDER_OPTIONS.map((o) => (
+              <Pressable
+                key={o.label}
+                onPress={() => setGender(o.value)}
+                style={[styles.genderChip, gender === o.value && styles.genderChipOn]}
+              >
+                <Text style={[styles.genderText, gender === o.value && styles.genderTextOn]}>{o.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.genderHint}>
+            Algumas pessoas preferem ser atendidas por mulheres. Só é usado para isso.
+          </Text>
+        </View>
+
+        <View style={[styles.fieldBlock, styles.fieldSpacing]}>
           <Text style={styles.label}>E-mail</Text>
           <View style={[styles.field, styles.fieldDisabled]}>
             <Ionicons name="mail-outline" size={18} color={theme.colors.mutedForeground} />
@@ -177,6 +204,18 @@ export function EditProfileScreen() {
 }
 
 const styles = StyleSheet.create((theme) => ({
+  genderRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  genderChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  genderChipOn: { borderColor: theme.colors.primary, backgroundColor: "rgba(255,102,0,0.12)" },
+  genderText: { fontSize: 13, fontFamily: fonts.semiBold, color: theme.colors.mutedForeground },
+  genderTextOn: { color: theme.colors.primary },
+  genderHint: { fontSize: 12, fontFamily: fonts.medium, color: theme.colors.mutedForeground, marginTop: 6 },
   header: {
     flexDirection: "row",
     alignItems: "center",

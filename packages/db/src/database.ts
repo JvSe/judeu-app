@@ -38,6 +38,7 @@ export type UserRow = {
   trustedContactEmail: string | null;
   blockedAt: string | null;
   blockedReason: string | null;
+  gender: "F" | "M" | "OTHER" | null;
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -168,6 +169,9 @@ export type OrderRow = {
   riskLevel: number;
   expectedDurationMin: number | null;
   overtimeAlertedAt: string | null;
+  prefMinRating: number | null;
+  prefMinCompleted: number | null;
+  prefGender: "F" | "M" | null;
   couponCode: string | null;
   cancelReason: string | null;
   acceptedAt: string | null;

@@ -157,6 +157,8 @@ model User {
   // Suspensão da conta (cliente ou quem atende) — não entra nem renova sessão.
   blockedAt     DateTime?
   blockedReason String?
+  // Opcional, informado pela própria pessoa (F | M | OTHER) — filtro "só mulheres".
+  gender        String?
   // Marca a conta como excluída (RF-A7) sem quebrar FKs de pedidos/avaliações/mensagens já
   // existentes — os dados pessoais são anonimizados, o registro em si é preservado.
   deletedAt       DateTime?
@@ -404,6 +406,10 @@ model Order {
   riskLevel        Int        @default(1)
   expectedDurationMin Int?
   overtimeAlertedAt   DateTime?
+  // Preferências de quem pede (ex.: idoso): nota mínima, tarefas concluídas, gênero.
+  prefMinRating    Float?
+  prefMinCompleted Int?
+  prefGender       String?
   couponCode      String?
   cancelReason    String?
   acceptedAt      DateTime?

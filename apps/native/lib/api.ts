@@ -20,6 +20,7 @@ export type AppUser = {
   avatarUrl: string | null;
   emailVerified: boolean;
   phoneVerified: boolean;
+  gender?: "F" | "M" | "OTHER" | null;
   createdAt: string;
 };
 
@@ -190,7 +191,7 @@ export const familyApi = {
 };
 
 export const profileApi = {
-  update(input: { fullName?: string; phone?: string }) {
+  update(input: { fullName?: string; phone?: string; gender?: "F" | "M" | "OTHER" | null }) {
     return apiFetch<{ user: AppUser }>("/api/auth/me", { method: "PATCH", body: input }).then(
       (r) => r.user,
     );
@@ -520,6 +521,7 @@ export type Order = {
   requiresDoorCode: boolean;
   /** 1 livre · 2 selo de reparos · 3 profissional com credencial. */
   riskLevel: number;
+  preferences: OrderPreferences;
   cancelReason: string | null;
   createdAt: string;
   offerExpiresAt: string;
@@ -575,6 +577,14 @@ export type CreateOrderInput = {
   addressId?: string;
   pickupAddressId?: string;
   priceCents?: number;
+  preferences?: OrderPreferences;
+};
+
+/** Preferências de quem atende (ajuda aberta): nota mínima, tarefas concluídas, gênero. */
+export type OrderPreferences = {
+  minRating?: number | null;
+  minCompleted?: number | null;
+  gender?: "F" | "M" | null;
 };
 
 export type ArrangeOrderInput = {
@@ -602,9 +612,12 @@ export const ordersApi = {
     const qs = categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : "";
     return apiFetch<SuggestedPrice>(`/api/orders/suggested-price${qs}`);
   },
-  availability(opts: { lat: number; lng: number; categoryId?: string }) {
+  availability(opts: { lat: number; lng: number; categoryId?: string; preferences?: OrderPreferences }) {
     const qs = new URLSearchParams({ lat: String(opts.lat), lng: String(opts.lng) });
     if (opts.categoryId) qs.set("categoryId", opts.categoryId);
+    if (opts.preferences?.minRating) qs.set("minRating", String(opts.preferences.minRating));
+    if (opts.preferences?.minCompleted) qs.set("minCompleted", String(opts.preferences.minCompleted));
+    if (opts.preferences?.gender) qs.set("gender", opts.preferences.gender);
     return apiFetch<OpenRequestAvailability>(`/api/orders/availability?${qs}`);
   },
   list(as: "client" | "provider" = "client") {

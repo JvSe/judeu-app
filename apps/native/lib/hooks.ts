@@ -37,6 +37,7 @@ import type {
   KycFileKind,
   NotificationPreferences,
   OrderAction,
+  OrderPreferences,
   PaymentMethodOption,
   SavedAddressInput,
   UpsertProviderProfileInput,
@@ -93,10 +94,11 @@ export function useNearbyProviders(
 export function useOpenRequestAvailability(
   point: { lat: number; lng: number } | null,
   categoryId?: string,
+  preferences?: OrderPreferences,
 ) {
   return useQuery({
-    queryKey: ["open-request-availability", point?.lat, point?.lng, categoryId ?? "all"],
-    queryFn: () => ordersApi.availability({ lat: point!.lat, lng: point!.lng, categoryId }),
+    queryKey: ["open-request-availability", point?.lat, point?.lng, categoryId ?? "all", preferences ?? {}],
+    queryFn: () => ordersApi.availability({ lat: point!.lat, lng: point!.lng, categoryId, preferences }),
     enabled: point != null,
     refetchInterval: 20_000,
   });
@@ -643,7 +645,7 @@ export function useCreateSupportTicket() {
 export function useUpdateProfile() {
   const { updateUser } = useAuth();
   return useMutation({
-    mutationFn: (input: { fullName?: string; phone?: string }) => profileApi.update(input),
+    mutationFn: (input: Parameters<typeof profileApi.update>[0]) => profileApi.update(input),
     onSuccess: updateUser,
   });
 }

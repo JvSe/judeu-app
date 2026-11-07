@@ -20,6 +20,13 @@ const createSchema = z
     addressId: z.string().min(1).optional(),
     pickupAddressId: z.string().min(1).optional(),
     priceCents: z.number().int().min(0).max(1_000_000).optional(),
+    preferences: z
+      .object({
+        minRating: z.number().min(1).max(5).nullable().optional(),
+        minCompleted: z.number().int().min(1).max(1000).nullable().optional(),
+        gender: z.enum(["F", "M"]).nullable().optional(),
+      })
+      .optional(),
   })
   .superRefine((data, ctx) => {
     if (data.providerId && !data.addressId) {
