@@ -86,6 +86,29 @@ export function useNearbyProviders(
   });
 }
 
+// "N pessoas perto, ~X min" antes de publicar uma ajuda aberta (mesmo público do push).
+export function useOpenRequestAvailability(
+  point: { lat: number; lng: number } | null,
+  categoryId?: string,
+) {
+  return useQuery({
+    queryKey: ["open-request-availability", point?.lat, point?.lng, categoryId ?? "all"],
+    queryFn: () => ordersApi.availability({ lat: point!.lat, lng: point!.lng, categoryId }),
+    enabled: point != null,
+    refetchInterval: 20_000,
+  });
+}
+
+// Valor inicial sugerido para ajuda aberta (mediana por categoria + horário).
+export function useSuggestedPrice(categoryId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["suggested-price", categoryId ?? "all"],
+    queryFn: () => ordersApi.suggestedPrice(categoryId),
+    enabled,
+    staleTime: 10 * 60_000,
+  });
+}
+
 // Busca do catálogo (aba Buscar). Termos com menos de 2 caracteres não vão à rede.
 export function useCatalogSearch(query: string) {
   const q = query.trim();

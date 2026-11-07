@@ -5,6 +5,8 @@ import type { Json, OrderRow, OrderStatus, PaymentMethod, PaymentStatus } from "
 import { coarsen, effectiveProviderPosition } from "./catalog";
 import { getConfig } from "./config";
 import { ensureUtcIso } from "./dates";
+import { recordEtaMeasurement, recordEtaPrediction } from "./eta-tracking";
+import { trackEvent } from "./events";
 import { completionWalletMovement, computeFees, feeRuleOf, resolveFeeRule } from "./fees";
 import { supabase } from "./db";
 import { haversineKm, routeBetween } from "./geo";
@@ -444,7 +446,8 @@ export function matchesOpenRequestAudience(
   return profile.categories.some((c) => c.categoryId === order.categoryId);
 }
 
-async function notifyAvailableProviders(order: OrderFull) {
+/** Quem está aprovado, disponível e livre — a base do push e da prévia "N perto". */
+async function loadOpenRequestAudience(excludeUserId: string) {
   const { data: rows } = await supabase
     .from("providerprofile")
     .select(
@@ -452,7 +455,7 @@ async function notifyAvailableProviders(order: OrderFull) {
     )
     .eq("status", "APPROVED")
     .eq("isAvailable", true)
-    .neq("userId", order.clientId);
+    .neq("userId", excludeUserId);
 
   const { data: busy } = await supabase
     .from("order")
@@ -462,12 +465,78 @@ async function notifyAvailableProviders(order: OrderFull) {
   const busyIds = new Set(
     (busy ?? []).map((o) => o.providerId).filter((id): id is string => Boolean(id)),
   );
+  return { rows: (rows ?? []) as unknown as OpenRequestAudienceProfile[], busyIds };
+}
+
+export type AvailabilitySummary = {
+  /** Quantas pessoas receberiam o pedido agora. */
+  count: number;
+  helpers: number;
+  professionals: number;
+  /** Distância em linha reta até a mais próxima. */
+  nearestKm: number | null;
+};
+
+/** Mesmo público do push de ajuda aberta, agregado (sem identificar ninguém). */
+export function summarizeAvailability(
+  profiles: OpenRequestAudienceProfile[],
+  request: { categoryId: string | null; address: LatLng },
+  busyIds: Set<string>,
+): AvailabilitySummary & { nearest: LatLng | null } {
+  let helpers = 0;
+  let professionals = 0;
+  let nearest: LatLng | null = null;
+  let nearestKm: number | null = null;
+  for (const p of profiles) {
+    if (!matchesOpenRequestAudience(p, request, busyIds)) continue;
+    if (p.isHelper) helpers += 1;
+    else professionals += 1;
+    const pos = effectiveProviderPosition(p);
+    if (!pos) continue;
+    const km = haversineKm(pos, request.address);
+    if (nearestKm == null || km < nearestKm) {
+      nearestKm = km;
+      nearest = pos;
+    }
+  }
+  return { count: helpers + professionals, helpers, professionals, nearestKm, nearest };
+}
+
+/**
+ * Prévia antes de publicar uma ajuda aberta: quantas pessoas estão perto e em
+ * quanto tempo a mais próxima chega (rota real só para ela; o resto é contagem).
+ */
+export async function openRequestAvailability(
+  clientId: string,
+  point: LatLng,
+  categoryId: string | null,
+): Promise<AvailabilitySummary & { etaMin: number | null }> {
+  const { rows, busyIds } = await loadOpenRequestAudience(clientId);
+  const { nearest, ...summary } = summarizeAvailability(rows, { categoryId, address: point }, busyIds);
+  let etaMin: number | null = null;
+  if (nearest) {
+    const route = await routeBetween(nearest, point);
+    etaMin = route.durationMin;
+  }
+  void trackEvent({
+    type: "nearby.viewed",
+    userId: clientId,
+    props: { count: summary.count, categoryId, etaMin },
+  });
+  return {
+    ...summary,
+    nearestKm: summary.nearestKm == null ? null : Math.round(summary.nearestKm * 10) / 10,
+    etaMin,
+  };
+}
+
+async function notifyAvailableProviders(order: OrderFull) {
+  const { rows, busyIds } = await loadOpenRequestAudience(order.clientId);
 
   const categoryId = order.category?.id ?? null;
   const body = order.description?.trim() || order.category?.name || "Alguém precisa de ajuda";
   let sent = 0;
-  for (const raw of rows ?? []) {
-    const p = raw as unknown as OpenRequestAudienceProfile;
+  for (const p of rows) {
     if (
       !matchesOpenRequestAudience(
         p,
@@ -784,7 +853,11 @@ export async function updateOrderLocation(
 
   const updated = await fetchOrder(id);
   if (!updated) return { error: "Pedido não encontrado", status: 404 };
-  return withRoute(updated, toDTO(updated));
+  const dto = await withRoute(updated, toDTO(updated));
+  if (updated.status === "EN_ROUTE") {
+    void recordEtaPrediction(id, { etaMin: dto.tracking.etaMin, distanceKm: dto.tracking.distanceKm });
+  }
+  return dto;
 }
 
 const ACTION_NOTES: Record<OrderAction, string> = {
@@ -934,6 +1007,7 @@ export async function transitionOrder(
   if (rule.to === "CANCELLED") {
     await refundIfPaid(id);
   }
+  if (action === "start_work") void recordEtaMeasurement(id);
 
   const recipientId = rule.by === "provider" ? order.clientId : updated.provider?.userId;
   if (recipientId) {

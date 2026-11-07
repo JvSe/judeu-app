@@ -10,7 +10,15 @@ import { Screen } from "@/components/ui/screen";
 import { fonts } from "@/constants/fonts";
 import { previewOrderTotals } from "@/lib/fees";
 import { formatAddressLine, moneyFromCents } from "@/lib/format";
-import { useAddresses, useAppConfig, useCreateOrder, useProvider } from "@/lib/hooks";
+import { availabilityLabel } from "@/lib/availability";
+import {
+  useAddresses,
+  useAppConfig,
+  useCreateOrder,
+  useOpenRequestAvailability,
+  useProvider,
+  useSuggestedPrice,
+} from "@/lib/hooks";
 import { errorMessage, toast } from "@/lib/toast";
 
 function parseScheduledAt(date: string, time: string): Date | null {
@@ -63,6 +71,17 @@ export default function ConfirmCall() {
   const services = provider?.services;
   const createOrder = useCreateOrder();
   const appConfig = useAppConfig();
+  // Ajuda aberta sai no endereço padrão (mesma regra da API ao publicar).
+  const openAddress = isOpenRequest
+    ? (addresses?.find((a) => a.isDefault) ?? addresses?.[0] ?? null)
+    : null;
+  const { data: availability } = useOpenRequestAvailability(
+    openAddress ? { lat: openAddress.lat, lng: openAddress.lng } : null,
+    params.categoryId,
+  );
+  const availabilityText = availability ? availabilityLabel(availability) : null;
+  const { data: suggested } = useSuggestedPrice(params.categoryId, isOpenRequest);
+  const suggestedReais = suggested ? String(Math.round(suggested.priceCents / 100)) : null;
 
   useEffect(() => {
     if (isOpenRequest || !addresses?.length) return;
@@ -196,6 +215,20 @@ export default function ConfirmCall() {
             </Text>
           </View>
 
+          {availabilityText && (
+            <View style={styles.availability}>
+              <Ionicons
+                name={availability!.count > 0 ? "people" : "time-outline"}
+                size={18}
+                color={availability!.count > 0 ? theme.colors.primary : theme.colors.mutedForeground}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.availabilityTitle}>{availabilityText.title}</Text>
+                <Text style={styles.muted}>{availabilityText.detail}</Text>
+              </View>
+            </View>
+          )}
+
           <Text style={styles.label}>O que você precisa?</Text>
           <TextInput
             style={[styles.input, styles.note]}
@@ -211,10 +244,22 @@ export default function ConfirmCall() {
             style={styles.input}
             value={offerReais}
             onChangeText={setOfferReais}
-            placeholder="Ex.: 30"
+            placeholder={suggestedReais ? `Sugerido: ${suggestedReais}` : "Ex.: 30"}
             placeholderTextColor={theme.colors.mutedForeground}
             keyboardType="decimal-pad"
           />
+          {suggested && offerReais !== suggestedReais && (
+            <Pressable
+              style={({ pressed }) => [styles.suggestion, { opacity: pressed ? 0.8 : 1 }]}
+              onPress={() => setOfferReais(suggestedReais!)}
+            >
+              <Ionicons name="pricetag-outline" size={14} color={theme.colors.primary} />
+              <Text style={styles.suggestionText}>
+                Sugerido: {moneyFromCents(suggested.priceCents)}
+                {suggested.offHours ? " (fora do horário comercial)" : ""} · usar
+              </Text>
+            </Pressable>
+          )}
 
           <Pressable
             style={({ pressed }) => [styles.aiButton, { opacity: pressed ? 0.85 : 1 }]}
@@ -410,6 +455,35 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 20,
     padding: 16,
     marginBottom: 8,
+  },
+  suggestion: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    marginTop: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(28,28,58,0.7)",
+  },
+  suggestionText: {
+    fontSize: 13,
+    fontFamily: fonts.bold,
+    color: theme.colors.primary,
+  },
+  availability: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "rgba(28,28,58,0.7)",
+    borderRadius: 16,
+    padding: 14,
+  },
+  availabilityTitle: {
+    fontSize: 14,
+    fontFamily: fonts.bold,
+    color: "#fff",
   },
   kicker: {
     fontSize: 11,

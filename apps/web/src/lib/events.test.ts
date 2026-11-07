@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { etaErrorRatio } from "./eta-tracking";
 import { buildAppEvent } from "./events";
 
 describe("buildAppEvent", () => {
@@ -34,5 +35,14 @@ describe("buildAppEvent", () => {
     expect(buildAppEvent({ type: "search.performed" }).id).not.toBe(
       buildAppEvent({ type: "search.performed" }).id,
     );
+  });
+});
+
+
+describe("etaErrorRatio", () => {
+  it("erro relativo ao previsto", () => {
+    expect(etaErrorRatio(10, 12)).toBeCloseTo(0.2);
+    expect(etaErrorRatio(10, 8)).toBeCloseTo(0.2);
+    expect(etaErrorRatio(0, 3)).toBe(3);
   });
 });

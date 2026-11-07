@@ -14,6 +14,7 @@ import { FormCheckbox } from "@/components/form/checkbox";
 import { FormErrorText } from "@/components/form/error-text";
 import { FormTextField } from "@/components/form/text-field";
 import { fonts } from "@/constants/fonts";
+import { ACQUISITION_OPTIONS, type AcquisitionChannel } from "@/lib/acquisition";
 import { useAuth } from "@/lib/auth-context";
 import { formatPhone } from "@/lib/formatters/format-phone.helper";
 import { errorMessage, toast } from "@/lib/toast";
@@ -23,6 +24,7 @@ const signupSchema = z.object({
   email: z.string().trim().transform((v) => v.toLowerCase()),
   phone: z.string(),
   password: z.string().min(8, "A senha precisa de ao menos 8 caracteres"),
+  acquisitionCode: z.string().trim().max(40, "Código muito longo"),
   accepted: z.boolean().refine((v) => v === true, "Aceite os termos para continuar"),
 });
 
@@ -73,12 +75,20 @@ export default function Signup() {
   const { intent } = useLocalSearchParams<{ intent?: string }>();
   const role = intent === "work" ? "PROVIDER" : "CLIENT";
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [channel, setChannel] = useState<AcquisitionChannel | null>(null);
 
   const { control, handleSubmit, formState } = useForm<SignupForm>({
     resolver: zodResolver(signupSchema),
     mode: "onBlur",
     reValidateMode: "onChange",
-    defaultValues: { fullName: "", email: "", phone: "", password: "", accepted: false },
+    defaultValues: {
+      fullName: "",
+      email: "",
+      phone: "",
+      password: "",
+      acquisitionCode: "",
+      accepted: false,
+    },
   });
 
   const onValid = handleSubmit(async (data) => {
@@ -91,6 +101,8 @@ export default function Signup() {
         phone: data.phone || undefined,
         role,
         acceptedTerms: true,
+        acquisitionChannel: channel ?? undefined,
+        acquisitionCode: data.acquisitionCode || undefined,
       });
       toast.success("Conta criada");
       router.replace(role === "PROVIDER" ? "/client/kyc" : "/client");
@@ -144,6 +156,33 @@ export default function Signup() {
           icon="lock-closed-outline"
           placeholder="Mínimo 8 caracteres"
           secureTextEntry
+          editable={!formState.isSubmitting}
+        />
+
+        <Text style={styles.sectionLabel}>Como conheceu o app? (opcional)</Text>
+        <View style={styles.chips}>
+          {ACQUISITION_OPTIONS.map((o) => {
+            const on = channel === o.value;
+            return (
+              <Pressable
+                key={o.value}
+                onPress={() => setChannel(on ? null : o.value)}
+                style={[styles.chip, on && styles.chipOn]}
+                disabled={formState.isSubmitting}
+              >
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{o.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <FormTextField
+          control={control}
+          name="acquisitionCode"
+          label="Código de convite ou parceiro (opcional)"
+          icon="pricetag-outline"
+          placeholder="Ex.: COND104"
+          autoCapitalize="characters"
           editable={!formState.isSubmitting}
         />
 
@@ -220,6 +259,38 @@ const styles = StyleSheet.create((theme) => ({
   },
   termsSpacing: {
     marginTop: 6,
+  },
+  sectionLabel: {
+    fontSize: 13,
+    fontFamily: fonts.bold,
+    color: "#9997bd",
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  chips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 16,
+  },
+  chip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  chipOn: {
+    borderColor: theme.colors.primary,
+    backgroundColor: "rgba(255,102,0,0.12)",
+  },
+  chipText: {
+    fontSize: 13,
+    fontFamily: fonts.semiBold,
+    color: "#9997bd",
+  },
+  chipTextOn: {
+    color: theme.colors.primary,
   },
   submitError: {
     marginTop: 14,
