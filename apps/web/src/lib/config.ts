@@ -16,6 +16,12 @@ export const configSchema = z.object({
    * na carteira. Acima deste valor devido, não pode ficar disponível.
    */
   cashDebtLimitCents: z.number().int().min(0).default(5000),
+  /** Duração prevista de um serviço quando a categoria não define (minutos). */
+  defaultExpectedDurationMin: z.number().int().min(10).default(120),
+  /** Alerta de tempo excedido quando passa desta fração da duração prevista. */
+  overtimeAlertRatio: z.number().min(1).max(5).default(1.5),
+  /** Posição de quem atende mais velha que isto não serve para a geocerca. */
+  locationFreshMs: z.number().int().positive().default(5 * 60_000),
   /** Menor saque permitido. */
   payoutMinCents: z.number().int().min(100).default(1000),
   /** Tarifa por saque (cobrada do valor sacado). */

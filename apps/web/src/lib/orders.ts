@@ -676,7 +676,11 @@ export async function createOrder(
   const config = await getConfig();
   const riskCategoryId = input.categoryId ?? serviceCategoryId;
   const { data: category } = riskCategoryId
-    ? await supabase.from("category").select("feeRate, riskLevel").eq("id", riskCategoryId).maybeSingle()
+    ? await supabase
+        .from("category")
+        .select("feeRate, riskLevel, expectedDurationMin")
+        .eq("id", riskCategoryId)
+        .maybeSingle()
     : { data: null };
   const feeRule = resolveFeeRule(config, input.categoryId ? category : null);
   // Nível de tarefa: proibido nem é criado; chamada direta só para quem pode.
@@ -718,12 +722,14 @@ export async function createOrder(
   });
   if (error || !created) return { error: error?.message ?? "Falha ao criar pedido", status: 500 };
 
-  if (shareToken || riskLevel !== 1) {
-    await supabase
-      .from("order")
-      .update({ ...(shareToken ? { shareToken } : {}), riskLevel })
-      .eq("id", (created as OrderRow).id);
-  }
+  await supabase
+    .from("order")
+    .update({
+      ...(shareToken ? { shareToken } : {}),
+      riskLevel,
+      expectedDurationMin: category?.expectedDurationMin ?? config.defaultExpectedDurationMin,
+    })
+    .eq("id", (created as OrderRow).id);
 
   const order = await fetchOrder((created as OrderRow).id);
   if (!order) return { error: "Pedido criado mas não encontrado", status: 500 };
@@ -927,6 +933,27 @@ const ACTION_NOTES: Record<OrderAction, string> = {
   cancel: "Chamada cancelada",
 };
 
+/**
+ * Geocerca da conclusão: "ok" no local; "away" com posição recente longe do
+ * local; "unknown" sem posição recente (não bloqueia, mas fica registrado).
+ */
+export function completionGeofence(
+  order: {
+    status: OrderStatus;
+    providerLat: number | null;
+    providerLng: number | null;
+    providerLocationAt: string | null;
+    address: LatLng;
+    pickupAddress: LatLng | null;
+  },
+  freshMs: number,
+  now = Date.now(),
+): "ok" | "away" | "unknown" {
+  const at = order.providerLocationAt ? new Date(ensureUtcIso(order.providerLocationAt)).getTime() : 0;
+  if (!at || now - at > freshMs || order.providerLat == null || order.providerLng == null) return "unknown";
+  return hasArrivedAt(order.providerLat, order.providerLng, trackingDestination(order)) ? "ok" : "away";
+}
+
 const DOOR_CODE_STATUSES = new Set<OrderStatus>(["ACCEPTED", "EN_ROUTE"]);
 
 /** Código de chegada — só para o cliente do pedido, enquanto alguém está a caminho. */
@@ -1070,6 +1097,16 @@ export async function transitionOrder(
     }
   }
 
+  // Geocerca na conclusão: com posição recente, precisa estar no local.
+  let completeNote: string | null = null;
+  if (action === "complete") {
+    const fence = completionGeofence(order, (await getConfig()).locationFreshMs);
+    if (fence === "away") {
+      return { error: "Para concluir, você precisa estar no local do atendimento.", status: 409 };
+    }
+    if (fence === "unknown") completeNote = "Concluído sem localização recente confirmada";
+  }
+
   const now = new Date().toISOString();
   const acceptNote = claimProviderId ? "Solicitação atendida" : ACTION_NOTES.accept;
   const patch = {
@@ -1085,7 +1122,8 @@ export async function transitionOrder(
     p_order_id: id,
     p_status: rule.to,
     p_patch: patch,
-    p_event_note: note ?? (action === "accept" ? acceptNote : ACTION_NOTES[action]),
+    p_event_note:
+      note ?? completeNote ?? (action === "accept" ? acceptNote : ACTION_NOTES[action]),
   });
   if (rpcError) return { error: rpcError.message, status: 500 };
 

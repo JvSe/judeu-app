@@ -296,6 +296,8 @@ model Category {
   feeRate   Float?
   // Nível de risco: 1 livre · 2 selo de reparos · 3 profissional com credencial · 4 proibido.
   riskLevel Int      @default(1)
+  // Duração típica do serviço; null = padrão da configuração (alerta de tempo excedido).
+  expectedDurationMin Int?
   createdAt DateTime @default(now())
 
   services   Service[]
@@ -397,6 +399,8 @@ model Order {
   shareToken       String?    @unique
   // Nível de risco da categoria quando o pedido foi criado (snapshot).
   riskLevel        Int        @default(1)
+  expectedDurationMin Int?
+  overtimeAlertedAt   DateTime?
   couponCode      String?
   cancelReason    String?
   acceptedAt      DateTime?

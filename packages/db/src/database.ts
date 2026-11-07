@@ -107,6 +107,7 @@ export type CategoryRow = {
   icon: string | null;
   feeRate: number | null;
   riskLevel: number;
+  expectedDurationMin: number | null;
   createdAt: string;
 };
 
@@ -163,6 +164,8 @@ export type OrderRow = {
   doorCodeAttempts: number;
   shareToken: string | null;
   riskLevel: number;
+  expectedDurationMin: number | null;
+  overtimeAlertedAt: string | null;
   couponCode: string | null;
   cancelReason: string | null;
   acceptedAt: string | null;
