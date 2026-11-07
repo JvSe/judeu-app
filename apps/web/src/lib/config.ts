@@ -20,6 +20,11 @@ export const configSchema = z.object({
   openRequestTtlMs: z.number().int().positive().default(4 * 60 * 60 * 1000),
   /** Tempo para o prestador responder a uma chamada direta. */
   offerTtlMs: z.number().int().positive().default(60_000),
+  /**
+   * Chamada direta sem resposta depois disto é cancelada pelo cron (o cliente
+   * já pode trocar de pessoa após offerTtlMs; aqui só limpamos o abandonado).
+   */
+  directOfferAbandonMs: z.number().int().positive().default(30 * 60_000),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;

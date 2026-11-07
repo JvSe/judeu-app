@@ -65,7 +65,7 @@ describe("runJobs", () => {
 });
 
 describe("CRON_JOBS", () => {
-  it("começa vazia na Fase 0 (nenhum comportamento muda)", () => {
-    expect(CRON_JOBS).toEqual([]);
+  it("registra a expiração de pedidos", () => {
+    expect(CRON_JOBS.map((j) => j.name)).toContain("expireOrders");
   });
 });
