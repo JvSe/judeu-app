@@ -20,6 +20,9 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
           <Link href="/admin/support" className="text-lg font-medium hover:underline">
             Chamados
           </Link>
+          <Link href="/admin/metrics" className="text-lg font-medium hover:underline">
+            Métricas
+          </Link>
         </nav>
         <form action={logoutAdmin}>
           <Button variant="outline" size="sm" type="submit">
