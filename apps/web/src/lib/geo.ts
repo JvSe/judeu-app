@@ -1,105 +1,67 @@
 import { env } from "@judeu/env/server";
 
-// Cliente dos serviços de geo (projeto de demonstração): Nominatim público
-// (geocoding) e OSRM demo server (rotas). Ambos são serviços públicos
-// gratuitos, sujeitos a rate limit e sem SLA — não usar em produção real.
-// Só é usado no servidor — nunca expor essas URLs no app.
+import {
+  GOOGLE_ROUTES_FIELD_MASK,
+  GOOGLE_ROUTES_URL,
+  type Geocoded,
+  type LatLng,
+  type Route,
+  googleGeocodeUrl,
+  googleRouteBody,
+  nominatimSearchUrl,
+  osrmRouteUrl,
+  parseGoogleGeocode,
+  parseGoogleRoute,
+  parseNominatim,
+  parseOsrmRoute,
+  parseValhallaRoute,
+  valhallaRouteBody,
+} from "./geo-providers";
 
-export type LatLng = { lat: number; lng: number };
+// Cliente dos serviços de geo, só no servidor (nunca expor URLs/chaves no app).
+// Provedor escolhido por env — o padrão é o comportamento de sempre:
+//   ROUTING_PROVIDER=osrm (OSRM_URL → VALHALLA_URL legado → OSRM público)
+//   GEOCODING_PROVIDER=nominatim (NOMINATIM_URL)
+// Trocar para o Valhalla próprio (apps/geo) ou para o Google é só mudar a env,
+// quando os gatilhos de /admin/metrics indicarem (ETA erra > 20%, endereço > 3%).
 
-function requireUrl(value: string | undefined, name: string): string {
-  if (!value) throw new Error(`${name} não configurada (.env)`);
+export type { LatLng, Route } from "./geo-providers";
+export { decodePolyline5, decodePolyline6 } from "./geo-providers";
+
+const DEFAULT_OSRM_BASE = "https://router.project-osrm.org";
+const TIMEOUT_MS = 12_000;
+
+function trimSlash(value: string): string {
   return value.replace(/\/$/, "");
 }
 
-// ---- Nominatim: endereço -> coordenadas ----
-type NominatimResult = {
-  lat: string;
-  lon: string;
-  display_name: string;
-};
-
-export async function geocodeAddress(
-  query: string,
-): Promise<(LatLng & { displayName: string }) | null> {
-  const base = requireUrl(env.NOMINATIM_URL, "NOMINATIM_URL");
-  const url = new URL(`${base}/search`);
-  url.searchParams.set("format", "jsonv2");
-  url.searchParams.set("countrycodes", "br");
-  url.searchParams.set("limit", "1");
-  url.searchParams.set("q", query);
-
-  // Política de uso do Nominatim público exige um User-Agent que identifique
-  // a aplicação: https://operations.osmfoundation.org/policies/nominatim/
-  const res = await fetch(url, { headers: { "User-Agent": "AjudaMais-Demo/1.0" } });
-  if (!res.ok) throw new Error(`Nominatim ${res.status}`);
-  const results = (await res.json()) as NominatimResult[];
-  const first = results[0];
-  if (!first) return null;
-  return {
-    lat: Number(first.lat),
-    lng: Number(first.lon),
-    displayName: first.display_name,
-  };
+function requireValue(value: string | undefined, name: string): string {
+  if (!value) throw new Error(`${name} não configurada (.env)`);
+  return value;
 }
 
-// ---- OSRM: rota entre dois pontos (origem = prestador, destino = casa) ----
-type OsrmResponse = {
-  routes?: { distance?: number; duration?: number; geometry?: string }[];
-};
-
-export type Route = {
-  distanceKm: number;
-  durationMin: number;
-  points: LatLng[] | null; // geometria da rota, já decodificada, p/ desenhar no mapa
-};
-
-// Decodifica polyline (algoritmo padrão Google polyline) numa precisão dada.
-// Decodificar no servidor evita levar um parser de polyline pro bundle nativo.
-function decodePolyline(encoded: string, precision: number): LatLng[] {
-  const points: LatLng[] = [];
-  let index = 0;
-  let lat = 0;
-  let lng = 0;
-
-  while (index < encoded.length) {
-    let result = 0;
-    let shift = 0;
-    let byte: number;
-    do {
-      byte = encoded.charCodeAt(index++) - 63;
-      result |= (byte & 0x1f) << shift;
-      shift += 5;
-    } while (byte >= 0x20);
-    lat += result & 1 ? ~(result >> 1) : result >> 1;
-
-    result = 0;
-    shift = 0;
-    do {
-      byte = encoded.charCodeAt(index++) - 63;
-      result |= (byte & 0x1f) << shift;
-      shift += 5;
-    } while (byte >= 0x20);
-    lng += result & 1 ? ~(result >> 1) : result >> 1;
-
-    points.push({ lat: lat / precision, lng: lng / precision });
+// ---- Endereço → coordenadas ----
+export async function geocodeAddress(query: string): Promise<Geocoded | null> {
+  if (env.GEOCODING_PROVIDER === "google") {
+    const key = requireValue(env.GOOGLE_MAPS_API_KEY, "GOOGLE_MAPS_API_KEY");
+    const res = await fetch(googleGeocodeUrl(query, key), { signal: AbortSignal.timeout(TIMEOUT_MS) });
+    if (!res.ok) throw new Error(`Google Geocoding ${res.status}`);
+    return parseGoogleGeocode(await res.json());
   }
 
-  return points;
-}
-
-// Mantido com precisão 1e6 (era o formato do Valhalla).
-export function decodePolyline6(encoded: string): LatLng[] {
-  return decodePolyline(encoded, 1e6);
-}
-
-// OSRM codifica a geometria da rota em polyline de precisão 1e5 por padrão.
-export function decodePolyline5(encoded: string): LatLng[] {
-  return decodePolyline(encoded, 1e5);
+  const base = trimSlash(requireValue(env.NOMINATIM_URL, "NOMINATIM_URL"));
+  // Política de uso do Nominatim público exige um User-Agent que identifique
+  // a aplicação: https://operations.osmfoundation.org/policies/nominatim/
+  const res = await fetch(nominatimSearchUrl(base, query), {
+    headers: { "User-Agent": "AjudaMais/1.0" },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`Nominatim ${res.status}`);
+  return parseNominatim(await res.json());
 }
 
 // Distância em linha reta (haversine), em km — usado para detectar chegada do
-// prestador sem depender do Valhalla/OSRM, que roda best-effort (RF-E3).
+// prestador sem depender do roteamento, que roda best-effort (RF-E3).
 export function haversineKm(a: LatLng, b: LatLng): number {
   const R = 6371;
   const dLat = ((b.lat - a.lat) * Math.PI) / 180;
@@ -110,44 +72,59 @@ export function haversineKm(a: LatLng, b: LatLng): number {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-// Fallback quando OSRM/Valhalla indisponível — linha reta + ETA aproximado (~30 km/h urbano).
+// Fallback quando o roteamento está indisponível — linha reta + ETA aproximado (~30 km/h urbano).
 export function straightLineRoute(from: LatLng, to: LatLng): Route {
   const distanceKm = haversineKm(from, to);
   const durationMin = Math.max(1, Math.round((distanceKm / 30) * 60));
-  return {
-    distanceKm,
-    durationMin,
-    points: [from, to],
-  };
+  return { distanceKm, durationMin, points: [from, to] };
 }
 
-const DEFAULT_OSRM_BASE = "https://router.project-osrm.org";
+/** Base do OSRM: OSRM_URL; senão o VALHALLA_URL legado (que sempre apontou para um OSRM); senão o público. */
+export function osrmBaseUrl(e: { OSRM_URL?: string; VALHALLA_URL?: string } = env): string {
+  return trimSlash(e.OSRM_URL || e.VALHALLA_URL || DEFAULT_OSRM_BASE);
+}
 
-function routingBaseUrl(): string {
-  const configured = env.VALHALLA_URL?.replace(/\/$/, "");
-  return configured || DEFAULT_OSRM_BASE;
+async function fetchRoute(from: LatLng, to: LatLng): Promise<Route> {
+  const signal = AbortSignal.timeout(TIMEOUT_MS);
+  switch (env.ROUTING_PROVIDER) {
+    case "valhalla": {
+      const base = trimSlash(requireValue(env.VALHALLA_URL, "VALHALLA_URL"));
+      const res = await fetch(`${base}/route`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(valhallaRouteBody(from, to)),
+        signal,
+      });
+      if (!res.ok) throw new Error(`Valhalla ${res.status}`);
+      return parseValhallaRoute(await res.json());
+    }
+    case "google": {
+      const res = await fetch(GOOGLE_ROUTES_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": requireValue(env.GOOGLE_MAPS_API_KEY, "GOOGLE_MAPS_API_KEY"),
+          "X-Goog-FieldMask": GOOGLE_ROUTES_FIELD_MASK,
+        },
+        body: JSON.stringify(googleRouteBody(from, to)),
+        signal,
+      });
+      if (!res.ok) throw new Error(`Google Routes ${res.status}`);
+      return parseGoogleRoute(await res.json());
+    }
+    default: {
+      const res = await fetch(osrmRouteUrl(osrmBaseUrl(), from, to), { signal });
+      if (!res.ok) throw new Error(`OSRM ${res.status}`);
+      return parseOsrmRoute(await res.json());
+    }
+  }
 }
 
 export async function routeBetween(from: LatLng, to: LatLng): Promise<Route> {
-  const base = routingBaseUrl();
-  const coords = `${from.lng},${from.lat};${to.lng},${to.lat}`;
-  const url = new URL(`${base}/route/v1/driving/${coords}`);
-  url.searchParams.set("overview", "full");
-  url.searchParams.set("geometries", "polyline");
-
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
-    if (!res.ok) throw new Error(`OSRM ${res.status}`);
-    const data = (await res.json()) as OsrmResponse & { code?: string };
-    if (data.code && data.code !== "Ok") throw new Error(`OSRM ${data.code}`);
-    const route = data.routes?.[0];
-    if (!route?.geometry) throw new Error("OSRM empty route");
-    return {
-      distanceKm: (route.distance ?? 0) / 1000,
-      durationMin: Math.max(1, Math.round((route.duration ?? 0) / 60)),
-      points: decodePolyline5(route.geometry),
-    };
-  } catch {
+    return await fetchRoute(from, to);
+  } catch (err) {
+    console.warn(`[geo] roteamento (${env.ROUTING_PROVIDER}) falhou, usando linha reta:`, err);
     return straightLineRoute(from, to);
   }
 }

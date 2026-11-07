@@ -18,7 +18,7 @@
 | **Chat real cliente ↔ prestador** | RF-E1 | ✅ **Concluído** |
 | **Pagamento real (Stripe) + split interno** | RF-F1/F2/F3 | ✅ **Concluído** · Pix pendente ativação na conta |
 | **Busca por IA conversacional (on-device)** | RF-J1..J5, J7 | ✅ **Código concluído** · ⏳ verificação em device |
-| **Geo (Valhalla + Nominatim) na Railway** | RF-C5/C6, RF-E3 (base) | ✅ **Código concluído** · deploy Railway pendente (URLs a caminho) |
+| **Geo (Valhalla + Nominatim) na Railway** | RF-C5/C6, RF-E3 (base) | 🟡 **Hoje usa OSRM público + Nominatim público.** Valhalla/Nominatim próprios prontos em `apps/geo`, não implantados; a API fala o formato do Valhalla desde 2026-11-06 (`ROUTING_PROVIDER=valhalla`) |
 | **Carteira/ganhos do prestador (saldo + extrato)** | RF-F4/F5 | ✅ **Concluído** |
 | **Onboarding profissional + KYC do prestador** | RF-B1/B2, RF-B3 (parcial) | ✅ **Concluído** · upload de documento pendente ativação do Storage |
 | **Notificações push (novo pedido, updates, mensagens)** | RF-E2 | ✅ **Concluído** · projeto EAS vinculado (`eas init`) · falta testar token real em device físico |
@@ -84,7 +84,7 @@ construído, incremento a incremento.
 - **RF-C2 (P0)** Mapa real (MapLibre + tiles OpenFreeMap). — ✅ *código pronto; rebuild nativo pendente pra verificar em device*
 - **RF-C3 (P0)** Consulta de prestadores no Supabase por categoria/serviço + geo — alimenta mapa e IA. — ✅
 - **RF-C4 (P1)** Filtros/ordenação tradicionais (fallback à IA). — *fallback em uso na Explorar*
-- **RF-C5 (P1)** Distância/ETA real via Valhalla. — ✅ *código pronto (rota prestador→endereço); ETA real depende do deploy Railway*
+- **RF-C5 (P1)** Distância/ETA real via Valhalla. — 🟡 *rota real hoje vem do OSRM público (`router.project-osrm.org`); Valhalla próprio suportado por `ROUTING_PROVIDER=valhalla`, mas ainda não implantado*
 - **RF-C6 (P2)** Busca por endereço/CEP (ViaCEP + Nominatim) + múltiplos endereços. — ✅ *ViaCEP no cadastro do pedido; geocoding Nominatim no servidor (fallback pro centro de Palmas sem Railway); múltiplos endereços agora têm livro de endereços real (RF-A6) — só não estão integrados de volta ao formulário de pedido (`create-order.tsx` continua com endereço avulso)*
 
 ### RF-J · Busca por IA conversacional (funcionalidade central) 🌟
@@ -104,7 +104,7 @@ construído, incremento a incremento.
 - **RF-D3 (P0)** Aceite/recusa pelo prestador. — ✅
 - **RF-D4 (P0)** Cancelamento (cliente/prestador) com regras. — ✅
 - **RF-D5 (P1)** Orçamento/negociação antes do aceite. — ✅ *opt-in por prestador (`allowsNegotiation`, desligado por padrão — comportamento igual ao de antes); quando ligado, cliente/prestador propõem um novo valor enquanto o pedido está `CREATED`; bloqueado assim que há um `Payment` associado*
-- **RF-D6 (P1)** Agendamento (data/hora futura). — ✅
+- **RF-D6 (P1)** Agendamento (data/hora futura). — 🟡 *só na chamada direta (não na ajuda aberta); nada dispara no horário marcado — o cron (Fase 2) só respeita o horário para expirar*
 - **RF-D7 (P1)** Histórico de pedidos. — ✅ (em andamento × concluídos)
 - **RF-D8 (P2)** Recontratar/repetir pedido; favoritos.
 

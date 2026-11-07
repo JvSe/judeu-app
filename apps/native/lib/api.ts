@@ -281,6 +281,29 @@ export type SearchResults = {
   providers: ProviderListItem[];
 };
 
+// ---- JudIA em nuvem (reserva quando a IA não roda no aparelho) ----
+export type CloudAssistantAction =
+  | { type: "providers"; categoryId: string; categoryName: string; term: string | null }
+  | { type: "help_request"; description: string; categoryId: string | null; priceCents: number | null }
+  | { type: "jobs"; categoryId: string | null; term: string | null };
+
+export type CloudAssistantReply = {
+  reply: string;
+  action: CloudAssistantAction | null;
+  source: "claude" | "keywords";
+  conversationId: string | null;
+};
+
+export const assistantApi = {
+  ask(input: {
+    message: string;
+    conversationId: string | null;
+    history: { role: "user" | "assistant"; content: string }[];
+  }) {
+    return apiFetch<CloudAssistantReply>("/api/assistant", { method: "POST", body: input });
+  },
+};
+
 // ---- Configuração pública (taxa, TTLs) ----
 export type AppConfig = {
   platformFeeRate: number;
