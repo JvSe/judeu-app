@@ -280,6 +280,7 @@ model ProviderProfile {
   ordersAsProvider Order[]           @relation("ProviderOrders")
   jobPostings     JobPosting[]
 
+  badges     ProviderBadge[]
   @@index([status, isAvailable])
   @@map("providerprofile")
 }
@@ -291,6 +292,8 @@ model Category {
   icon      String?
   // Taxa da plataforma desta categoria; null = usa a geral (AppConfig).
   feeRate   Float?
+  // Nível de risco: 1 livre · 2 selo de reparos · 3 profissional com credencial · 4 proibido.
+  riskLevel Int      @default(1)
   createdAt DateTime @default(now())
 
   services   Service[]
@@ -390,6 +393,8 @@ model Order {
   doorCodeAttempts Int        @default(0)
   // Link público de acompanhamento (modo família), /t/<shareToken>.
   shareToken       String?    @unique
+  // Nível de risco da categoria quando o pedido foi criado (snapshot).
+  riskLevel        Int        @default(1)
   couponCode      String?
   cancelReason    String?
   acceptedAt      DateTime?
@@ -720,6 +725,22 @@ model SupportTicket {
   @@index([userId])
   @@index([status])
   @@map("supportticket")
+}
+
+// Selos de quem atende: REPAIRS_SEAL (treino + teste + tarefas) libera nível 2;
+// PRO_CREDENTIAL (credencial/registro + seguro de RC) libera nível 3.
+model ProviderBadge {
+  id         String    @id @default(uuid())
+  providerId String
+  type       String // REPAIRS_SEAL | PRO_CREDENTIAL
+  note       String?
+  grantedAt  DateTime  @default(now())
+  expiresAt  DateTime?
+
+  provider ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, type])
+  @@map("providerbadge")
 }
 
 // Parâmetros de negócio editáveis sem deploy (taxa, TTLs, limiares). Sem linha,

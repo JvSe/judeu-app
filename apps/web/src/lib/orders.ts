@@ -7,6 +7,7 @@ import { getConfig } from "./config";
 import { ensureUtcIso } from "./dates";
 import { DOOR_CODE_MAX_ATTEMPTS, DOOR_CODE_MESSAGES, checkDoorCode, generateDoorCode } from "./door-code";
 import { recordEtaMeasurement, recordEtaPrediction } from "./eta-tracking";
+import { RISK_DENIED_MESSAGE, canTakeRisk, normalizeRisk, type RiskLevel } from "./risk";
 import { trackEvent } from "./events";
 import { type FamilyEvent, newShareToken, notifyTrustedContact } from "./family";
 import { completionWalletMovement, computeFees, feeRuleOf, resolveFeeRule } from "./fees";
@@ -124,6 +125,7 @@ type OrderFull = {
   feePayer?: string | null;
   doorCode?: string | null;
   doorCodeAttempts?: number | null;
+  riskLevel?: number | null;
   cancelReason: string | null;
   createdAt: string;
   isOpenRequest: boolean;
@@ -197,6 +199,8 @@ export type OrderDTO = {
   providerNetCents: number;
   /** Quem atende precisa digitar o código de chegada para iniciar (o código em si nunca vai no DTO). */
   requiresDoorCode: boolean;
+  /** 1 livre · 2 selo de reparos · 3 profissional com credencial. */
+  riskLevel: number;
   cancelReason: string | null;
   createdAt: string;
   offerExpiresAt: string;
@@ -260,6 +264,7 @@ function toDTO(o: OrderFull, unreadMessages = 0): OrderDTO {
     providerNetCents:
       feeRuleOf(o).payer === "PROVIDER" ? o.priceCents - o.platformFeeCents : o.priceCents,
     requiresDoorCode: !!o.doorCode,
+    riskLevel: normalizeRisk(o.riskLevel),
     cancelReason: o.cancelReason,
     createdAt: o.createdAt,
     offerExpiresAt: new Date(
@@ -432,6 +437,7 @@ export type OpenRequestAudienceProfile = {
   baseLat: number | null;
   baseLng: number | null;
   categories: { categoryId: string }[];
+  badges?: { type: string; expiresAt: string | null }[] | null;
 };
 
 /**
@@ -442,10 +448,12 @@ export type OpenRequestAudienceProfile = {
  */
 export function matchesOpenRequestAudience(
   profile: OpenRequestAudienceProfile,
-  order: { categoryId: string | null; address: LatLng },
+  order: { categoryId: string | null; address: LatLng; riskLevel?: number },
   busyIds: Set<string>,
 ): boolean {
   if (busyIds.has(profile.id)) return false;
+  // Nível de tarefa: só quem tem a qualificação recebe/vê (pitch, rodada 3).
+  if (!canTakeRisk(profile, normalizeRisk(order.riskLevel))) return false;
   const origin = effectiveProviderPosition(profile);
   if (!isInsideServiceRadius(origin, profile.serviceRadiusKm, order.address)) return false;
   if (profile.isHelper) return true;
@@ -458,7 +466,7 @@ async function loadOpenRequestAudience(excludeUserId: string) {
   const { data: rows } = await supabase
     .from("providerprofile")
     .select(
-      "id, userId, isHelper, serviceRadiusKm, lastLat, lastLng, lastLocationAt, baseLat, baseLng, categories:providercategory(categoryId)",
+      "id, userId, isHelper, serviceRadiusKm, lastLat, lastLng, lastLocationAt, baseLat, baseLng, categories:providercategory(categoryId), badges:providerbadge(type, expiresAt)",
     )
     .eq("status", "APPROVED")
     .eq("isAvailable", true)
@@ -487,7 +495,7 @@ export type AvailabilitySummary = {
 /** Mesmo público do push de ajuda aberta, agregado (sem identificar ninguém). */
 export function summarizeAvailability(
   profiles: OpenRequestAudienceProfile[],
-  request: { categoryId: string | null; address: LatLng },
+  request: { categoryId: string | null; address: LatLng; riskLevel?: number },
   busyIds: Set<string>,
 ): AvailabilitySummary & { nearest: LatLng | null } {
   let helpers = 0;
@@ -518,8 +526,17 @@ export async function openRequestAvailability(
   point: LatLng,
   categoryId: string | null,
 ): Promise<AvailabilitySummary & { etaMin: number | null }> {
-  const { rows, busyIds } = await loadOpenRequestAudience(clientId);
-  const { nearest, ...summary } = summarizeAvailability(rows, { categoryId, address: point }, busyIds);
+  const [{ rows, busyIds }, { data: category }] = await Promise.all([
+    loadOpenRequestAudience(clientId),
+    categoryId
+      ? supabase.from("category").select("riskLevel").eq("id", categoryId).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const { nearest, ...summary } = summarizeAvailability(
+    rows,
+    { categoryId, address: point, riskLevel: category?.riskLevel ?? 1 },
+    busyIds,
+  );
   let etaMin: number | null = null;
   if (nearest) {
     const route = await routeBetween(nearest, point);
@@ -547,7 +564,11 @@ async function notifyAvailableProviders(order: OrderFull) {
     if (
       !matchesOpenRequestAudience(
         p,
-        { categoryId, address: { lat: order.address.lat, lng: order.address.lng } },
+        {
+          categoryId,
+          address: { lat: order.address.lat, lng: order.address.lng },
+          riskLevel: order.riskLevel ?? 1,
+        },
         busyIds,
       )
     ) {
@@ -603,13 +624,20 @@ export async function createOrder(
 
   let priceCents = 0;
   let serviceId: string | undefined;
-  type ProviderPick = { id: string; userId: string; services: { id: string; priceCents: number }[] };
+  type ProviderPick = {
+    id: string;
+    userId: string;
+    isHelper: boolean;
+    services: { id: string; priceCents: number; categoryId: string }[];
+    badges: { type: string; expiresAt: string | null }[];
+  };
+  let serviceCategoryId: string | null = null;
   let provider: ProviderPick | null = null;
 
   if (!isOpenRequest) {
     const { data: found } = await supabase
       .from("providerprofile")
-      .select("*, services:service(id, priceCents)")
+      .select("*, services:service(id, priceCents, categoryId), badges:providerbadge(type, expiresAt)")
       .eq("id", input.providerId!)
       .maybeSingle();
     if (!found || found.status !== "APPROVED" || !found.isAvailable) {
@@ -638,6 +666,7 @@ export async function createOrder(
       if (!service) return { error: "Serviço não pertence ao prestador", status: 400 };
       priceCents = service.priceCents;
       serviceId = service.id;
+      serviceCategoryId = service.categoryId;
     }
   } else {
     priceCents = input.priceCents!;
@@ -645,10 +674,17 @@ export async function createOrder(
 
   // Snapshot da regra de cobrança: o pedido fica com ela até o fim.
   const config = await getConfig();
-  const { data: category } = input.categoryId
-    ? await supabase.from("category").select("feeRate").eq("id", input.categoryId).maybeSingle()
+  const riskCategoryId = input.categoryId ?? serviceCategoryId;
+  const { data: category } = riskCategoryId
+    ? await supabase.from("category").select("feeRate, riskLevel").eq("id", riskCategoryId).maybeSingle()
     : { data: null };
-  const feeRule = resolveFeeRule(config, category);
+  const feeRule = resolveFeeRule(config, input.categoryId ? category : null);
+  // Nível de tarefa: proibido nem é criado; chamada direta só para quem pode.
+  const riskLevel: RiskLevel = normalizeRisk(category?.riskLevel);
+  if (riskLevel === 4) return { error: RISK_DENIED_MESSAGE[4], status: 400 };
+  if (provider && !canTakeRisk(provider, riskLevel)) {
+    return { error: `Essa pessoa não pode fazer esta tarefa. ${RISK_DENIED_MESSAGE[riskLevel as 2 | 3]}`, status: 400 };
+  }
   // Modo família: quem tem contato de confiança ganha link de acompanhamento.
   const { data: clientRow } = await supabase
     .from("user")
@@ -682,8 +718,11 @@ export async function createOrder(
   });
   if (error || !created) return { error: error?.message ?? "Falha ao criar pedido", status: 500 };
 
-  if (shareToken) {
-    await supabase.from("order").update({ shareToken }).eq("id", (created as OrderRow).id);
+  if (shareToken || riskLevel !== 1) {
+    await supabase
+      .from("order")
+      .update({ ...(shareToken ? { shareToken } : {}), riskLevel })
+      .eq("id", (created as OrderRow).id);
   }
 
   const order = await fetchOrder((created as OrderRow).id);
@@ -956,6 +995,17 @@ export async function transitionOrder(
     }
     if (await isProviderBusy(profile.id, order.id)) {
       return { error: "Você já está em uma chamada", status: 409 };
+    }
+    // Nível de tarefa: confere a qualificação de quem aceita.
+    const risk = normalizeRisk(order.riskLevel);
+    if (risk !== 1) {
+      const { data: badges } = await supabase
+        .from("providerbadge")
+        .select("type, expiresAt")
+        .eq("providerId", profile.id);
+      if (!canTakeRisk({ isHelper: profile.isHelper, badges: badges ?? [] }, risk)) {
+        return { error: RISK_DENIED_MESSAGE[risk as 2 | 3 | 4], status: 403 };
+      }
     }
     // Profissional só pega ajuda da própria categoria; helper pega qualquer uma
     // (mesma regra do push — QA P-08/C-13).

@@ -2,8 +2,10 @@ import { Button } from "@judeu/ui/components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@judeu/ui/components/card";
 
 import { listAllProviderProfiles, type AdminProviderDTO } from "@/lib/provider-profile";
+import { BADGE_LABEL, type BadgeType } from "@/lib/risk";
+import { listBadgesByProvider } from "@/lib/risk-admin";
 
-import { updateProviderStatus } from "../actions";
+import { updateProviderBadge, updateProviderStatus } from "../actions";
 
 const STATUS_LABEL: Record<AdminProviderDTO["status"], string> = {
   PENDING: "Pendente",
@@ -12,7 +14,7 @@ const STATUS_LABEL: Record<AdminProviderDTO["status"], string> = {
 };
 
 export default async function AdminDashboardPage() {
-  const providers = await listAllProviderProfiles();
+  const [providers, badges] = await Promise.all([listAllProviderProfiles(), listBadgesByProvider()]);
   const pending = providers.filter((p) => p.status === "PENDING");
   const others = providers.filter((p) => p.status !== "PENDING");
 
@@ -27,7 +29,7 @@ export default async function AdminDashboardPage() {
         ) : (
           <div className="flex flex-col gap-3">
             {pending.map((p) => (
-              <ProviderRow key={p.id} provider={p} />
+              <ProviderRow key={p.id} provider={p} badges={badges.get(p.id) ?? []} />
             ))}
           </div>
         )}
@@ -40,7 +42,7 @@ export default async function AdminDashboardPage() {
         ) : (
           <div className="flex flex-col gap-3">
             {others.map((p) => (
-              <ProviderRow key={p.id} provider={p} />
+              <ProviderRow key={p.id} provider={p} badges={badges.get(p.id) ?? []} />
             ))}
           </div>
         )}
@@ -49,7 +51,7 @@ export default async function AdminDashboardPage() {
   );
 }
 
-function ProviderRow({ provider }: { provider: AdminProviderDTO }) {
+function ProviderRow({ provider, badges }: { provider: AdminProviderDTO; badges: BadgeType[] }) {
   return (
     <Card>
       <CardHeader>
@@ -69,7 +71,7 @@ function ProviderRow({ provider }: { provider: AdminProviderDTO }) {
       </CardHeader>
       <CardContent className="flex items-center gap-2">
         <span className="text-xs font-medium">{STATUS_LABEL[provider.status]}</span>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap justify-end gap-2">
           <form action={updateProviderStatus.bind(null, provider.id, "APPROVED")}>
             <Button type="submit" size="sm" disabled={provider.status === "APPROVED"}>
               Aprovar
@@ -85,6 +87,16 @@ function ProviderRow({ provider }: { provider: AdminProviderDTO }) {
               Bloquear
             </Button>
           </form>
+          {(Object.keys(BADGE_LABEL) as BadgeType[]).map((type) => {
+            const has = badges.includes(type);
+            return (
+              <form key={type} action={updateProviderBadge.bind(null, provider.id, type, !has)}>
+                <Button type="submit" size="sm" variant={has ? "secondary" : "outline"}>
+                  {has ? `✓ ${BADGE_LABEL[type]}` : `+ ${BADGE_LABEL[type]}`}
+                </Button>
+              </form>
+            );
+          })}
           {provider.status !== "PENDING" && (
             <form action={updateProviderStatus.bind(null, provider.id, "PENDING")}>
               <Button type="submit" size="sm" variant="outline">

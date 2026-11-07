@@ -506,6 +506,8 @@ export type Order = {
   providerNetCents: number;
   /** Quem atende precisa digitar o código de chegada para iniciar. */
   requiresDoorCode: boolean;
+  /** 1 livre · 2 selo de reparos · 3 profissional com credencial. */
+  riskLevel: number;
   cancelReason: string | null;
   createdAt: string;
   offerExpiresAt: string;

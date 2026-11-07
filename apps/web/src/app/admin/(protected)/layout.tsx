@@ -20,6 +20,9 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
           <Link href="/admin/support" className="text-lg font-medium hover:underline">
             Chamados
           </Link>
+          <Link href="/admin/categories" className="text-lg font-medium hover:underline">
+            Categorias
+          </Link>
           <Link href="/admin/metrics" className="text-lg font-medium hover:underline">
             Métricas
           </Link>

@@ -238,3 +238,34 @@ describe("summarizeAvailability", () => {
     });
   });
 });
+
+describe("matchesOpenRequestAudience com nível de tarefa", () => {
+  const now = new Date().toISOString();
+  const helper: OpenRequestAudienceProfile = {
+    id: "h",
+    userId: "u",
+    isHelper: true,
+    serviceRadiusKm: 10,
+    lastLat: -10.18,
+    lastLng: -48.33,
+    lastLocationAt: now,
+    baseLat: null,
+    baseLng: null,
+    categories: [],
+  };
+  const order = { categoryId: null, address: { lat: -10.18, lng: -48.33 } };
+
+  it("nível 1 (padrão) não muda nada", () => {
+    expect(matchesOpenRequestAudience(helper, order, new Set())).toBe(true);
+  });
+  it("nível 2 exige selo para helper", () => {
+    expect(matchesOpenRequestAudience(helper, { ...order, riskLevel: 2 }, new Set())).toBe(false);
+    expect(
+      matchesOpenRequestAudience(
+        { ...helper, badges: [{ type: "REPAIRS_SEAL", expiresAt: null }] },
+        { ...order, riskLevel: 2 },
+        new Set(),
+      ),
+    ).toBe(true);
+  });
+});

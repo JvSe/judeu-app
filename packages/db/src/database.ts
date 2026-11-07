@@ -104,6 +104,7 @@ export type CategoryRow = {
   name: string;
   icon: string | null;
   feeRate: number | null;
+  riskLevel: number;
   createdAt: string;
 };
 
@@ -159,6 +160,7 @@ export type OrderRow = {
   doorCode: string | null;
   doorCodeAttempts: number;
   shareToken: string | null;
+  riskLevel: number;
   couponCode: string | null;
   cancelReason: string | null;
   acceptedAt: string | null;
@@ -342,6 +344,15 @@ export type PayoutRow = {
   completedAt: string | null;
 };
 
+export type ProviderBadgeRow = {
+  id: string;
+  providerId: string;
+  type: "REPAIRS_SEAL" | "PRO_CREDENTIAL";
+  note: string | null;
+  grantedAt: string;
+  expiresAt: string | null;
+};
+
 type TableDef<Row> = {
   Row: Row;
   Insert: Partial<Row> & Record<string, unknown>;
@@ -379,6 +390,7 @@ export type Database = {
       appevent: TableDef<AppEventRow>;
       payoutaccount: TableDef<PayoutAccountRow>;
       payout: TableDef<PayoutRow>;
+      providerbadge: TableDef<ProviderBadgeRow>;
     };
     Views: Record<string, never>;
     Functions: {

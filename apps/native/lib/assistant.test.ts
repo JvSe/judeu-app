@@ -74,6 +74,7 @@ function makeOrder(categoryName: string | null): Order {
     feeRate: 0.2,
     providerNetCents: 0,
     requiresDoorCode: false,
+    riskLevel: 1,
     cancelReason: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     offerExpiresAt: "2026-01-01T00:01:00.000Z",
