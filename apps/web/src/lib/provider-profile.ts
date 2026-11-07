@@ -96,31 +96,59 @@ export async function getMyProviderProfile(userId: string): Promise<MyProviderPr
   return profile ? toDTO(profile) : null;
 }
 
+type ExistingProfileForUpsert = {
+  isHelper: boolean;
+  status: MyProviderProfileDTO["status"];
+  baseLat: number | null;
+  baseLng: number | null;
+};
+
+/**
+ * Campos que o upsert profissional grava além dos dados do formulário.
+ * - Helper que vira profissional volta para PENDING: o helper não passou por
+ *   KYC e não pode herdar o APPROVED (QA H-01). BLOCKED continua BLOCKED.
+ * - Profissional que só edita o cadastro mantém o status (sem nova análise).
+ * - Base (baseLat/baseLng) só muda quando o app envia; senão preserva (QA P-14).
+ */
+export function professionalUpsertOverrides(
+  existing: ExistingProfileForUpsert | null,
+  input: Pick<UpsertProviderProfileInput, "baseLat" | "baseLng">,
+): { status?: "PENDING"; baseLat: number | null; baseLng: number | null } {
+  const hasBase = input.baseLat != null && input.baseLng != null;
+  const base = hasBase
+    ? { baseLat: input.baseLat!, baseLng: input.baseLng! }
+    : { baseLat: existing?.baseLat ?? null, baseLng: existing?.baseLng ?? null };
+  if (existing?.isHelper && existing.status !== "BLOCKED") {
+    return { status: "PENDING", ...base };
+  }
+  return base;
+}
+
 export async function upsertMyProviderProfile(
   userId: string,
   input: UpsertProviderProfileInput,
 ): Promise<MyProviderProfileDTO> {
   const now = new Date().toISOString();
+
+  const { data: existing } = await supabase
+    .from("providerprofile")
+    .select("id, isHelper, status, baseLat, baseLng")
+    .eq("userId", userId)
+    .maybeSingle();
+
   const payload = {
     headline: input.headline,
     bio: input.bio ?? null,
     yearsExperience: input.yearsExperience,
     serviceRadiusKm: input.serviceRadiusKm,
-    baseLat: input.baseLat ?? null,
-    baseLng: input.baseLng ?? null,
     allowsNegotiation: input.allowsNegotiation ?? false,
     isHelper: false,
     isCompany: input.isCompany ?? false,
     companyName: input.isCompany ? (input.companyName ?? null) : null,
     responsibleName: input.isCompany ? (input.responsibleName ?? null) : null,
     updatedAt: now,
+    ...professionalUpsertOverrides(existing, input),
   };
-
-  const { data: existing } = await supabase
-    .from("providerprofile")
-    .select("id")
-    .eq("userId", userId)
-    .maybeSingle();
 
   let providerId: string;
   if (existing) {
