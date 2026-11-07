@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { getDeviceId } from "@/lib/device-id";
 import { clearTokens, getTokens, saveTokens } from "@/lib/tokens";
 
 // Base da API (apps/web). Em dev, simulador iOS enxerga o Mac via "localhost" e
@@ -120,10 +121,11 @@ export const authApi = {
       auth: false,
     });
   },
-  login(input: { email: string; password: string }) {
+  async login(input: { email: string; password: string }) {
+    const deviceId = await getDeviceId();
     return apiFetch<AuthResponse>("/api/auth/login", {
       method: "POST",
-      body: input,
+      body: { ...input, ...(deviceId ? { deviceId } : {}) },
       auth: false,
     });
   },
@@ -395,6 +397,8 @@ export type MyProviderProfile = {
   hasDocument: boolean;
   hasSelfie: boolean;
   hasBackgroundCheck: boolean;
+  /** Precisa de selfie nova antes de atender (aleatória ou aparelho novo). */
+  reverifyRequired: boolean;
   categoryIds: string[];
   services: { id: string; categoryId: string; name: string; priceCents: number }[];
 };

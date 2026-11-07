@@ -8,6 +8,7 @@ import { ensureUtcIso } from "./dates";
 import { DOOR_CODE_MAX_ATTEMPTS, DOOR_CODE_MESSAGES, checkDoorCode, generateDoorCode } from "./door-code";
 import { recordEtaMeasurement, recordEtaPrediction } from "./eta-tracking";
 import { isUserBlocked } from "./moderation";
+import { REVERIFY_MESSAGES, REVERIFY_STATUS, requireReverification, reverifyDecision } from "./reverify";
 import { PREFERENCES_DENIED, type OrderPreferences, hasPreferences, meetsPreferences } from "./preferences";
 import { RISK_DENIED_MESSAGE, canTakeRisk, normalizeRisk, type RiskLevel } from "./risk";
 import { trackEvent } from "./events";
@@ -1148,6 +1149,20 @@ export async function transitionOrder(
           : "Você ainda não chegou ao local do cliente",
         status: 409,
       };
+    }
+    // Reverificação: às vezes pede uma selfie nova antes de começar.
+    if (order.providerId) {
+      const { data: me } = await supabase
+        .from("providerprofile")
+        .select("reverifyRequiredAt, lastSelfieAt")
+        .eq("id", order.providerId)
+        .maybeSingle();
+      const decision = reverifyDecision(me ?? {}, await getConfig(), Math.random());
+      if (decision === "required") {
+        await requireReverification(order.providerId, "Verificação aleatória antes de começar");
+        return { error: REVERIFY_MESSAGES.random, status: REVERIFY_STATUS };
+      }
+      if (decision === "pending") return { error: REVERIFY_MESSAGES.pending, status: REVERIFY_STATUS };
     }
     // Código na porta: confirma que é a pessoa certa antes de começar.
     const check = checkDoorCode(order, opts.doorCode);

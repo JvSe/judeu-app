@@ -48,7 +48,7 @@ function hashToken(raw: string): string {
   return createHash("sha256").update(raw).digest("hex");
 }
 
-export async function issueRefreshToken(userId: string): Promise<string> {
+export async function issueRefreshToken(userId: string, deviceId: string | null = null): Promise<string> {
   const raw = randomBytes(48).toString("hex");
   const expiresAt = new Date(Date.now() + REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const { error } = await supabase.from("refreshtoken").insert({
@@ -56,6 +56,7 @@ export async function issueRefreshToken(userId: string): Promise<string> {
     userId,
     tokenHash: hashToken(raw),
     expiresAt,
+    deviceId,
   });
   if (error) throw new Error(`refresh token: ${error.message}`);
   return raw;
@@ -67,7 +68,7 @@ export async function rotateRefreshToken(
   const tokenHash = hashToken(raw);
   const { data: record, error } = await supabase
     .from("refreshtoken")
-    .select("id, userId, expiresAt, revokedAt, user:user!inner(role, blockedAt)")
+    .select("id, userId, expiresAt, revokedAt, deviceId, user:user!inner(role, blockedAt)")
     .eq("tokenHash", tokenHash)
     .maybeSingle();
   if (error) throw new Error(`refresh lookup: ${error.message}`);
@@ -81,7 +82,7 @@ export async function rotateRefreshToken(
     .eq("id", record.id);
 
   const accessToken = await signAccessToken({ sub: record.userId, role: user.role });
-  const refreshToken = await issueRefreshToken(record.userId);
+  const refreshToken = await issueRefreshToken(record.userId, record.deviceId);
   return { userId: record.userId, role: user.role, accessToken, refreshToken };
 }
 
@@ -190,4 +191,38 @@ export async function requireAuth(req: Request): Promise<AccessClaims | null> {
   const header = req.headers.get("authorization");
   if (!header?.startsWith("Bearer ")) return null;
   return verifyAccessToken(header.slice("Bearer ".length).trim());
+}
+
+/**
+ * Quem atende usa um aparelho por vez (impede empréstimo de conta): login por
+ * um aparelho diferente do da última sessão ativa derruba as outras sessões e
+ * pede selfie nova antes de ficar disponível. Cliente não é afetado.
+ */
+export async function enforceSingleDevice(userId: string, deviceId: string | null): Promise<void> {
+  if (!deviceId) return;
+  const { data: profile } = await supabase
+    .from("providerprofile")
+    .select("id, status")
+    .eq("userId", userId)
+    .maybeSingle();
+  if (!profile || profile.status !== "APPROVED") return;
+  const { data: last } = await supabase
+    .from("refreshtoken")
+    .select("deviceId")
+    .eq("userId", userId)
+    .is("revokedAt", null)
+    .not("deviceId", "is", null)
+    .order("createdAt", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!last || last.deviceId === deviceId) return;
+  await revokeAllRefreshTokens(userId);
+  await supabase
+    .from("providerprofile")
+    .update({
+      reverifyRequiredAt: new Date().toISOString(),
+      reverifyReason: "Login em aparelho novo",
+      isAvailable: false,
+    })
+    .eq("id", profile.id);
 }

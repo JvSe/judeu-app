@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getConfig } from "./config";
 import { supabase } from "./db";
 import { notifyUser } from "./notifications";
+import { REVERIFY_MESSAGES, REVERIFY_STATUS } from "./reverify";
 import { signedKycUrl, uploadKycDocument } from "./storage";
 import { publicUser, type PublicUser } from "./user";
 
@@ -23,6 +24,8 @@ export type MyProviderProfileDTO = {
   hasDocument: boolean;
   hasSelfie: boolean;
   hasBackgroundCheck: boolean;
+  /** Precisa de selfie nova antes de atender (aleatória ou aparelho novo). */
+  reverifyRequired: boolean;
   categoryIds: string[];
   services: { id: string; categoryId: string; name: string; priceCents: number }[];
 };
@@ -65,6 +68,7 @@ function toDTO(p: {
   documentUrl: string | null;
   selfieUrl?: string | null;
   backgroundCheckUrl?: string | null;
+  reverifyRequiredAt?: string | null;
   categories: { categoryId: string }[];
   services: { id: string; categoryId: string; name: string; priceCents: number }[];
 }): MyProviderProfileDTO {
@@ -85,6 +89,7 @@ function toDTO(p: {
     hasDocument: !!p.documentUrl,
     hasSelfie: !!p.selfieUrl,
     hasBackgroundCheck: !!p.backgroundCheckUrl,
+    reverifyRequired: !!p.reverifyRequiredAt,
     categoryIds: p.categories.map((c) => c.categoryId),
     services: p.services,
   };
@@ -253,7 +258,14 @@ export async function setProviderKycFile(
   const path = await uploadKycDocument(userId, base64, mimeType);
   const { error } = await supabase
     .from("providerprofile")
-    .update({ ...kycPatch(kind, path), updatedAt: new Date().toISOString() })
+    .update({
+      ...kycPatch(kind, path),
+      // Selfie nova resolve a reverificação pendente.
+      ...(kind === "SELFIE"
+        ? { lastSelfieAt: new Date().toISOString(), reverifyRequiredAt: null, reverifyReason: null }
+        : {}),
+      updatedAt: new Date().toISOString(),
+    })
     .eq("userId", userId);
   if (error) throw new Error(error.message);
   const profile = await loadProfile(userId);
@@ -284,6 +296,17 @@ export async function setProviderAvailability(
     };
   }
   if (isAvailable) {
+    const { data: rv } = await supabase
+      .from("providerprofile")
+      .select("reverifyRequiredAt, reverifyReason")
+      .eq("userId", userId)
+      .maybeSingle();
+    if (rv?.reverifyRequiredAt) {
+      return {
+        error: rv.reverifyReason?.includes("aparelho") ? REVERIFY_MESSAGES.device : REVERIFY_MESSAGES.pending,
+        status: REVERIFY_STATUS,
+      };
+    }
     const debt = await cashFeeDebtBlock(userId);
     if (debt) return debt;
   }

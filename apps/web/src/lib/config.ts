@@ -32,6 +32,10 @@ export const configSchema = z.object({
   /** Prazo de atendimento do suporte (minutos): segurança/disputa e demais. */
   supportUrgentSlaMin: z.number().int().min(5).default(60),
   supportSlaMin: z.number().int().min(30).default(24 * 60),
+  /** Chance de pedir selfie antes de começar um atendimento (0 desliga). */
+  reverifyProbability: z.number().min(0).max(1).default(0.1),
+  /** Selfie mais recente que isto dispensa a reverificação aleatória (minutos). */
+  reverifyFreshMin: z.number().int().min(1).default(30),
   /** Menor saque permitido. */
   payoutMinCents: z.number().int().min(100).default(1000),
   /** Tarifa por saque (cobrada do valor sacado). */

@@ -14,6 +14,8 @@ import { Screen } from "@/components/ui/screen";
 import SpinButton from "@/components/ui/spin-button";
 import { fonts } from "@/constants/fonts";
 import { openGoogleMapsNavigation, openWazeNavigation } from "@/lib/external-maps";
+import { ApiError } from "@/lib/api";
+import { REVERIFY_STATUS } from "@/lib/device-id";
 import { isOrderPaid } from "@/lib/format";
 import { useOrder, useTransitionOrder } from "@/lib/hooks";
 import { useWatchCurrentLocation } from "@/lib/location";
@@ -125,8 +127,14 @@ export function AttendDelivery({
             else router.back();
           }
         },
-        onError: (err) =>
-          toast.error(errorMessage(err, "Não foi possível completar a ação.")),
+        onError: (err) => {
+          if (err instanceof ApiError && err.status === REVERIFY_STATUS) {
+            toast.info("Confirme que é você", { description: err.message });
+            router.push("/client/verification" as never);
+            return;
+          }
+          toast.error(errorMessage(err, "Não foi possível completar a ação."));
+        },
         onSettled: () => setPendingAction(null),
       },
     );

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { issueRefreshToken, signAccessToken, verifyPassword } from "@/lib/auth";
+import { enforceSingleDevice, issueRefreshToken, signAccessToken, verifyPassword } from "@/lib/auth";
 import { supabase } from "@/lib/db";
 import { error, handleOptions, json } from "@/lib/http";
 import { publicUser } from "@/lib/user";
@@ -10,6 +10,7 @@ export const runtime = "nodejs";
 const schema = z.object({
   email: z.email(),
   password: z.string().min(1),
+  deviceId: z.string().min(8).max(100).optional(),
 });
 
 export function OPTIONS() {
@@ -32,8 +33,10 @@ export async function POST(req: Request) {
     return error("Sua conta está suspensa. Fale com o suporte pelo e-mail de atendimento.", 403);
   }
 
+  const deviceId = parsed.data.deviceId ?? null;
+  await enforceSingleDevice(user.id, deviceId);
   const accessToken = await signAccessToken({ sub: user.id, role: user.role });
-  const refreshToken = await issueRefreshToken(user.id);
+  const refreshToken = await issueRefreshToken(user.id, deviceId);
 
   return json({ user: publicUser(user), accessToken, refreshToken });
 }

@@ -193,6 +193,8 @@ model RefreshToken {
   tokenHash String    @unique
   expiresAt DateTime
   revokedAt DateTime?
+  // Aparelho que abriu a sessão (quem atende: um aparelho por vez).
+  deviceId  String?
   createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -269,6 +271,10 @@ model ProviderProfile {
   ratingCount     Int            @default(0)
   documentUrl     String? // documento de verificação (KYC) no Supabase Storage
   selfieUrl          String? // selfie tirada pela câmera (KYC v2)
+  lastSelfieAt       DateTime?
+  // Reverificação pendente (selfie aleatória antes de começar, ou aparelho novo).
+  reverifyRequiredAt DateTime?
+  reverifyReason     String?
   backgroundCheckUrl String? // certidão de antecedentes criminais (KYC v2)
   // localização base + raio de atuação (matching por proximidade)
   baseLat         Float?

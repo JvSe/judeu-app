@@ -107,6 +107,15 @@ export default function Verification() {
         <ActivityIndicator color={theme.colors.primary} style={{ marginTop: 40 }} />
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
+          {profile.reverifyRequired && (
+            <View style={styles.reverify}>
+              <Ionicons name="shield-checkmark-outline" size={20} color={theme.colors.primary} />
+              <Text style={styles.reverifyText}>
+                Tire uma selfie nova para confirmar que é você. Depois é só voltar e continuar o
+                atendimento.
+              </Text>
+            </View>
+          )}
           <Text style={styles.intro}>
             Você vai entrar na casa de outras pessoas. Por isso conferimos sua identidade antes de
             liberar os pedidos. Leva uns 3 minutos.
@@ -190,5 +199,14 @@ const styles = StyleSheet.create((theme) => ({
   ghost: { borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, borderWidth: 1, borderColor: theme.colors.border },
   ghostText: { fontSize: 14, fontFamily: fonts.bold, color: theme.colors.mutedForeground },
   status: { padding: 14, borderRadius: 14, backgroundColor: "rgba(255,102,0,0.08)" },
+  reverify: {
+    flexDirection: "row",
+    gap: 10,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+  },
+  reverifyText: { flex: 1, fontSize: 14, fontFamily: fonts.bold, color: "#fff", lineHeight: 20 },
   statusText: { fontSize: 14, fontFamily: fonts.medium, color: "#fff", lineHeight: 20 },
 }));

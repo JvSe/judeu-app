@@ -50,6 +50,7 @@ export type RefreshTokenRow = {
   tokenHash: string;
   expiresAt: string;
   revokedAt: string | null;
+  deviceId: string | null;
   createdAt: string;
 };
 
@@ -93,6 +94,9 @@ export type ProviderProfileRow = {
   documentUrl: string | null;
   selfieUrl: string | null;
   backgroundCheckUrl: string | null;
+  lastSelfieAt: string | null;
+  reverifyRequiredAt: string | null;
+  reverifyReason: string | null;
   baseLat: number | null;
   baseLng: number | null;
   serviceRadiusKm: number;
