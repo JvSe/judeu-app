@@ -225,9 +225,9 @@ export async function setProviderAvailability(
   if (isAvailable && existing.status === "BLOCKED") {
     return { error: "Cadastro bloqueado. Fale com o suporte.", status: 403 };
   }
-  // Helper precisa ter passado pelo registerHelper; prestador profissional
-  // usa o mesmo endpoint, mas nunca criamos perfil “vazio” aqui.
-  if (isAvailable && existing.isHelper !== true && existing.status !== "APPROVED") {
+  // Helper e profissional só ficam disponíveis depois de aprovados. Antes, o
+  // helper nascia APPROVED e passava direto (pitch × app, item "cadastro verificado").
+  if (isAvailable && existing.status !== "APPROVED") {
     return {
       error: "Seu cadastro ainda não foi aprovado.",
       status: 403,
@@ -291,9 +291,11 @@ export async function registerHelper(
     })
     .eq("id", userId);
 
+  // Cadastro novo de helper nasce PENDING e espera aprovação no painel admin.
+  // Helper que já existe mantém o status (quem já estava aprovado continua).
   const profilePayload = {
     isHelper: true,
-    status: "APPROVED" as const,
+    ...(existing ? {} : { status: "PENDING" as const }),
     isAvailable: false,
     headline: "Ajuda perto de você",
     bio: input.bio?.trim() || null,
