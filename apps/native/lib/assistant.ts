@@ -44,6 +44,8 @@ export type HelpRequestArgs = {
   descricao: string;
   categoria?: string;
   valor_reais?: number;
+  /** 1–4; modelos pequenos às vezes mandam como texto ("3"). */
+  nivel_risco?: number | string;
 };
 export type JobSearchArgs = { categoria?: string; termo?: string; contrato?: string };
 
@@ -53,7 +55,28 @@ export type HelpRequestDraft = {
   description: string;
   categoryId?: string;
   priceCents?: number;
+  /** Sugestão de risco (1–4). 4 = o app não faz; o servidor só usa para subir o nível. */
+  riskLevel: number;
 };
+
+/** Rubrica curta para o modelo do aparelho (mesma escala da API). */
+export const RISK_RUBRIC_SHORT = [
+  "nivel_risco em pedir_ajuda:",
+  "1 = recado, compra, fila, buscar/levar, companhia, trocar lâmpada comum.",
+  "2 = reparo simples com ferramenta: montar móvel, pendurar quadro, desentupir pia.",
+  "3 = fiação, tomada, soquete, disjuntor, encanamento na parede, telhado ou escada alta.",
+  "4 = gás, poda de árvore grande, remédios/cuidado médico, algo ilegal.",
+  "Na dúvida, o maior.",
+];
+
+export const FORBIDDEN_REPLY =
+  "Esse tipo de tarefa não pode ser feito pelo app, por segurança. Se for urgente (gás, fiação pegando fogo, alguém passando mal), ligue 193 ou 192.";
+
+/** Normaliza o nível vindo do modelo (número ou texto); inválido = 1. */
+export function parseRiskLevel(value: unknown): number {
+  const n = typeof value === "string" ? Number.parseInt(value, 10) : typeof value === "number" ? value : NaN;
+  return n === 2 || n === 3 || n === 4 ? n : 1;
+}
 
 export type AssistantCapabilities = { canPublishJobs: boolean };
 
@@ -165,6 +188,7 @@ export function buildSystemPrompt(
     "Se a intenção já estiver clara, chame a ferramenta na hora, sem interrogatório.",
     "No máximo duas perguntas. Depois chame a ferramenta certa.",
     "Em pedir_ajuda, a 'descricao' deve ser uma frase completa do que fazer. Não peça endereço agora — o app só pede locais depois que alguém aceitar (ou os dois combinam no chat).",
+    ...RISK_RUBRIC_SHORT,
     canPublish
       ? "Esta pessoa é empresa. Só chame montar_vaga se ela quiser publicar uma vaga de emprego (não um serviço pontual)."
       : "Não fale de vagas de emprego. Se pedirem emprego, diga que aqui o fluxo é pedir ajuda ou chamar alguém agora.",
@@ -245,6 +269,12 @@ export function buildHelpRequestTool(categories: Category[]): object {
             type: "number",
             description: "Quanto a pessoa oferececeu pagar, em reais, se ela citou um valor. Opcional.",
           },
+          nivel_risco: {
+            type: "integer",
+            enum: [1, 2, 3, 4],
+            description:
+              "Risco da tarefa: 1 recado/compra/companhia; 2 reparo simples; 3 fiação, tomada, soquete, telhado; 4 gás, remédios, ilegal. Na dúvida, o maior.",
+          },
         },
         required: ["descricao"],
       },
@@ -267,6 +297,7 @@ export function parseHelpRequestFromTool(
     description,
     ...(categoryId ? { categoryId } : {}),
     ...(priceCents != null ? { priceCents } : {}),
+    riskLevel: parseRiskLevel(args.nivel_risco),
   };
 }
 

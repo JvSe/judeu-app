@@ -413,10 +413,18 @@ describe("parseHelpRequestFromTool", () => {
       description: "Buscar documentos na copiadora e deixar no trabalho",
       categoryId: "cat-frete",
       priceCents: 3000,
+      riskLevel: 1,
     });
   });
 
   it("descrição curta demais devolve null", () => {
     expect(parseHelpRequestFromTool({ descricao: "ajuda" }, CATEGORIES)).toBeNull();
+  });
+
+  it("lê o nível de risco do modelo, inclusive como texto", () => {
+    const base = { descricao: "Trocar o soquete da lâmpada da sala" };
+    expect(parseHelpRequestFromTool({ ...base, nivel_risco: 3 }, CATEGORIES)?.riskLevel).toBe(3);
+    expect(parseHelpRequestFromTool({ ...base, nivel_risco: "4" }, CATEGORIES)?.riskLevel).toBe(4);
+    expect(parseHelpRequestFromTool({ ...base, nivel_risco: "alto" }, CATEGORIES)?.riskLevel).toBe(1);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canTakeRisk, normalizeRisk } from "./risk";
+import { canTakeRisk, effectiveRisk, normalizeRisk } from "./risk";
 
 const now = new Date("2026-11-07T12:00:00Z");
 const helper = { isHelper: true, badges: [] };
@@ -34,5 +34,23 @@ describe("normalizeRisk", () => {
     expect(normalizeRisk(undefined)).toBe(1);
     expect(normalizeRisk(7)).toBe(1);
     expect(normalizeRisk(3)).toBe(3);
+  });
+});
+
+
+describe("effectiveRisk (sugestão da IA só sobe)", () => {
+  it("sem sugestão, vale a categoria", () => {
+    expect(effectiveRisk(2, undefined)).toBe(2);
+    expect(effectiveRisk(undefined, undefined)).toBe(1);
+  });
+  it("sugestão maior sobe o nível", () => {
+    expect(effectiveRisk(1, 3)).toBe(3);
+    expect(effectiveRisk(1, 4)).toBe(4);
+  });
+  it("sugestão menor não baixa", () => {
+    expect(effectiveRisk(3, 1)).toBe(3);
+  });
+  it("valor inválido é ignorado", () => {
+    expect(effectiveRisk(2, 9)).toBe(2);
   });
 });

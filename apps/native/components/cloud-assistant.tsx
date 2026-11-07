@@ -51,6 +51,7 @@ export function CloudAssistant() {
           description: action.description,
           categoryId: action.categoryId ?? undefined,
           priceCents: action.priceCents ?? undefined,
+          riskLevel: action.riskLevel,
         }) as never,
       );
       return null;

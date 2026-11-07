@@ -104,7 +104,7 @@ export function confirmCallPath(params: {
 }
 
 export function confirmRequestPath(
-  params: { description?: string; categoryId?: string; priceCents?: number | string } = {},
+  params: { description?: string; categoryId?: string; priceCents?: number | string; riskLevel?: number } = {},
 ) {
   return {
     pathname: "/client/create-order" as const,
@@ -112,6 +112,8 @@ export function confirmRequestPath(
       ...(params.description ? { description: params.description } : {}),
       ...(params.categoryId ? { categoryId: params.categoryId } : {}),
       ...(params.priceCents != null ? { priceCents: String(params.priceCents) } : {}),
+      // Sugestão de risco da IA (2–3); o servidor só usa para subir o nível.
+      ...(params.riskLevel && params.riskLevel > 1 ? { riskLevel: String(params.riskLevel) } : {}),
     },
   };
 }

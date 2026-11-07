@@ -10,7 +10,7 @@ import { recordEtaMeasurement, recordEtaPrediction } from "./eta-tracking";
 import { isUserBlocked } from "./moderation";
 import { REVERIFY_MESSAGES, REVERIFY_STATUS, requireReverification, reverifyDecision } from "./reverify";
 import { PREFERENCES_DENIED, type OrderPreferences, hasPreferences, meetsPreferences } from "./preferences";
-import { RISK_DENIED_MESSAGE, canTakeRisk, normalizeRisk, type RiskLevel } from "./risk";
+import { RISK_DENIED_MESSAGE, canTakeRisk, effectiveRisk, normalizeRisk, type RiskLevel } from "./risk";
 import { trackEvent } from "./events";
 import { type FamilyEvent, newShareToken, notifyTrustedContact } from "./family";
 import { completionWalletMovement, computeFees, feeRuleOf, resolveFeeRule } from "./fees";
@@ -433,6 +433,8 @@ export type CreateOrderInput = {
   priceCents?: number;
   /** Preferências de quem atende (só ajuda aberta). */
   preferences?: OrderPreferences;
+  /** Sugestão de risco da IA (1–4). Só sobe o nível da categoria, nunca baixa. */
+  riskHint?: number;
 };
 
 /** Perfil elegível a push de ajuda aberta (modo atendimento ligado). */
@@ -722,7 +724,7 @@ export async function createOrder(
     : { data: null };
   const feeRule = resolveFeeRule(config, input.categoryId ? category : null);
   // Nível de tarefa: proibido nem é criado; chamada direta só para quem pode.
-  const riskLevel: RiskLevel = normalizeRisk(category?.riskLevel);
+  const riskLevel: RiskLevel = effectiveRisk(category?.riskLevel, input.riskHint);
   if (riskLevel === 4) return { error: RISK_DENIED_MESSAGE[4], status: 400 };
   if (provider && !canTakeRisk(provider, riskLevel)) {
     return { error: `Essa pessoa não pode fazer esta tarefa. ${RISK_DENIED_MESSAGE[riskLevel as 2 | 3]}`, status: 400 };

@@ -49,7 +49,9 @@ export default function ConfirmCall() {
     allowsNegotiation?: string;
     categoryId?: string;
     description?: string;
+    riskLevel?: string;
   }>();
+  const riskHint = params.riskLevel ? Number(params.riskLevel) : undefined;
 
   const isOpenRequest = !params.providerId;
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -148,6 +150,7 @@ export default function ConfirmCall() {
           description: note.trim(),
           priceCents: offeredCents,
           ...(hasPrefs ? { preferences } : {}),
+          ...(riskHint ? { riskHint } : {}),
         });
         toast.success("Pedido publicado");
         router.replace({ pathname: "/client/waiting/[id]", params: { id: order.id } } as never);
@@ -226,6 +229,24 @@ export default function ConfirmCall() {
               Qualquer pessoa disponível pode atender. Locais e detalhes você combina depois do aceite.
             </Text>
           </View>
+
+          {riskHint === 3 && (
+            <View style={styles.availability}>
+              <Ionicons name="construct-outline" size={18} color={theme.colors.primary} />
+              <Text style={[styles.muted, { flex: 1, marginTop: 0 }]}>
+                A JudIA entendeu que essa tarefa exige um profissional com credencial. Só quem
+                tiver essa qualificação vai receber o pedido.
+              </Text>
+            </View>
+          )}
+          {riskHint === 2 && (
+            <View style={styles.availability}>
+              <Ionicons name="construct-outline" size={18} color={theme.colors.primary} />
+              <Text style={[styles.muted, { flex: 1, marginTop: 0 }]}>
+                Tarefa com ferramenta: vai para quem tem selo de reparos ou é profissional.
+              </Text>
+            </View>
+          )}
 
           {availabilityText && (
             <View style={styles.availability}>

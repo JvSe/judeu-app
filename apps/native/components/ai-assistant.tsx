@@ -26,6 +26,7 @@ import {
   buildAssistantTools,
   buildSystemPrompt,
   deriveClientPersonalization,
+  FORBIDDEN_REPLY,
   HELP_REQUEST_TOOL_NAME,
   JOB_TOOL_NAME,
   JOBS_SEARCH_TOOL_NAME,
@@ -292,6 +293,10 @@ export function AiAssistant() {
           ]);
           return;
         }
+        if (draft.riskLevel === 4) {
+          setMessages([...withUser, { role: "assistant", content: FORBIDDEN_REPLY }]);
+          return;
+        }
         setMessages([
           ...withUser,
           {
@@ -305,6 +310,7 @@ export function AiAssistant() {
             description: draft.description,
             categoryId: draft.categoryId,
             priceCents: draft.priceCents,
+            riskLevel: draft.riskLevel,
           }) as never,
         );
         return;
