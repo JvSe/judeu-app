@@ -16,6 +16,13 @@ export const configSchema = z.object({
    * na carteira. Acima deste valor devido, não pode ficar disponível.
    */
   cashDebtLimitCents: z.number().int().min(0).default(5000),
+  /** Preço sugerido quando ainda não há histórico nem catálogo. */
+  suggestedPriceFallbackCents: z.number().int().min(100).default(4000),
+  /** Multiplicador da sugestão fora do horário comercial (Brasília). */
+  offHoursPriceMultiplier: z.number().min(1).max(3).default(1.2),
+  /** Horário comercial (hora local de Brasília), [início, fim). */
+  businessHoursStart: z.number().int().min(0).max(23).default(8),
+  businessHoursEnd: z.number().int().min(1).max(24).default(20),
   /** Tempo de uma ajuda aberta no ar antes de expirar. */
   openRequestTtlMs: z.number().int().positive().default(4 * 60 * 60 * 1000),
   /** Tempo para o prestador responder a uma chamada direta. */

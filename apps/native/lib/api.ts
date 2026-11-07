@@ -531,7 +531,17 @@ export type OpenRequestAvailability = {
   etaMin: number | null;
 };
 
+export type SuggestedPrice = {
+  priceCents: number;
+  source: "category_history" | "category_catalog" | "global_history" | "default";
+  offHours: boolean;
+};
+
 export const ordersApi = {
+  suggestedPrice(categoryId?: string) {
+    const qs = categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : "";
+    return apiFetch<SuggestedPrice>(`/api/orders/suggested-price${qs}`);
+  },
   availability(opts: { lat: number; lng: number; categoryId?: string }) {
     const qs = new URLSearchParams({ lat: String(opts.lat), lng: String(opts.lng) });
     if (opts.categoryId) qs.set("categoryId", opts.categoryId);

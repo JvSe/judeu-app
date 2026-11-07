@@ -99,6 +99,16 @@ export function useOpenRequestAvailability(
   });
 }
 
+// Valor inicial sugerido para ajuda aberta (mediana por categoria + horário).
+export function useSuggestedPrice(categoryId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["suggested-price", categoryId ?? "all"],
+    queryFn: () => ordersApi.suggestedPrice(categoryId),
+    enabled,
+    staleTime: 10 * 60_000,
+  });
+}
+
 // Busca do catálogo (aba Buscar). Termos com menos de 2 caracteres não vão à rede.
 export function useCatalogSearch(query: string) {
   const q = query.trim();
