@@ -45,11 +45,14 @@ Para **cada** serviço (`valhalla` e `nominatim`):
    ```
 6. **Deploy.** O **primeiro boot é longo** (baixa o PBF e constrói tiles / importa o banco) — para o Tocantins, alguns minutos. **Não redeploy no meio do import.** Por isso não há healthcheck curto configurado (evita reinício em loop durante a carga).
 
-Depois que ambos estiverem "Active", copie os domínios públicos gerados para `apps/web/.env`:
+Depois que ambos estiverem "Active", copie os domínios públicos gerados para `apps/web/.env`
+e ligue o Valhalla como provedor de rotas (a API fala o formato `/route` do Valhalla):
 ```
+ROUTING_PROVIDER=valhalla
 VALHALLA_URL=https://<seu-valhalla>.up.railway.app
 NOMINATIM_URL=https://<seu-nominatim>.up.railway.app
 ```
+Sem `ROUTING_PROVIDER=valhalla`, a API continua no OSRM (comportamento antigo).
 (Essas variáveis já são validadas em `packages/env/src/server.ts` e consumidas por `apps/web/src/lib/geo.ts`.)
 
 ---

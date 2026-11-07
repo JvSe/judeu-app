@@ -21,9 +21,15 @@ export const env = createEnv({
     // Busca por IA (Claude) — usada apenas no servidor
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
 
-    // Serviços de geo self-hosted (Railway)
+    // Geo. Padrão = comportamento atual (OSRM + Nominatim). Ver apps/web/src/lib/geo.ts.
+    ROUTING_PROVIDER: z.enum(["osrm", "valhalla", "google"]).default("osrm"),
+    GEOCODING_PROVIDER: z.enum(["nominatim", "google"]).default("nominatim"),
+    OSRM_URL: z.url().optional(),
+    // Valhalla de verdade (apps/geo). Legado: com ROUTING_PROVIDER=osrm e sem
+    // OSRM_URL, este valor continua sendo usado como base do OSRM (como antes).
     VALHALLA_URL: z.url().optional(),
     NOMINATIM_URL: z.url().optional(),
+    GOOGLE_MAPS_API_KEY: z.string().min(1).optional(),
 
     // Pagamentos (Stripe) — Pix/cartão/dinheiro, cobrado na conta da plataforma
     STRIPE_SECRET_KEY: z.string().min(1).optional(),
