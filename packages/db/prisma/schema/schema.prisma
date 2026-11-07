@@ -148,6 +148,9 @@ model User {
   notifyMessages Boolean  @default(true)
   // Consentimento explícito aos Termos de Uso/Política de Privacidade no cadastro (RNF-4, LGPD).
   termsAcceptedAt DateTime?
+  // Como conheceu o app (CAC por canal) e código de convite/parceiro digitado no cadastro.
+  acquisitionChannel String?
+  acquisitionCode    String?
   // Marca a conta como excluída (RF-A7) sem quebrar FKs de pedidos/avaliações/mensagens já
   // existentes — os dados pessoais são anonimizados, o registro em si é preservado.
   deletedAt       DateTime?

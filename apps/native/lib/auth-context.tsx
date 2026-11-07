@@ -25,6 +25,8 @@ type AuthContextValue = {
     phone?: string;
     role?: AppUser["role"];
     acceptedTerms: true;
+    acquisitionChannel?: string;
+    acquisitionCode?: string;
   }) => Promise<AppUser>;
   resetPassword: (input: { email: string; code: string; newPassword: string }) => Promise<AppUser>;
   signOut: () => Promise<void>;

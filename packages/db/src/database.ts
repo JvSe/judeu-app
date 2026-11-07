@@ -32,6 +32,8 @@ export type UserRow = {
   notifyOrders: boolean;
   notifyMessages: boolean;
   termsAcceptedAt: string | null;
+  acquisitionChannel: string | null;
+  acquisitionCode: string | null;
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;

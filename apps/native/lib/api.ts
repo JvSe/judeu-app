@@ -110,6 +110,8 @@ export const authApi = {
     phone?: string;
     role?: AppUser["role"];
     acceptedTerms: true;
+    acquisitionChannel?: string;
+    acquisitionCode?: string;
   }) {
     return apiFetch<AuthResponse>("/api/auth/register", {
       method: "POST",

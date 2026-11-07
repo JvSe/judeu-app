@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { z } from "zod";
 
+import { acquisitionSchema } from "@/lib/acquisition";
 import { hashPassword, issueRefreshToken, signAccessToken } from "@/lib/auth";
 import { supabase } from "@/lib/db";
 import { error, handleOptions, json } from "@/lib/http";
@@ -16,6 +17,7 @@ export const registerSchema = z.object({
   phone: z.string().min(8).max(20).optional(),
   role: roleSchema.optional(),
   acceptedTerms: z.literal(true),
+  ...acquisitionSchema,
 });
 
 export function OPTIONS() {
@@ -27,7 +29,7 @@ export async function POST(req: Request) {
   const parsed = registerSchema.safeParse(body);
   if (!parsed.success) return error("Dados inválidos", 422);
 
-  const { fullName, password, phone, role } = parsed.data;
+  const { fullName, password, phone, role, acquisitionChannel, acquisitionCode } = parsed.data;
   const email = parsed.data.email.toLowerCase();
 
   const { data: existing } = await supabase.from("user").select("id").eq("email", email).maybeSingle();
@@ -47,6 +49,8 @@ export async function POST(req: Request) {
       role: finalRole,
       passwordHash: await hashPassword(password),
       termsAcceptedAt: now,
+      acquisitionChannel: acquisitionChannel ?? null,
+      acquisitionCode: acquisitionCode || null,
       createdAt: now,
       updatedAt: now,
     })
