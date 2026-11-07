@@ -67,13 +67,14 @@ export async function rotateRefreshToken(
   const tokenHash = hashToken(raw);
   const { data: record, error } = await supabase
     .from("refreshtoken")
-    .select("id, userId, expiresAt, revokedAt, user:user!inner(role)")
+    .select("id, userId, expiresAt, revokedAt, user:user!inner(role, blockedAt)")
     .eq("tokenHash", tokenHash)
     .maybeSingle();
   if (error) throw new Error(`refresh lookup: ${error.message}`);
   if (!record || record.revokedAt || new Date(record.expiresAt) < new Date()) return null;
 
-  const user = record.user as unknown as { role: string };
+  const user = record.user as unknown as { role: string; blockedAt: string | null };
+  if (user.blockedAt) return null; // conta suspensa: não renova a sessão
   await supabase
     .from("refreshtoken")
     .update({ revokedAt: new Date().toISOString() })

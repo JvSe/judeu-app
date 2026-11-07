@@ -26,6 +26,12 @@ export const configSchema = z.object({
   locationRetentionDays: z.number().int().min(1).default(30),
   /** LGPD: dias até apagar o KYC de cadastros bloqueados. */
   blockedKycRetentionDays: z.number().int().min(1).default(180),
+  /** Bloqueio automático: mínimo de avaliações e média abaixo da qual a conta é suspensa. */
+  autoBlockMinReviews: z.number().int().min(1).default(5),
+  autoBlockMaxAvg: z.number().min(1).max(5).default(3),
+  /** Prazo de atendimento do suporte (minutos): segurança/disputa e demais. */
+  supportUrgentSlaMin: z.number().int().min(5).default(60),
+  supportSlaMin: z.number().int().min(30).default(24 * 60),
   /** Menor saque permitido. */
   payoutMinCents: z.number().int().min(100).default(1000),
   /** Tarifa por saque (cobrada do valor sacado). */

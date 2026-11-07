@@ -443,6 +443,13 @@ export function OrderDetailClient() {
         >
           <Text style={styles.reportText}>Reportar um problema com esse pedido</Text>
         </Pressable>
+        {order.provider && (
+          <Pressable
+            onPress={() => router.push({ pathname: "/client/report/[id]", params: { id: order.id } } as never)}
+          >
+            <Text style={styles.reportText}>Denunciar quem atendeu</Text>
+          </Pressable>
+        )}
       </ScrollView>
     </Screen>
   );

@@ -166,6 +166,8 @@ export const authApi = {
 // ---- Edição de perfil (RF-A6) ----
 export type ClientStats = { completedOrders: number; ratingAvg: number | null; ratingCount: number };
 
+export type ReportReason = "SAFETY" | "BEHAVIOR" | "FRAUD" | "NO_SHOW" | "OTHER";
+
 export type KycFileKind = "DOCUMENT" | "SELFIE" | "BACKGROUND_CHECK";
 
 export type TrustedContact = { name: string; email: string } | null;
@@ -632,6 +634,12 @@ export const ordersApi = {
     return apiFetch<{ ticketId: string }>(`/api/orders/${id}/emergency`, {
       method: "POST",
       body: position ?? {},
+    });
+  },
+  report(id: string, reason: ReportReason, details?: string) {
+    return apiFetch<{ id: string }>(`/api/orders/${id}/report`, {
+      method: "POST",
+      body: { reason, details },
     });
   },
   doorCode(id: string) {

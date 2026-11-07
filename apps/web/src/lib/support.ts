@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import type { SupportTicketCategory, SupportTicketStatus } from "@judeu/db";
 
+import { getConfig } from "./config";
 import { supabase } from "./db";
+import { slaDueAt } from "./moderation";
 import { notifyUser } from "./notifications";
 
 export type SupportTicketDTO = {
@@ -14,6 +16,7 @@ export type SupportTicketDTO = {
   status: SupportTicketStatus;
   adminResponse: string | null;
   resolvedAt: string | null;
+  slaDueAt: string | null;
   createdAt: string;
 };
 
@@ -26,6 +29,7 @@ function toDTO(t: {
   status: SupportTicketStatus;
   adminResponse: string | null;
   resolvedAt: string | null;
+  slaDueAt?: string | null;
   createdAt: string;
 }): SupportTicketDTO {
   return {
@@ -37,6 +41,7 @@ function toDTO(t: {
     status: t.status,
     adminResponse: t.adminResponse,
     resolvedAt: t.resolvedAt,
+    slaDueAt: t.slaDueAt ?? null,
     createdAt: t.createdAt,
   };
 }
@@ -75,6 +80,7 @@ export async function createSupportTicket(
       message: input.message,
       // A coluna não tem default no banco: sem isto o insert dava 500 (QA C-02).
       updatedAt: new Date().toISOString(),
+      slaDueAt: slaDueAt(input.category, new Date(), await getConfig()),
     })
     .select("*")
     .single();

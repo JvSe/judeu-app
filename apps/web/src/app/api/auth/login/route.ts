@@ -28,6 +28,9 @@ export async function POST(req: Request) {
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
     return error("E-mail ou senha incorretos", 401);
   }
+  if (user.blockedAt) {
+    return error("Sua conta está suspensa. Fale com o suporte pelo e-mail de atendimento.", 403);
+  }
 
   const accessToken = await signAccessToken({ sub: user.id, role: user.role });
   const refreshToken = await issueRefreshToken(user.id);

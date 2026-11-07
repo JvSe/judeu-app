@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { supabase } from "./db";
+import { autoBlockIfNeeded } from "./moderation";
 
 export type ReviewDTO = {
   id: string;
@@ -95,6 +96,8 @@ export async function createReview(
   if (isClient && provider) {
     await recomputeProviderRating(provider.id, provider.userId);
   }
+  // Nota baixa recorrente suspende a conta avaliada (pitch: banimento e denúncia).
+  void autoBlockIfNeeded(targetId).catch((err) => console.error("[reviews] auto-bloqueio falhou:", err));
 
   const author = review.author as unknown as { id: string; fullName: string };
   return {

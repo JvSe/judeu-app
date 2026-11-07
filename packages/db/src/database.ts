@@ -36,6 +36,8 @@ export type UserRow = {
   acquisitionCode: string | null;
   trustedContactName: string | null;
   trustedContactEmail: string | null;
+  blockedAt: string | null;
+  blockedReason: string | null;
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -303,6 +305,8 @@ export type SupportTicketRow = {
   status: SupportTicketStatus;
   adminResponse: string | null;
   resolvedAt: string | null;
+  slaDueAt: string | null;
+  escalatedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -358,6 +362,17 @@ export type ProviderBadgeRow = {
   expiresAt: string | null;
 };
 
+export type ReportRow = {
+  id: string;
+  reporterId: string;
+  reportedUserId: string;
+  orderId: string | null;
+  reason: "SAFETY" | "BEHAVIOR" | "FRAUD" | "NO_SHOW" | "OTHER";
+  details: string | null;
+  status: "OPEN" | "REVIEWED";
+  createdAt: string;
+};
+
 type TableDef<Row> = {
   Row: Row;
   Insert: Partial<Row> & Record<string, unknown>;
@@ -396,6 +411,7 @@ export type Database = {
       payoutaccount: TableDef<PayoutAccountRow>;
       payout: TableDef<PayoutRow>;
       providerbadge: TableDef<ProviderBadgeRow>;
+      report: TableDef<ReportRow>;
     };
     Views: Record<string, never>;
     Functions: {

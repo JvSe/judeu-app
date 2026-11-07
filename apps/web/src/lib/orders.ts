@@ -7,6 +7,7 @@ import { getConfig } from "./config";
 import { ensureUtcIso } from "./dates";
 import { DOOR_CODE_MAX_ATTEMPTS, DOOR_CODE_MESSAGES, checkDoorCode, generateDoorCode } from "./door-code";
 import { recordEtaMeasurement, recordEtaPrediction } from "./eta-tracking";
+import { isUserBlocked } from "./moderation";
 import { RISK_DENIED_MESSAGE, canTakeRisk, normalizeRisk, type RiskLevel } from "./risk";
 import { trackEvent } from "./events";
 import { type FamilyEvent, newShareToken, notifyTrustedContact } from "./family";
@@ -588,6 +589,9 @@ export async function createOrder(
   clientId: string,
   input: CreateOrderInput,
 ): Promise<OrderDTO | { error: string; status: number }> {
+  if (await isUserBlocked(clientId)) {
+    return { error: "Sua conta está suspensa. Fale com o suporte.", status: 403 };
+  }
   const isOpenRequest = !input.providerId;
   const description = input.description?.trim() || undefined;
 

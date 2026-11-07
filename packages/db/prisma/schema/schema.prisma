@@ -154,6 +154,9 @@ model User {
   // Modo família: contato que acompanha os pedidos pelo link e recebe e-mails.
   trustedContactName  String?
   trustedContactEmail String?
+  // Suspensão da conta (cliente ou quem atende) — não entra nem renova sessão.
+  blockedAt     DateTime?
+  blockedReason String?
   // Marca a conta como excluída (RF-A7) sem quebrar FKs de pedidos/avaliações/mensagens já
   // existentes — os dados pessoais são anonimizados, o registro em si é preservado.
   deletedAt       DateTime?
@@ -722,6 +725,9 @@ model SupportTicket {
   status        SupportTicketStatus   @default(OPEN)
   adminResponse String?
   resolvedAt    DateTime?
+  // Prazo de atendimento (1 h para segurança/disputa) e quando foi escalado.
+  slaDueAt      DateTime?
+  escalatedAt   DateTime?
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
 
@@ -747,6 +753,22 @@ model ProviderBadge {
 
   @@unique([providerId, type])
   @@map("providerbadge")
+}
+
+// Denúncia de um participante do pedido contra o outro.
+model Report {
+  id             String   @id @default(uuid())
+  reporterId     String
+  reportedUserId String
+  orderId        String?
+  reason         String // SAFETY | BEHAVIOR | FRAUD | NO_SHOW | OTHER
+  details        String?
+  status         String   @default("OPEN") // OPEN | REVIEWED
+  createdAt      DateTime @default(now())
+
+  @@unique([reporterId, orderId])
+  @@index([status, createdAt])
+  @@map("report")
 }
 
 // Parâmetros de negócio editáveis sem deploy (taxa, TTLs, limiares). Sem linha,

@@ -4,6 +4,7 @@ import { getConfig } from "../config";
 import { ensureUtcIso } from "../dates";
 import { supabase } from "../db";
 import { notifyTrustedContact } from "../family";
+import { slaDueAt } from "../moderation";
 import { notifyUser } from "../notifications";
 import type { CronJob } from "./runner";
 
@@ -82,6 +83,7 @@ export const overtimeAlertsJob: CronJob = {
         subject: "Tempo excedido no atendimento",
         message: `Atendimento em andamento há mais de ${Math.round(expected * config.overtimeAlertRatio)} min (previsto: ${expected} min). Alerta automático.`,
         updatedAt: now.toISOString(),
+        slaDueAt: slaDueAt("SECURITY", now, config),
       });
       alerted += 1;
     }

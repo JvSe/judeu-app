@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import { env } from "@judeu/env/server";
 
+import { getConfig } from "./config";
 import { supabase } from "./db";
+import { slaDueAt } from "./moderation";
 import { trackEvent } from "./events";
 import { notifyTrustedContact } from "./family";
 import { sendEmail } from "./mailer";
@@ -66,6 +68,7 @@ export async function triggerEmergency(
     subject: "EMERGÊNCIA durante o atendimento",
     message,
     updatedAt: now,
+    slaDueAt: slaDueAt("SECURITY", new Date(now), await getConfig()),
   });
   if (error) throw new Error(error.message);
 
