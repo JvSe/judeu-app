@@ -1,6 +1,7 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -48,12 +49,7 @@ export function EarningsScreen() {
           <View style={styles.balanceActions}>
             <Pressable
               style={styles.withdrawButton}
-              onPress={() =>
-                toast.warning("Saque", {
-                  description:
-                    "O saque fica disponível depois da verificação da conta e dos dados bancários.",
-                })
-              }
+              onPress={() => router.push("/client/withdraw" as never)}
             >
               <Text style={styles.withdrawText}>Sacar</Text>
             </Pressable>

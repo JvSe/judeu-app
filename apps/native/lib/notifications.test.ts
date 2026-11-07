@@ -57,4 +57,8 @@ describe("pathForNotification", () => {
   it("status do cadastro de quem atende -> perfil", () => {
     expect(pathForNotification({ type: "provider_status" })).toBe("/client/profile");
   });
+
+  it("saque -> tela de saque", () => {
+    expect(pathForNotification({ type: "payout" })).toBe("/client/withdraw");
+  });
 });

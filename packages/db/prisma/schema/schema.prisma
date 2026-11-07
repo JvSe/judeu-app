@@ -171,6 +171,8 @@ model User {
   supportTickets      SupportTicket[]
   jobApplications     JobApplication[]
   appEvents           AppEvent[]
+  payoutAccount       PayoutAccount?
+  payouts             Payout[]
 
   @@index([role])
   @@map("user")
@@ -518,8 +520,48 @@ model Wallet {
 
   user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions WalletTransaction[]
+  payouts      Payout[]
 
   @@map("wallet")
+}
+
+// Chave Pix de quem atende, para saques.
+model PayoutAccount {
+  id         String   @id @default(uuid())
+  userId     String   @unique
+  pixKeyType String // CPF | CNPJ | EMAIL | PHONE | RANDOM
+  pixKey     String
+  holderName String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("payoutaccount")
+}
+
+// Saque. SIMULATED = registrado e debitado, sem transferência (PAYOUT_PROVIDER=simulated).
+model Payout {
+  id                 String    @id @default(uuid())
+  userId             String
+  walletId           String
+  amountCents        Int
+  feeCents           Int       @default(0)
+  netCents           Int
+  status             String // SIMULATED | PROCESSING | PAID | FAILED
+  provider           String
+  providerRef        String?
+  pixKeyMasked       String
+  balanceBeforeCents Int
+  balanceAfterCents  Int
+  createdAt          DateTime  @default(now())
+  completedAt        DateTime?
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("payout")
 }
 
 model WalletTransaction {

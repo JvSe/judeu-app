@@ -13,6 +13,7 @@ import {
   notificationsApi,
   ordersApi,
   paymentsApi,
+  payoutsApi,
   profileApi,
   proposalsApi,
   providerProfileApi,
@@ -350,6 +351,41 @@ export function useConfirmPayment() {
 // ---- Carteira do prestador ----
 export function useWallet() {
   return useQuery({ queryKey: ["wallet"], queryFn: () => walletApi.summary() });
+}
+
+// ---- Saque Pix ----
+export function usePayoutOverview() {
+  return useQuery({ queryKey: ["payouts"], queryFn: () => payoutsApi.overview() });
+}
+
+// "Como fica depois do saque" para um valor digitado (0 = não consulta).
+export function usePayoutPreview(amountCents: number) {
+  return useQuery({
+    queryKey: ["payout-preview", amountCents],
+    queryFn: () => payoutsApi.preview(amountCents),
+    enabled: amountCents > 0,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useRequestPayout() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (amountCents: number) => payoutsApi.request(amountCents),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["wallet"] });
+      void qc.invalidateQueries({ queryKey: ["payouts"] });
+      void qc.invalidateQueries({ queryKey: ["payout-preview"] });
+    },
+  });
+}
+
+export function useSavePayoutAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: payoutsApi.saveAccount,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["payouts"] }),
+  });
 }
 
 // ---- Cadastro profissional + KYC do prestador ----

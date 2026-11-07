@@ -762,6 +762,65 @@ export const walletApi = {
   },
 };
 
+// ---- Saque Pix (simulado enquanto o provedor real não é ligado) ----
+export type PixKeyType = "CPF" | "CNPJ" | "EMAIL" | "PHONE" | "RANDOM";
+
+export type PayoutAccount = { pixKeyType: PixKeyType; pixKeyMasked: string; holderName: string };
+
+export type PayoutPreview = {
+  balanceCents: number;
+  heldCents: number;
+  availableCents: number;
+  amountCents: number;
+  feeCents: number;
+  netCents: number;
+  balanceAfterCents: number;
+  minCents: number;
+  error: string | null;
+};
+
+export type Payout = {
+  id: string;
+  amountCents: number;
+  feeCents: number;
+  netCents: number;
+  status: "SIMULATED" | "PROCESSING" | "PAID" | "FAILED";
+  simulated: boolean;
+  providerRef: string | null;
+  pixKeyMasked: string;
+  balanceBeforeCents: number;
+  balanceAfterCents: number;
+  createdAt: string;
+};
+
+export type PayoutOverview = {
+  simulated: boolean;
+  account: PayoutAccount | null;
+  preview: PayoutPreview;
+  payouts: Payout[];
+};
+
+export const payoutsApi = {
+  overview() {
+    return apiFetch<PayoutOverview>("/api/wallet/payouts");
+  },
+  preview(amountCents: number) {
+    return apiFetch<PayoutPreview>(`/api/wallet/payouts/preview?amountCents=${amountCents}`);
+  },
+  request(amountCents: number) {
+    return apiFetch<{ payout: Payout }>("/api/wallet/payouts", {
+      method: "POST",
+      body: { amountCents },
+    }).then((r) => r.payout);
+  },
+  saveAccount(input: { pixKeyType: PixKeyType; pixKey: string; holderName: string }) {
+    return apiFetch<{ account: PayoutAccount }>("/api/wallet/payout-account", {
+      method: "PUT",
+      body: input,
+    }).then((r) => r.account);
+  },
+};
+
 // ---- Push notifications (RF-E2) ----
 export const pushApi = {
   register(pushToken: string) {
