@@ -539,6 +539,15 @@ export async function createOrder(
     if (!found || found.status !== "APPROVED" || !found.isAvailable) {
       return { error: "Essa pessoa não está disponível agora", status: 400 };
     }
+    // Helper não tem catálogo: só atende ajudas abertas (QA C-06/H-03).
+    if (found.isHelper) {
+      return { error: "Essa pessoa atende só pedidos de ajuda abertos", status: 400 };
+    }
+    // Sem serviço escolhido o pedido nascia com R$ 0. Só vale sem serviço quando
+    // o prestador aceita negociar (o valor sai do orçamento).
+    if (!input.serviceId && !found.allowsNegotiation) {
+      return { error: "Escolha um dos serviços do prestador", status: 400 };
+    }
     const { data: busy } = await supabase
       .from("order")
       .select("id")
@@ -832,6 +841,19 @@ export async function transitionOrder(
     }
     if (await isProviderBusy(profile.id, order.id)) {
       return { error: "Você já está em uma chamada", status: 409 };
+    }
+    // Profissional só pega ajuda da própria categoria; helper pega qualquer uma
+    // (mesma regra do push — QA P-08/C-13).
+    if (!profile.isHelper && order.category?.id) {
+      const { data: link } = await supabase
+        .from("providercategory")
+        .select("categoryId")
+        .eq("providerId", profile.id)
+        .eq("categoryId", order.category.id)
+        .maybeSingle();
+      if (!link) {
+        return { error: "Essa solicitação é de uma categoria que você não atende", status: 403 };
+      }
     }
     claimProviderId = profile.id;
   } else if (rule.by === "provider" && !isProvider) {
