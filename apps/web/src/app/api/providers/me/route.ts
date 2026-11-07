@@ -59,6 +59,11 @@ export async function POST(req: Request) {
   const parsed = upsertSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return error("Dados inválidos", 422);
 
-  const profile = await upsertMyProviderProfile(claims.sub, parsed.data);
-  return json({ profile });
+  try {
+    const profile = await upsertMyProviderProfile(claims.sub, parsed.data);
+    return json({ profile });
+  } catch (err) {
+    console.error("[providers/me] falha ao salvar cadastro:", err);
+    return error("Não foi possível salvar seu cadastro agora. Tente de novo em instantes.", 500);
+  }
 }
