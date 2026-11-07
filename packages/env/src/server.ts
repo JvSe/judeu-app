@@ -31,6 +31,9 @@ export const env = createEnv({
 
     // Painel admin (web, RF-H3) — senha única compartilhada, sem conta/role por ora
     ADMIN_PASSWORD: z.string().min(8).optional(),
+
+    // Job agendado (POST /api/cron/tick, disparado pelo pg_cron). Sem ela, o endpoint fica desligado.
+    CRON_SECRET: z.string().min(32).optional(),
   },
   runtimeEnv: process.env,
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,
