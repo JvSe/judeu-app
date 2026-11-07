@@ -181,13 +181,40 @@ export function useArrangeOrder() {
 export function useTransitionOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, action, note }: { id: string; action: OrderAction; note?: string }) =>
-      ordersApi.transition(id, action, note),
+    mutationFn: ({
+      id,
+      action,
+      note,
+      doorCode,
+    }: {
+      id: string;
+      action: OrderAction;
+      note?: string;
+      doorCode?: string;
+    }) => ordersApi.transition(id, action, note, doorCode),
     onSuccess: (order) => {
       qc.invalidateQueries({ queryKey: ["orders"] });
       qc.invalidateQueries({ queryKey: ["order", order.id] });
       qc.invalidateQueries({ queryKey: ["wallet"] });
     },
+  });
+}
+
+// Código de chegada do pedido (só o cliente). Atualiza para refletir bloqueio por tentativas.
+export function useDoorCode(orderId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["door-code", orderId],
+    queryFn: () => ordersApi.doorCode(orderId),
+    enabled,
+    refetchInterval: enabled ? 15_000 : false,
+  });
+}
+
+export function useRegenerateDoorCode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (orderId: string) => ordersApi.regenerateDoorCode(orderId),
+    onSuccess: (data, orderId) => qc.setQueryData(["door-code", orderId], data),
   });
 }
 

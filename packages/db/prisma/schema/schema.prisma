@@ -382,6 +382,9 @@ model Order {
   // ao total; PROVIDER = taxa descontada do repasse de quem atende.
   feeRate         Float       @default(0.08)
   feePayer        String      @default("CLIENT")
+  // Código de chegada: gerado no aceite, só o cliente vê; quem atende digita em start_work.
+  doorCode         String?
+  doorCodeAttempts Int        @default(0)
   couponCode      String?
   cancelReason    String?
   acceptedAt      DateTime?

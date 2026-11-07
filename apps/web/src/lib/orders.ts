@@ -5,6 +5,7 @@ import type { Json, OrderRow, OrderStatus, PaymentMethod, PaymentStatus } from "
 import { coarsen, effectiveProviderPosition } from "./catalog";
 import { getConfig } from "./config";
 import { ensureUtcIso } from "./dates";
+import { DOOR_CODE_MAX_ATTEMPTS, DOOR_CODE_MESSAGES, checkDoorCode, generateDoorCode } from "./door-code";
 import { recordEtaMeasurement, recordEtaPrediction } from "./eta-tracking";
 import { trackEvent } from "./events";
 import { completionWalletMovement, computeFees, feeRuleOf, resolveFeeRule } from "./fees";
@@ -120,6 +121,8 @@ type OrderFull = {
   totalCents: number;
   feeRate?: number | null;
   feePayer?: string | null;
+  doorCode?: string | null;
+  doorCodeAttempts?: number | null;
   cancelReason: string | null;
   createdAt: string;
   isOpenRequest: boolean;
@@ -191,6 +194,8 @@ export type OrderDTO = {
   feeRate: number;
   /** O que quem atende recebe por este pedido. */
   providerNetCents: number;
+  /** Quem atende precisa digitar o código de chegada para iniciar (o código em si nunca vai no DTO). */
+  requiresDoorCode: boolean;
   cancelReason: string | null;
   createdAt: string;
   offerExpiresAt: string;
@@ -253,6 +258,7 @@ function toDTO(o: OrderFull, unreadMessages = 0): OrderDTO {
     feeRate: feeRuleOf(o).rate,
     providerNetCents:
       feeRuleOf(o).payer === "PROVIDER" ? o.priceCents - o.platformFeeCents : o.priceCents,
+    requiresDoorCode: !!o.doorCode,
     cancelReason: o.cancelReason,
     createdAt: o.createdAt,
     offerExpiresAt: new Date(
@@ -870,6 +876,29 @@ const ACTION_NOTES: Record<OrderAction, string> = {
   cancel: "Chamada cancelada",
 };
 
+const DOOR_CODE_STATUSES = new Set<OrderStatus>(["ACCEPTED", "EN_ROUTE"]);
+
+/** Código de chegada — só para o cliente do pedido, enquanto alguém está a caminho. */
+export async function getDoorCode(
+  id: string,
+  userId: string,
+  regenerate = false,
+): Promise<{ code: string | null; locked: boolean } | { error: string; status: number }> {
+  const { data: order } = await supabase
+    .from("order")
+    .select("clientId, status, doorCode, doorCodeAttempts")
+    .eq("id", id)
+    .maybeSingle();
+  if (!order || order.clientId !== userId) return { error: "Pedido não encontrado", status: 404 };
+  if (!DOOR_CODE_STATUSES.has(order.status) || !order.doorCode) return { code: null, locked: false };
+  if (regenerate) {
+    const code = generateDoorCode();
+    await supabase.from("order").update({ doorCode: code, doorCodeAttempts: 0 }).eq("id", id);
+    return { code, locked: false };
+  }
+  return { code: order.doorCode, locked: order.doorCodeAttempts >= DOOR_CODE_MAX_ATTEMPTS };
+}
+
 /** Quem atende já tem outra chamada em andamento? (ignora o próprio pedido) */
 async function isProviderBusy(providerId: string, exceptOrderId: string): Promise<boolean> {
   const { data: busy } = await supabase
@@ -888,6 +917,7 @@ export async function transitionOrder(
   userId: string,
   action: OrderAction,
   note?: string,
+  opts: { doorCode?: string } = {},
 ): Promise<OrderDTO | { error: string; status: number }> {
   const order = await fetchOrder(id);
   if (!order) return { error: "Pedido não encontrado", status: 404 };
@@ -965,6 +995,17 @@ export async function transitionOrder(
         status: 409,
       };
     }
+    // Código na porta: confirma que é a pessoa certa antes de começar.
+    const check = checkDoorCode(order, opts.doorCode);
+    if (check === "wrong") {
+      await supabase
+        .from("order")
+        .update({ doorCodeAttempts: (order.doorCodeAttempts ?? 0) + 1 })
+        .eq("id", id);
+    }
+    if (check !== "ok" && check !== "not_required") {
+      return { error: DOOR_CODE_MESSAGES[check], status: 409 };
+    }
   }
 
   const now = new Date().toISOString();
@@ -985,6 +1026,14 @@ export async function transitionOrder(
     p_event_note: note ?? (action === "accept" ? acceptNote : ACTION_NOTES[action]),
   });
   if (rpcError) return { error: rpcError.message, status: 500 };
+
+  if (action === "accept") {
+    await supabase
+      .from("order")
+      .update({ doorCode: generateDoorCode(), doorCodeAttempts: 0 })
+      .eq("id", id)
+      .is("doorCode", null);
+  }
 
   const updated = await fetchOrder(id);
   if (!updated) return { error: "Pedido não encontrado", status: 404 };

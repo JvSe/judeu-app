@@ -485,6 +485,8 @@ export type Order = {
   feeRate: number;
   /** O que quem atende recebe por este pedido. */
   providerNetCents: number;
+  /** Quem atende precisa digitar o código de chegada para iniciar. */
+  requiresDoorCode: boolean;
   cancelReason: string | null;
   createdAt: string;
   offerExpiresAt: string;
@@ -589,11 +591,19 @@ export const ordersApi = {
       body: input,
     }).then((r) => r.order);
   },
-  transition(id: string, action: OrderAction, note?: string) {
+  transition(id: string, action: OrderAction, note?: string, doorCode?: string) {
     return apiFetch<{ order: Order }>(`/api/orders/${id}/transition`, {
       method: "POST",
-      body: { action, note },
+      body: { action, note, doorCode },
     }).then((r) => r.order);
+  },
+  doorCode(id: string) {
+    return apiFetch<{ code: string | null; locked: boolean }>(`/api/orders/${id}/door-code`);
+  },
+  regenerateDoorCode(id: string) {
+    return apiFetch<{ code: string | null; locked: boolean }>(`/api/orders/${id}/door-code`, {
+      method: "POST",
+    });
   },
   updateLocation(id: string, lat: number, lng: number) {
     return apiFetch<{ order: Order }>(`/api/orders/${id}/location`, {

@@ -154,6 +154,8 @@ export type OrderRow = {
   totalCents: number;
   feeRate: number;
   feePayer: "CLIENT" | "PROVIDER";
+  doorCode: string | null;
+  doorCodeAttempts: number;
   couponCode: string | null;
   cancelReason: string | null;
   acceptedAt: string | null;

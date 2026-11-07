@@ -2,7 +2,7 @@ import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
@@ -48,6 +48,7 @@ export function AttendDelivery({
   const { data: order, isLoading } = useOrder(id, { poll: true });
   const transition = useTransitionOrder();
   const myLocation = useWatchCurrentLocation();
+  const [doorCode, setDoorCode] = useState("");
   const [pendingAction, setPendingAction] = useState<"accept" | "start_route" | "start_work" | null>(
     null,
   );
@@ -115,7 +116,7 @@ export function AttendDelivery({
   const runTransition = (action: "accept" | "start_route" | "start_work") => {
     setPendingAction(action);
     transition.mutate(
-      { id: order.id, action },
+      { id: order.id, action, ...(action === "start_work" ? { doorCode } : {}) },
       {
         onSuccess: () => {
           if (action === "start_work") {
@@ -244,11 +245,29 @@ export function AttendDelivery({
           />
         )}
 
+        {order.status === "EN_ROUTE" && order.requiresDoorCode && arrived && (
+          <View style={styles.doorCodeBox}>
+            <Text style={styles.doorCodeLabel}>Código de chegada</Text>
+            <Text style={styles.doorCodeHint}>Peça à pessoa o código de 4 dígitos que aparece no app dela.</Text>
+            <TextInput
+              style={styles.doorCodeInput}
+              value={doorCode}
+              onChangeText={(t) => setDoorCode(t.replace(/\D/g, "").slice(0, 4))}
+              keyboardType="number-pad"
+              placeholder="0000"
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              maxLength={4}
+            />
+          </View>
+        )}
+
         {order.status === "EN_ROUTE" && (
           <SpinButton
             controlled
             isActive={pendingAction === "start_work" && transition.isPending}
-            disabled={transition.isPending || !arrived}
+            disabled={
+              transition.isPending || !arrived || (order.requiresDoorCode && doorCode.length !== 4)
+            }
             idleText={
               arrived
                 ? "Cheguei, começar"
@@ -285,6 +304,22 @@ export function AttendDelivery({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  doorCodeBox: {
+    gap: 6,
+    marginBottom: 10,
+  },
+  doorCodeLabel: { fontSize: 14, fontFamily: fonts.bold, color: "#fff" },
+  doorCodeHint: { fontSize: 12.5, fontFamily: fonts.medium, color: theme.colors.mutedForeground },
+  doorCodeInput: {
+    borderRadius: 14,
+    paddingVertical: 12,
+    textAlign: "center",
+    fontSize: 26,
+    letterSpacing: 10,
+    fontFamily: fonts.extraBold,
+    color: "#fff",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
   clientPin: {
     width: 40,
     height: 40,

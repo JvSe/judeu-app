@@ -442,6 +442,11 @@ export default function ClientHome() {
     if (!activeOrder) return;
     const next = workNextAction(activeOrder);
     if (!next) return;
+    // Código na porta: o campo para digitar fica na tela do atendimento.
+    if (next.action === "start_work" && activeOrder.requiresDoorCode) {
+      router.push({ pathname: "/client/attend/[id]", params: { id: activeOrder.id } });
+      return;
+    }
     if (next.disabled) {
       if (
         activeOrder.status === "ACCEPTED" ||
