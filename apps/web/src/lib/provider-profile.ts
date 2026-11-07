@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getConfig } from "./config";
 import { supabase } from "./db";
 import { notifyUser } from "./notifications";
-import { uploadKycDocument } from "./storage";
+import { signedKycUrl, uploadKycDocument } from "./storage";
 import { publicUser, type PublicUser } from "./user";
 
 export type MyProviderProfileDTO = {
@@ -21,6 +21,8 @@ export type MyProviderProfileDTO = {
   companyName: string | null;
   responsibleName: string | null;
   hasDocument: boolean;
+  hasSelfie: boolean;
+  hasBackgroundCheck: boolean;
   categoryIds: string[];
   services: { id: string; categoryId: string; name: string; priceCents: number }[];
 };
@@ -61,6 +63,8 @@ function toDTO(p: {
   companyName: string | null;
   responsibleName: string | null;
   documentUrl: string | null;
+  selfieUrl?: string | null;
+  backgroundCheckUrl?: string | null;
   categories: { categoryId: string }[];
   services: { id: string; categoryId: string; name: string; priceCents: number }[];
 }): MyProviderProfileDTO {
@@ -79,6 +83,8 @@ function toDTO(p: {
     companyName: p.companyName,
     responsibleName: p.responsibleName,
     hasDocument: !!p.documentUrl,
+    hasSelfie: !!p.selfieUrl,
+    hasBackgroundCheck: !!p.backgroundCheckUrl,
     categoryIds: p.categories.map((c) => c.categoryId),
     services: p.services,
   };
@@ -208,6 +214,48 @@ export async function setProviderDocument(
     });
   }
 
+  const profile = await loadProfile(userId);
+  if (!profile) throw new Error("Perfil não encontrado");
+  return toDTO(profile);
+}
+
+export type KycFileKind = "DOCUMENT" | "SELFIE" | "BACKGROUND_CHECK";
+
+const KYC_COLUMN: Record<KycFileKind, "documentUrl" | "selfieUrl" | "backgroundCheckUrl"> = {
+  DOCUMENT: "documentUrl",
+  SELFIE: "selfieUrl",
+  BACKGROUND_CHECK: "backgroundCheckUrl",
+};
+
+function kycPatch(kind: KycFileKind, path: string) {
+  switch (KYC_COLUMN[kind]) {
+    case "documentUrl":
+      return { documentUrl: path };
+    case "selfieUrl":
+      return { selfieUrl: path };
+    default:
+      return { backgroundCheckUrl: path };
+  }
+}
+
+/** KYC v2: documento, selfie (câmera) ou certidão de antecedentes. Exige perfil existente. */
+export async function setProviderKycFile(
+  userId: string,
+  kind: KycFileKind,
+  base64: string,
+  mimeType: string,
+): Promise<MyProviderProfileDTO | { error: string; status: number }> {
+  const existing = await loadProfile(userId);
+  if (!existing) return { error: "Faça o cadastro de quem atende antes de enviar a verificação.", status: 404 };
+  if (kind === "SELFIE" && mimeType === "application/pdf") {
+    return { error: "A selfie precisa ser uma foto.", status: 422 };
+  }
+  const path = await uploadKycDocument(userId, base64, mimeType);
+  const { error } = await supabase
+    .from("providerprofile")
+    .update({ ...kycPatch(kind, path), updatedAt: new Date().toISOString() })
+    .eq("userId", userId);
+  if (error) throw new Error(error.message);
   const profile = await loadProfile(userId);
   if (!profile) throw new Error("Perfil não encontrado");
   return toDTO(profile);
@@ -410,6 +458,10 @@ export type AdminProviderDTO = {
   companyName: string | null;
   responsibleName: string | null;
   hasDocument: boolean;
+  /** Links assinados (10 min) para o admin conferir a verificação. */
+  documentLink: string | null;
+  selfieLink: string | null;
+  backgroundCheckLink: string | null;
   categoryNames: string[];
   serviceCount: number;
   createdAt: string;
@@ -430,7 +482,7 @@ export async function listAllProviderProfiles(): Promise<AdminProviderDTO[]> {
     .order("createdAt", { ascending: false });
   if (error) throw new Error(error.message);
 
-  return (rows ?? []).map((p) => {
+  return Promise.all((rows ?? []).map(async (p) => {
     const row = p as unknown as {
       id: string;
       status: AdminProviderDTO["status"];
@@ -441,6 +493,8 @@ export async function listAllProviderProfiles(): Promise<AdminProviderDTO[]> {
       companyName: string | null;
       responsibleName: string | null;
       documentUrl: string | null;
+      selfieUrl: string | null;
+      backgroundCheckUrl: string | null;
       createdAt: string;
       user: { fullName: string; email: string };
       categories: { category: { name: string } }[];
@@ -458,11 +512,25 @@ export async function listAllProviderProfiles(): Promise<AdminProviderDTO[]> {
       companyName: row.companyName,
       responsibleName: row.responsibleName,
       hasDocument: !!row.documentUrl,
+      ...(await signedLinks(row)),
       categoryNames: row.categories.map((c) => c.category.name),
       serviceCount: row.services.length,
       createdAt: row.createdAt,
     };
-  });
+  }));
+}
+
+async function signedLinks(row: {
+  documentUrl: string | null;
+  selfieUrl: string | null;
+  backgroundCheckUrl: string | null;
+}) {
+  const [documentLink, selfieLink, backgroundCheckLink] = await Promise.all([
+    signedKycUrl(row.documentUrl),
+    signedKycUrl(row.selfieUrl),
+    signedKycUrl(row.backgroundCheckUrl),
+  ]);
+  return { documentLink, selfieLink, backgroundCheckLink };
 }
 
 export async function setProviderProfileStatus(

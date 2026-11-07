@@ -64,6 +64,7 @@ export function useWorkMode() {
           : "Assim que for aprovado, você pode ficar disponível.",
       });
       if (incomplete) router.push("/client/kyc" as never);
+      else if (!profile.hasDocument || !profile.hasSelfie) router.push("/client/verification" as never);
       return;
     }
 

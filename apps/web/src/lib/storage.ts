@@ -72,3 +72,22 @@ export async function uploadAvatar(
   } = requireStorage().storage.from(AVATAR_BUCKET).getPublicUrl(path);
   return publicUrl;
 }
+
+/** Link temporário (10 min) para o admin ver um arquivo de KYC. */
+export async function signedKycUrl(path: string | null): Promise<string | null> {
+  if (!path) return null;
+  const { data, error } = await requireStorage().storage.from(KYC_BUCKET).createSignedUrl(path, 600);
+  if (error) {
+    console.warn("[storage] link assinado falhou:", error.message);
+    return null;
+  }
+  return data.signedUrl;
+}
+
+/** Remove arquivos de KYC (exclusão de conta / LGPD). */
+export async function deleteKycFiles(paths: (string | null)[]): Promise<void> {
+  const list = paths.filter((p): p is string => !!p);
+  if (list.length === 0) return;
+  const { error } = await requireStorage().storage.from(KYC_BUCKET).remove(list);
+  if (error) console.warn("[storage] remoção de KYC falhou:", error.message);
+}

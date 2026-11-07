@@ -72,7 +72,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Usado para enviar seu documento de identidade na verificação de prestador.",
-          "cameraPermission": "Usado para fotografar seu documento de identidade na verificação de prestador.",
+          "cameraPermission": "Usado para fotografar seu documento e tirar a selfie da verificação de identidade de quem atende.",
           "microphonePermission": false
         }
       ],

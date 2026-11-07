@@ -166,6 +166,8 @@ export const authApi = {
 // ---- Edição de perfil (RF-A6) ----
 export type ClientStats = { completedOrders: number; ratingAvg: number | null; ratingCount: number };
 
+export type KycFileKind = "DOCUMENT" | "SELFIE" | "BACKGROUND_CHECK";
+
 export type TrustedContact = { name: string; email: string } | null;
 
 export const familyApi = {
@@ -388,6 +390,8 @@ export type MyProviderProfile = {
   companyName: string | null;
   responsibleName: string | null;
   hasDocument: boolean;
+  hasSelfie: boolean;
+  hasBackgroundCheck: boolean;
   categoryIds: string[];
   services: { id: string; categoryId: string; name: string; priceCents: number }[];
 };
@@ -417,6 +421,12 @@ export const providerProfileApi = {
     return apiFetch<{ profile: MyProviderProfile }>("/api/providers/me", {
       method: "POST",
       body: input,
+    }).then((r) => r.profile);
+  },
+  uploadKycFile(kind: KycFileKind, base64: string, mimeType: string) {
+    return apiFetch<{ profile: MyProviderProfile }>("/api/providers/me/kyc-file", {
+      method: "POST",
+      body: { kind, base64, mimeType },
     }).then((r) => r.profile);
   },
   uploadDocument(base64: string, mimeType: string) {

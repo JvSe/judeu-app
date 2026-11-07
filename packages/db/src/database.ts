@@ -88,6 +88,8 @@ export type ProviderProfileRow = {
   ratingAvg: number;
   ratingCount: number;
   documentUrl: string | null;
+  selfieUrl: string | null;
+  backgroundCheckUrl: string | null;
   baseLat: number | null;
   baseLng: number | null;
   serviceRadiusKm: number;

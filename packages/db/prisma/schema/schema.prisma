@@ -263,6 +263,8 @@ model ProviderProfile {
   ratingAvg       Float          @default(0)
   ratingCount     Int            @default(0)
   documentUrl     String? // documento de verificação (KYC) no Supabase Storage
+  selfieUrl          String? // selfie tirada pela câmera (KYC v2)
+  backgroundCheckUrl String? // certidão de antecedentes criminais (KYC v2)
   // localização base + raio de atuação (matching por proximidade)
   baseLat         Float?
   baseLng         Float?

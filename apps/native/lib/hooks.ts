@@ -34,6 +34,7 @@ import type {
   ArrangeOrderInput,
   JobFilters,
   JobStatusValue,
+  KycFileKind,
   NotificationPreferences,
   OrderAction,
   PaymentMethodOption,
@@ -467,6 +468,17 @@ export function useUploadProviderDocument() {
       providerProfileApi.uploadDocument(base64, mimeType),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["provider-profile", "me", user?.id ?? "anonymous"] }),
+  });
+}
+
+// KYC v2: documento, selfie (câmera) e antecedentes.
+export function useUploadKycFile() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: ({ kind, base64, mimeType }: { kind: KycFileKind; base64: string; mimeType: string }) =>
+      providerProfileApi.uploadKycFile(kind, base64, mimeType),
+    onSuccess: (profile) => qc.setQueryData(["provider-profile", "me", user?.id ?? "anonymous"], profile),
   });
 }
 

@@ -123,10 +123,10 @@ export default function HelperSignup() {
       await providerProfileApi.updateLocation(lat, lng);
       if (res.profile.status !== "APPROVED") {
         queryClient.setQueryData(["provider-profile", "me", res.user.id], res.profile);
-        toast.success("Cadastro enviado", {
-          description: "Vamos analisar e avisar você. Depois da aprovação, é só ligar o modo atendimento.",
+        toast.success("Cadastro criado", {
+          description: "Agora envie documento, selfie e antecedentes para a análise.",
         });
-        router.replace("/client");
+        router.replace("/client/verification" as never);
         return;
       }
       const profile = await providerProfileApi.setAvailability(true);

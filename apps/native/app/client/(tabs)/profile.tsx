@@ -51,6 +51,14 @@ function buildMenu(work: {
       href: "/client/kyc",
     });
   }
+  if (work.hasProfile) {
+    items.push({
+      id: "verification",
+      icon: "finger-print-outline",
+      label: "Verificação de identidade",
+      href: "/client/verification",
+    });
+  }
   if (work.profile?.isCompany) {
     items.push({ id: "vagas", icon: "briefcase-outline", label: "Minhas vagas", href: "/client/vaga" });
   } else if (work.hasProfile) {

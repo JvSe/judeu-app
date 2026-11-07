@@ -69,6 +69,7 @@ function ProviderRow({ provider, badges }: { provider: AdminProviderDTO; badges:
           serviço(s) · {provider.hasDocument ? "documento enviado" : "sem documento"}
         </CardDescription>
       </CardHeader>
+      <KycFiles provider={provider} />
       <CardContent className="flex items-center gap-2">
         <span className="text-xs font-medium">{STATUS_LABEL[provider.status]}</span>
         <div className="ml-auto flex flex-wrap justify-end gap-2">
@@ -107,5 +108,38 @@ function ProviderRow({ provider, badges }: { provider: AdminProviderDTO; badges:
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+const isPdf = (url: string) => new URL(url).pathname.toLowerCase().endsWith(".pdf");
+
+// Verificação: documento, selfie e antecedentes por links assinados (10 min).
+function KycFiles({ provider }: { provider: AdminProviderDTO }) {
+  const files = [
+    { label: "Documento", url: provider.documentLink },
+    { label: "Selfie", url: provider.selfieLink },
+    { label: "Antecedentes", url: provider.backgroundCheckLink },
+  ];
+  return (
+    <CardContent className="flex flex-wrap gap-3 pb-2">
+      {files.map((f) =>
+        f.url ? (
+          <a key={f.label} href={f.url} target="_blank" rel="noreferrer" className="flex flex-col gap-1 text-xs">
+            {isPdf(f.url) ? (
+              <span className="flex h-24 w-24 items-center justify-center rounded border">PDF</span>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={f.url} alt={f.label} className="h-24 w-24 rounded border object-cover" />
+            )}
+            <span className="underline">{f.label}</span>
+          </a>
+        ) : (
+          <div key={f.label} className="flex flex-col gap-1 text-xs text-muted-foreground">
+            <span className="flex h-24 w-24 items-center justify-center rounded border border-dashed">—</span>
+            <span>{f.label}: não enviado</span>
+          </div>
+        ),
+      )}
+    </CardContent>
   );
 }
