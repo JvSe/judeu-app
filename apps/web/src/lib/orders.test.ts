@@ -10,6 +10,7 @@ import {
   type OpenRequestAudienceProfile,
   REDACTED_STREET,
   redactOpenPoolOrder,
+  summarizeAvailability,
   type OrderDTO,
 } from "./orders";
 
@@ -193,5 +194,47 @@ describe("redactOpenPoolOrder (QA A-07)", () => {
     redactOpenPoolOrder(dto);
     expect(dto.client.phone).toBe("+5563999990000");
     expect(dto.address.street).toBe("Quadra 104 Norte, Alameda 5");
+  });
+});
+
+describe("summarizeAvailability", () => {
+  const point = { lat: -10.18, lng: -48.33 };
+  const now = new Date().toISOString();
+  const profile = (over: Partial<OpenRequestAudienceProfile>): OpenRequestAudienceProfile => ({
+    id: "p",
+    userId: "u",
+    isHelper: true,
+    serviceRadiusKm: 10,
+    lastLat: -10.19,
+    lastLng: -48.33,
+    lastLocationAt: now,
+    baseLat: null,
+    baseLng: null,
+    categories: [],
+    ...over,
+  });
+
+  it("conta helpers e profissionais da categoria, ignora ocupados e fora do raio", () => {
+    const r = summarizeAvailability(
+      [
+        profile({ id: "h1" }),
+        profile({ id: "h2", lastLat: -10.3 }), // ~13 km: fora do raio de 10
+        profile({ id: "pro-ok", isHelper: false, categories: [{ categoryId: "frete" }] }),
+        profile({ id: "pro-outra", isHelper: false, categories: [{ categoryId: "reparos" }] }),
+        profile({ id: "ocupado" }),
+      ],
+      { categoryId: "frete", address: point },
+      new Set(["ocupado"]),
+    );
+    expect(r).toMatchObject({ count: 2, helpers: 1, professionals: 1 });
+    expect(r.nearestKm).toBeCloseTo(1.11, 1);
+  });
+
+  it("ninguém perto", () => {
+    expect(summarizeAvailability([], { categoryId: null, address: point }, new Set())).toMatchObject({
+      count: 0,
+      nearestKm: null,
+      nearest: null,
+    });
   });
 });

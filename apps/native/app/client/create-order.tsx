@@ -10,7 +10,14 @@ import { Screen } from "@/components/ui/screen";
 import { fonts } from "@/constants/fonts";
 import { previewOrderTotals } from "@/lib/fees";
 import { formatAddressLine, moneyFromCents } from "@/lib/format";
-import { useAddresses, useAppConfig, useCreateOrder, useProvider } from "@/lib/hooks";
+import { availabilityLabel } from "@/lib/availability";
+import {
+  useAddresses,
+  useAppConfig,
+  useCreateOrder,
+  useOpenRequestAvailability,
+  useProvider,
+} from "@/lib/hooks";
 import { errorMessage, toast } from "@/lib/toast";
 
 function parseScheduledAt(date: string, time: string): Date | null {
@@ -63,6 +70,15 @@ export default function ConfirmCall() {
   const services = provider?.services;
   const createOrder = useCreateOrder();
   const appConfig = useAppConfig();
+  // Ajuda aberta sai no endereço padrão (mesma regra da API ao publicar).
+  const openAddress = isOpenRequest
+    ? (addresses?.find((a) => a.isDefault) ?? addresses?.[0] ?? null)
+    : null;
+  const { data: availability } = useOpenRequestAvailability(
+    openAddress ? { lat: openAddress.lat, lng: openAddress.lng } : null,
+    params.categoryId,
+  );
+  const availabilityText = availability ? availabilityLabel(availability) : null;
 
   useEffect(() => {
     if (isOpenRequest || !addresses?.length) return;
@@ -195,6 +211,20 @@ export default function ConfirmCall() {
               Qualquer pessoa disponível pode atender. Locais e detalhes você combina depois do aceite.
             </Text>
           </View>
+
+          {availabilityText && (
+            <View style={styles.availability}>
+              <Ionicons
+                name={availability!.count > 0 ? "people" : "time-outline"}
+                size={18}
+                color={availability!.count > 0 ? theme.colors.primary : theme.colors.mutedForeground}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.availabilityTitle}>{availabilityText.title}</Text>
+                <Text style={styles.muted}>{availabilityText.detail}</Text>
+              </View>
+            </View>
+          )}
 
           <Text style={styles.label}>O que você precisa?</Text>
           <TextInput
@@ -410,6 +440,19 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 20,
     padding: 16,
     marginBottom: 8,
+  },
+  availability: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "rgba(28,28,58,0.7)",
+    borderRadius: 16,
+    padding: 14,
+  },
+  availabilityTitle: {
+    fontSize: 14,
+    fontFamily: fonts.bold,
+    color: "#fff",
   },
   kicker: {
     fontSize: 11,

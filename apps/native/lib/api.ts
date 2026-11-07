@@ -523,7 +523,20 @@ export type ArrangeOrderInput = {
   detailsReady?: boolean;
 };
 
+export type OpenRequestAvailability = {
+  count: number;
+  helpers: number;
+  professionals: number;
+  nearestKm: number | null;
+  etaMin: number | null;
+};
+
 export const ordersApi = {
+  availability(opts: { lat: number; lng: number; categoryId?: string }) {
+    const qs = new URLSearchParams({ lat: String(opts.lat), lng: String(opts.lng) });
+    if (opts.categoryId) qs.set("categoryId", opts.categoryId);
+    return apiFetch<OpenRequestAvailability>(`/api/orders/availability?${qs}`);
+  },
   list(as: "client" | "provider" = "client") {
     return apiFetch<{ orders: Order[] }>(`/api/orders?as=${as}`).then((r) => r.orders);
   },
