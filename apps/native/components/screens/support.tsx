@@ -9,8 +9,9 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import type { SupportTicket } from "@/lib/api";
 import { fonts } from "@/constants/fonts";
 import { relativeTime, supportCategoryLabel, supportStatusLabel } from "@/lib/format";
-import { useSupportTickets } from "@/lib/hooks";
-import { SUPPORT_FAQ, type SupportRole } from "@/lib/support-faq";
+import { useSupportTickets, useAppConfig } from "@/lib/hooks";
+import { percentLabel } from "@/lib/fees";
+import { SUPPORT_FAQ, fillFaqPlaceholders, type SupportRole } from "@/lib/support-faq";
 import { Screen } from "@/components/ui/screen";
 
 const STATUS_COLOR: Record<SupportTicket["status"], "warning" | "info" | "success"> = {
@@ -24,6 +25,8 @@ export function SupportScreen({ role }: { role: SupportRole }) {
   const insets = useSafeAreaInsets();
   const [openFaq, setOpenFaq] = useState<string | null>(null);
   const { data: tickets, isLoading } = useSupportTickets();
+  const appConfig = useAppConfig();
+  const feeLabel = percentLabel(appConfig.platformFeeRate);
   const faqs = SUPPORT_FAQ[role];
 
   return (
@@ -88,7 +91,9 @@ export function SupportScreen({ role }: { role: SupportRole }) {
                       color={theme.colors.mutedForeground}
                     />
                   </View>
-                  {expanded && <Text style={styles.answer}>{faq.answer}</Text>}
+                  {expanded && (
+                    <Text style={styles.answer}>{fillFaqPlaceholders(faq.answer, feeLabel)}</Text>
+                  )}
                 </Pressable>
               </Fragment>
             );

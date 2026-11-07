@@ -356,10 +356,12 @@ export function OrderDetailClient() {
             <Text style={styles.costLabel}>{order.service?.name ?? "Serviço"}</Text>
             <Text style={styles.costValue}>{moneyFromCents(order.priceCents)}</Text>
           </View>
-          <View style={styles.costRow}>
-            <Text style={styles.costLabel}>Taxa de serviço</Text>
-            <Text style={styles.costValue}>{moneyFromCents(order.platformFeeCents)}</Text>
-          </View>
+          {order.feePayer === "CLIENT" && (
+            <View style={styles.costRow}>
+              <Text style={styles.costLabel}>Taxa de serviço</Text>
+              <Text style={styles.costValue}>{moneyFromCents(order.platformFeeCents)}</Text>
+            </View>
+          )}
           <View style={styles.costDivider} />
           <View style={styles.costRow}>
             <Text style={styles.costTotalLabel}>Total</Text>

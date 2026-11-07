@@ -17,6 +17,11 @@ const account: SupportFaq = {
     "Sim, a qualquer momento em Perfil > Privacidade: \"Baixar meus dados\" gera uma cópia de tudo que você cadastrou, e \"Excluir minha conta\" remove suas informações pessoais.",
 };
 
+/** Troca o marcador {taxa} pelo percentual atual (ex.: "20%"). */
+export function fillFaqPlaceholders(answer: string, feeLabel: string): string {
+  return answer.replaceAll("{taxa}", feeLabel);
+}
+
 // FAQ por papel. A tela de suporte é uma só (components/screens/support.tsx);
 // só o conteúdo muda conforme quem está perguntando.
 export const SUPPORT_FAQ: Record<SupportRole, SupportFaq[]> = {
@@ -26,7 +31,7 @@ export const SUPPORT_FAQ: Record<SupportRole, SupportFaq[]> = {
       icon: "card-outline",
       question: "Como funciona o pagamento?",
       answer:
-        "Você escolhe Pix, cartão de crédito ou dinheiro na hora de criar o pedido. No Pix e no cartão a cobrança é feita pela plataforma (Stripe); em dinheiro, você paga direto ao prestador na entrega. O valor final já inclui a taxa de serviço de 8%.",
+        "Você escolhe Pix, cartão de crédito ou dinheiro na hora de criar o pedido. No Pix e no cartão a cobrança é feita pela plataforma (Stripe); em dinheiro, você paga direto ao prestador na entrega. Você paga o valor do pedido: a taxa da plataforma é descontada de quem atende, não somada ao seu total.",
     },
     {
       id: "refund",
@@ -57,7 +62,7 @@ export const SUPPORT_FAQ: Record<SupportRole, SupportFaq[]> = {
       icon: "wallet-outline",
       question: "Como recebo pelos serviços concluídos?",
       answer:
-        "Ao concluir um pedido, o valor (já descontada a taxa de 8% da plataforma) entra no saldo da sua carteira, visível em Ganhos. O saque depende de completar o cadastro de KYC.",
+        "Ao concluir um pedido pago pelo app, o valor já descontada a taxa da plataforma ({taxa}) entra no saldo da sua carteira, visível em Ganhos. Em pedido pago em dinheiro, você recebe o valor inteiro em mãos e a taxa fica como saldo a acertar na carteira. O saque depende de completar o cadastro de KYC.",
     },
     {
       id: "kyc",

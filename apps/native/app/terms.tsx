@@ -12,7 +12,7 @@ const sections: LegalSection[] = [
   },
   {
     heading: "3. Pedidos e pagamento",
-    body: "Ao contratar um serviço, o valor é cobrado via Pix, cartão ou combinado em dinheiro na entrega. Sobre o valor do serviço incide uma taxa de plataforma de 8%. Em caso de cancelamento antes do início da execução, pagamentos já capturados via Pix/cartão são estornados automaticamente.",
+    body: "Ao contratar um serviço, o valor é cobrado via Pix, cartão ou combinado em dinheiro na entrega. A plataforma retém uma taxa sobre o valor do serviço, descontada do repasse a quem atende; o percentual vigente aparece no app antes de cada pedido. Em pedidos pagos em dinheiro, a taxa fica como saldo devido na carteira de quem atende. Em caso de cancelamento antes do início da execução, pagamentos já capturados via Pix/cartão são estornados automaticamente.",
   },
   {
     heading: "4. Cancelamento e reembolso",

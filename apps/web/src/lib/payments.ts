@@ -541,12 +541,17 @@ export async function markFailedByGatewayRef(gatewayRef: string) {
     .eq("id", payment.id);
 }
 
-export async function creditProviderWallet(
+/**
+ * Lança um movimento na carteira de quem atende (CREDIT soma, DEBIT subtrai —
+ * o saldo pode ficar negativo quando a taxa de um pedido em dinheiro é devida).
+ */
+export async function applyWalletMovement(
   providerUserId: string,
-  amountCents: number,
+  movement: { type: "CREDIT" | "DEBIT"; amountCents: number; description: string },
   orderId: string,
 ) {
-  if (amountCents <= 0) return;
+  if (movement.amountCents <= 0) return;
+  const delta = movement.type === "CREDIT" ? movement.amountCents : -movement.amountCents;
   const now = new Date().toISOString();
   const { data: existing } = await supabase
     .from("wallet")
@@ -559,14 +564,14 @@ export async function creditProviderWallet(
     walletId = existing.id;
     await supabase
       .from("wallet")
-      .update({ balanceCents: existing.balanceCents + amountCents, updatedAt: now })
+      .update({ balanceCents: existing.balanceCents + delta, updatedAt: now })
       .eq("id", walletId);
   } else {
     walletId = randomUUID();
     await supabase.from("wallet").insert({
       id: walletId,
       userId: providerUserId,
-      balanceCents: amountCents,
+      balanceCents: delta,
       updatedAt: now,
     });
   }
@@ -574,11 +579,23 @@ export async function creditProviderWallet(
   await supabase.from("wallettransaction").insert({
     id: randomUUID(),
     walletId,
-    type: "CREDIT",
-    amountCents,
-    description: "Repasse de pedido concluído",
+    type: movement.type,
+    amountCents: movement.amountCents,
+    description: movement.description,
     orderId,
   });
+}
+
+export async function creditProviderWallet(
+  providerUserId: string,
+  amountCents: number,
+  orderId: string,
+) {
+  await applyWalletMovement(
+    providerUserId,
+    { type: "CREDIT", amountCents, description: "Repasse de pedido concluído" },
+    orderId,
+  );
 }
 
 export async function refundIfPaid(orderId: string) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { professionalUpsertOverrides } from "./provider-profile";
+import { cashDebtError, professionalUpsertOverrides } from "./provider-profile";
 
 const pro = { isHelper: false, status: "APPROVED" as const, baseLat: -10.1, baseLng: -48.3 };
 const helper = { isHelper: true, status: "APPROVED" as const, baseLat: -10.2, baseLng: -48.4 };
@@ -35,5 +35,16 @@ describe("professionalUpsertOverrides", () => {
 
   it("cadastro novo sem base fica com null", () => {
     expect(professionalUpsertOverrides(null, {})).toEqual({ baseLat: null, baseLng: null });
+  });
+});
+
+describe("cashDebtError", () => {
+  it("saldo positivo ou dívida até o limite: libera", () => {
+    expect(cashDebtError(1000, 5000)).toBeNull();
+    expect(cashDebtError(-5000, 5000)).toBeNull();
+  });
+
+  it("dívida acima do limite: bloqueia com o valor devido", () => {
+    expect(cashDebtError(-5001, 5000)).toContain("R$ 50,01");
   });
 });

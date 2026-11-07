@@ -281,6 +281,8 @@ model Category {
   slug      String   @unique
   name      String
   icon      String?
+  // Taxa da plataforma desta categoria; null = usa a geral (AppConfig).
+  feeRate   Float?
   createdAt DateTime @default(now())
 
   services   Service[]
@@ -371,6 +373,10 @@ model Order {
   priceCents      Int         @default(0)
   platformFeeCents Int        @default(0)
   totalCents      Int         @default(0)
+  // Regra de cobrança com que o pedido nasceu (snapshot). CLIENT = taxa somada
+  // ao total; PROVIDER = taxa descontada do repasse de quem atende.
+  feeRate         Float       @default(0.08)
+  feePayer        String      @default("CLIENT")
   couponCode      String?
   cancelReason    String?
   acceptedAt      DateTime?

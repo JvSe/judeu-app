@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_CONFIG, mergeConfig, toPublicConfig } from "./config";
-import { OFFER_TTL_MS, OPEN_REQUEST_TTL_MS, PLATFORM_FEE_RATE } from "./orders";
+import { OFFER_TTL_MS, OPEN_REQUEST_TTL_MS } from "./orders";
 
 describe("DEFAULT_CONFIG", () => {
-  it("reproduz o comportamento atual sem nenhuma linha no banco", () => {
-    expect(DEFAULT_CONFIG.platformFeeRate).toBe(PLATFORM_FEE_RATE);
-    expect(DEFAULT_CONFIG.feePayer).toBe("CLIENT");
+  it("pedidos novos: 20% descontados de quem atende", () => {
+    expect(DEFAULT_CONFIG.platformFeeRate).toBe(0.2);
+    expect(DEFAULT_CONFIG.feePayer).toBe("PROVIDER");
+  });
+
+  it("TTLs iguais aos atuais", () => {
     expect(DEFAULT_CONFIG.openRequestTtlMs).toBe(OPEN_REQUEST_TTL_MS);
     expect(DEFAULT_CONFIG.offerTtlMs).toBe(OFFER_TTL_MS);
   });
@@ -18,9 +21,9 @@ describe("mergeConfig", () => {
   });
 
   it("sobrescreve só a chave presente", () => {
-    const cfg = mergeConfig([{ key: "platformFeeRate", value: 0.2 }]);
-    expect(cfg.platformFeeRate).toBe(0.2);
-    expect(cfg.feePayer).toBe("CLIENT");
+    const cfg = mergeConfig([{ key: "platformFeeRate", value: 0.15 }]);
+    expect(cfg.platformFeeRate).toBe(0.15);
+    expect(cfg.feePayer).toBe("PROVIDER");
   });
 
   it("ignora chave desconhecida", () => {
@@ -34,13 +37,13 @@ describe("mergeConfig", () => {
       { key: "offerTtlMs", value: 30_000 },
     ]);
     expect(cfg.platformFeeRate).toBe(DEFAULT_CONFIG.platformFeeRate);
-    expect(cfg.feePayer).toBe("CLIENT");
+    expect(cfg.feePayer).toBe(DEFAULT_CONFIG.feePayer);
     expect(cfg.offerTtlMs).toBe(30_000);
   });
 
   it("não altera DEFAULT_CONFIG", () => {
     mergeConfig([{ key: "platformFeeRate", value: 0.5 }]);
-    expect(DEFAULT_CONFIG.platformFeeRate).toBe(0.08);
+    expect(DEFAULT_CONFIG.platformFeeRate).toBe(0.2);
   });
 });
 

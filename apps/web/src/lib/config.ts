@@ -7,10 +7,15 @@ import { supabase } from "./db";
 // Parâmetros de negócio editáveis sem deploy. Os padrões reproduzem o
 // comportamento atual; uma linha na tabela `appconfig` sobrescreve só a chave dela.
 export const configSchema = z.object({
-  /** Fração cobrada pela plataforma sobre o preço do serviço. */
-  platformFeeRate: z.number().min(0).max(1).default(0.08),
+  /** Fração cobrada pela plataforma sobre o preço do serviço (pedidos novos). */
+  platformFeeRate: z.number().min(0).max(1).default(0.2),
   /** Quem paga a taxa: CLIENT = somada ao total; PROVIDER = descontada do repasse. */
-  feePayer: z.enum(["CLIENT", "PROVIDER"]).default("CLIENT"),
+  feePayer: z.enum(["CLIENT", "PROVIDER"]).default("PROVIDER"),
+  /**
+   * Em pedido em dinheiro, quem atende recebe tudo em mãos e a taxa vira dívida
+   * na carteira. Acima deste valor devido, não pode ficar disponível.
+   */
+  cashDebtLimitCents: z.number().int().min(0).default(5000),
   /** Tempo de uma ajuda aberta no ar antes de expirar. */
   openRequestTtlMs: z.number().int().positive().default(4 * 60 * 60 * 1000),
   /** Tempo para o prestador responder a uma chamada direta. */

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { getConfig } from "./config";
 import { supabase } from "./db";
 import { notifyUser } from "./notifications";
 import { uploadKycDocument } from "./storage";
@@ -234,6 +235,10 @@ export async function setProviderAvailability(
       status: 403,
     };
   }
+  if (isAvailable) {
+    const debt = await cashFeeDebtBlock(userId);
+    if (debt) return debt;
+  }
   const now = new Date().toISOString();
   await supabase
     .from("providerprofile")
@@ -242,6 +247,25 @@ export async function setProviderAvailability(
   const profile = await loadProfile(userId);
   if (!profile) throw new Error("Perfil não encontrado");
   return toDTO(profile);
+}
+
+/**
+ * Taxas de pedidos em dinheiro viram saldo negativo na carteira. Acima do
+ * limite configurado, quem atende precisa acertar antes de ficar disponível.
+ */
+export function cashDebtError(balanceCents: number, limitCents: number): string | null {
+  if (balanceCents >= -limitCents) return null;
+  const owed = (-balanceCents / 100).toFixed(2).replace(".", ",");
+  return `Você tem R$ ${owed} em taxas de pedidos em dinheiro a acertar. Fale com o suporte para regularizar.`;
+}
+
+async function cashFeeDebtBlock(userId: string): Promise<{ error: string; status: number } | null> {
+  const [{ data: wallet }, config] = await Promise.all([
+    supabase.from("wallet").select("balanceCents").eq("userId", userId).maybeSingle(),
+    getConfig(),
+  ]);
+  const message = cashDebtError(wallet?.balanceCents ?? 0, config.cashDebtLimitCents);
+  return message ? { error: message, status: 409 } : null;
 }
 
 export type RegisterHelperInput = {

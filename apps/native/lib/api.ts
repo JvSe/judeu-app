@@ -287,10 +287,10 @@ export type AppConfig = {
   offerTtlMs: number;
 };
 
-/** Valores usados enquanto `/api/config` não respondeu — iguais ao comportamento atual. */
+/** Valores usados enquanto `/api/config` não respondeu — iguais aos padrões da API. */
 export const DEFAULT_APP_CONFIG: AppConfig = {
-  platformFeeRate: 0.08,
-  feePayer: "CLIENT",
+  platformFeeRate: 0.2,
+  feePayer: "PROVIDER",
   openRequestTtlMs: 4 * 60 * 60 * 1000,
   offerTtlMs: 60_000,
 };
@@ -455,6 +455,11 @@ export type Order = {
   priceCents: number;
   platformFeeCents: number;
   totalCents: number;
+  /** Quem paga a taxa neste pedido: CLIENT = somada ao total; PROVIDER = descontada de quem atende. */
+  feePayer: "CLIENT" | "PROVIDER";
+  feeRate: number;
+  /** O que quem atende recebe por este pedido. */
+  providerNetCents: number;
   cancelReason: string | null;
   createdAt: string;
   offerExpiresAt: string;

@@ -339,7 +339,7 @@ function AttendedActiveCard({ order }: { order: Order }) {
       counterpartName={order.client.name}
       counterpartAvatar={order.client.avatarUrl}
       counterpartMeta={`${order.client.name} · você recebe`}
-      price={order.priceCents}
+      price={order.providerNetCents}
       primaryAction={primaryAction}
       secondaryAction={onMap ? { label: "Detalhes", run: goDetails } : undefined}
       onPress={goDetails}

@@ -3,13 +3,16 @@ import { randomUUID } from "node:crypto";
 import type { Json, OrderRow, OrderStatus, PaymentMethod, PaymentStatus } from "@judeu/db";
 
 import { coarsen, effectiveProviderPosition } from "./catalog";
+import { getConfig } from "./config";
 import { ensureUtcIso } from "./dates";
+import { completionWalletMovement, computeFees, feeRuleOf, resolveFeeRule } from "./fees";
 import { supabase } from "./db";
 import { haversineKm, routeBetween } from "./geo";
 import { notifyUser } from "./notifications";
-import { creditProviderWallet, refundIfPaid, syncOrderPaymentStatus } from "./payments";
+import { applyWalletMovement, refundIfPaid, syncOrderPaymentStatus } from "./payments";
 import { batchClientStats } from "./profile";
 
+/** Taxa dos pedidos antigos (regra legada). Pedidos novos usam a configuração — ver fees.ts. */
 export const PLATFORM_FEE_RATE = 0.08;
 export const FALLBACK_LAT = -10.1841;
 export const FALLBACK_LNG = -48.3336;
@@ -113,6 +116,8 @@ type OrderFull = {
   priceCents: number;
   platformFeeCents: number;
   totalCents: number;
+  feeRate?: number | null;
+  feePayer?: string | null;
   cancelReason: string | null;
   createdAt: string;
   isOpenRequest: boolean;
@@ -179,6 +184,11 @@ export type OrderDTO = {
   priceCents: number;
   platformFeeCents: number;
   totalCents: number;
+  /** Quem paga a taxa neste pedido (snapshot): CLIENT = somada; PROVIDER = descontada do repasse. */
+  feePayer: "CLIENT" | "PROVIDER";
+  feeRate: number;
+  /** O que quem atende recebe por este pedido. */
+  providerNetCents: number;
   cancelReason: string | null;
   createdAt: string;
   offerExpiresAt: string;
@@ -237,6 +247,10 @@ function toDTO(o: OrderFull, unreadMessages = 0): OrderDTO {
     priceCents: o.priceCents,
     platformFeeCents: o.platformFeeCents,
     totalCents: o.totalCents,
+    feePayer: feeRuleOf(o).payer,
+    feeRate: feeRuleOf(o).rate,
+    providerNetCents:
+      feeRuleOf(o).payer === "PROVIDER" ? o.priceCents - o.platformFeeCents : o.priceCents,
     cancelReason: o.cancelReason,
     createdAt: o.createdAt,
     offerExpiresAt: new Date(
@@ -544,8 +558,13 @@ export async function createOrder(
     priceCents = input.priceCents!;
   }
 
-  const platformFeeCents = Math.round(priceCents * PLATFORM_FEE_RATE);
-  const totalCents = priceCents + platformFeeCents;
+  // Snapshot da regra de cobrança: o pedido fica com ela até o fim.
+  const config = await getConfig();
+  const { data: category } = input.categoryId
+    ? await supabase.from("category").select("feeRate").eq("id", input.categoryId).maybeSingle()
+    : { data: null };
+  const feeRule = resolveFeeRule(config, category);
+  const { platformFeeCents, totalCents } = computeFees(priceCents, feeRule);
   const orderId = randomUUID();
 
   const { data: created, error } = await supabase.rpc("create_order_with_event", {
@@ -563,6 +582,8 @@ export async function createOrder(
       priceCents,
       platformFeeCents,
       totalCents,
+      feeRate: feeRule.rate,
+      feePayer: feeRule.payer,
       status: "CREATED",
     } as Json,
     p_event_note: isOpenRequest ? "Solicitação publicada" : "Chamada enviada",
@@ -881,9 +902,12 @@ export async function transitionOrder(
         .update({ status: "PAID", updatedAt: now })
         .eq("orderId", id);
     }
-    if (pay?.method === "CASH" || pay?.status === "PAID") {
-      await creditProviderWallet(updated.provider.userId, updated.priceCents, updated.id);
-    }
+    const movement = completionWalletMovement(
+      feeRuleOf(updated),
+      updated,
+      pay ? { method: pay.method, paid: pay.status === "PAID" } : null,
+    );
+    if (movement) await applyWalletMovement(updated.provider.userId, movement, updated.id);
   }
   if (rule.to === "CANCELLED") {
     await refundIfPaid(id);

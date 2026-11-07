@@ -8,8 +8,9 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { Screen } from "@/components/ui/screen";
 import { fonts } from "@/constants/fonts";
+import { previewOrderTotals } from "@/lib/fees";
 import { formatAddressLine, moneyFromCents } from "@/lib/format";
-import { useAddresses, useCreateOrder, useProvider } from "@/lib/hooks";
+import { useAddresses, useAppConfig, useCreateOrder, useProvider } from "@/lib/hooks";
 import { errorMessage, toast } from "@/lib/toast";
 
 function parseScheduledAt(date: string, time: string): Date | null {
@@ -61,6 +62,7 @@ export default function ConfirmCall() {
   const { data: provider, isLoading: providerLoading } = useProvider(params.providerId ?? "");
   const services = provider?.services;
   const createOrder = useCreateOrder();
+  const appConfig = useAppConfig();
 
   useEffect(() => {
     if (isOpenRequest || !addresses?.length) return;
@@ -87,8 +89,8 @@ export default function ConfirmCall() {
       ? offeredCents
       : 0
     : (selectedService?.priceCents ?? (params.priceCents ? Number(params.priceCents) : 0));
-  const feeCents = Math.round(priceCents * 0.08);
-  const totalCents = priceCents + feeCents;
+  const { totalCents } = previewOrderTotals(priceCents, appConfig);
+  const totalLabel = appConfig.feePayer === "CLIENT" ? "Total com taxa" : "Total";
   const providerName = provider?.name ?? params.providerName ?? "Pessoa";
   const selectedAddress = addresses?.find((a) => a.id === selectedAddressId);
   const scheduled = when === "agendar";
@@ -225,7 +227,7 @@ export default function ConfirmCall() {
 
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
           <View>
-            <Text style={styles.footerLabel}>Total com taxa</Text>
+            <Text style={styles.footerLabel}>{totalLabel}</Text>
             <Text style={styles.footerPrice}>
               {priceCents >= 100 ? moneyFromCents(totalCents) : "—"}
             </Text>
@@ -365,7 +367,7 @@ export default function ConfirmCall() {
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         <View>
-          <Text style={styles.footerLabel}>Total com taxa</Text>
+          <Text style={styles.footerLabel}>{totalLabel}</Text>
           <Text style={styles.footerPrice}>{moneyFromCents(totalCents)}</Text>
         </View>
         <Pressable
