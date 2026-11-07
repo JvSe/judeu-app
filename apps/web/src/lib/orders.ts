@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Json, OrderRow, OrderStatus, PaymentMethod, PaymentStatus } from "@judeu/db";
 
-import { effectiveProviderPosition } from "./catalog";
+import { coarsen, effectiveProviderPosition } from "./catalog";
 import { supabase } from "./db";
 import { haversineKm, routeBetween } from "./geo";
 import { notifyUser } from "./notifications";
@@ -289,6 +289,33 @@ function toDTO(o: OrderFull, unreadMessages = 0): OrderDTO {
       route: null,
       arrived: hasArrivedAt(o.providerLat, o.providerLng, dest),
     },
+  };
+}
+
+export const REDACTED_STREET = "Endereço exato liberado após o aceite";
+
+function redactAddress(a: OrderDTO["address"]): OrderDTO["address"] {
+  return {
+    ...a,
+    label: null,
+    street: REDACTED_STREET,
+    number: null,
+    lat: coarsen(a.lat) as number,
+    lng: coarsen(a.lng) as number,
+  };
+}
+
+/**
+ * Visão de uma ajuda aberta para quem ainda não aceitou (QA A-07/P-07): sem
+ * telefone e sem endereço exato. Bairro, cidade e posição aproximada bastam
+ * para decidir; o resto é liberado no aceite.
+ */
+export function redactOpenPoolOrder(dto: OrderDTO): OrderDTO {
+  return {
+    ...dto,
+    client: { ...dto.client, phone: null },
+    address: redactAddress(dto.address),
+    pickupAddress: dto.pickupAddress ? redactAddress(dto.pickupAddress) : null,
   };
 }
 
@@ -634,13 +661,15 @@ export async function listProviderOrders(userId: string): Promise<OrderDTO[]> {
     .maybeSingle();
   if (!profile) return [];
 
+  // Só perfil aprovado vê o pool de ajudas abertas (QA A-07/P-07), como no detalhe.
+  const canSeePool = profile.status === "APPROVED";
   const [{ data: assigned }, open] = await Promise.all([
     supabase
       .from("order")
       .select(ORDER_SELECT)
       .eq("providerId", profile.id)
       .order("createdAt", { ascending: false }),
-    listNearbyOpenRequests(userId, profile),
+    canSeePool ? listNearbyOpenRequests(userId, profile) : Promise.resolve([] as OrderFull[]),
   ]);
 
   const seen = new Set<string>();
@@ -656,7 +685,12 @@ export async function listProviderOrders(userId: string): Promise<OrderDTO[]> {
     rows.map((o) => o.id),
     userId,
   );
-  return withOpenRequestClientStats(rows.map((o) => toDTO(o, unread.get(o.id) ?? 0)));
+  return withOpenRequestClientStats(
+    rows.map((o) => {
+      const dto = toDTO(o, unread.get(o.id) ?? 0);
+      return o.providerId === profile.id ? dto : redactOpenPoolOrder(dto);
+    }),
+  );
 }
 
 async function canViewOpenRequest(userId: string): Promise<boolean> {
@@ -675,7 +709,8 @@ export async function getOrder(id: string, userId: string): Promise<OrderDTO | n
   const isClient = o.clientId === userId;
   const isProvider = o.provider?.userId === userId;
   const openPool = o.isOpenRequest && !o.providerId && o.status === "CREATED";
-  if (!isClient && !isProvider) {
+  const poolViewer = !isClient && !isProvider;
+  if (poolViewer) {
     if (!openPool || o.clientId === userId) return null;
     if (!(await canViewOpenRequest(userId))) return null;
   }
@@ -687,7 +722,8 @@ export async function getOrder(id: string, userId: string): Promise<OrderDTO | n
     .is("readAt", null);
   const dto = await withRoute(o, toDTO(o, count ?? 0));
   const [enriched] = await withOpenRequestClientStats([dto]);
-  return enriched ?? dto;
+  const result = enriched ?? dto;
+  return poolViewer ? redactOpenPoolOrder(result) : result;
 }
 
 export async function updateOrderLocation(

@@ -8,6 +8,9 @@ import {
   PLATFORM_FEE_RATE,
   TRANSITIONS,
   type OpenRequestAudienceProfile,
+  REDACTED_STREET,
+  redactOpenPoolOrder,
+  type OrderDTO,
 } from "./orders";
 
 describe("PLATFORM_FEE_RATE", () => {
@@ -144,5 +147,51 @@ describe("matchesOpenRequestAudience", () => {
     expect(
       matchesOpenRequestAudience(profile(), { categoryId: null, address: nearby }, new Set()),
     ).toBe(true);
+  });
+});
+
+describe("redactOpenPoolOrder (QA A-07)", () => {
+  const address = {
+    label: "Casa da mãe",
+    street: "Quadra 104 Norte, Alameda 5",
+    number: "12",
+    neighborhood: "Plano Diretor Norte",
+    city: "Palmas",
+    state: "TO",
+    lat: -10.18412,
+    lng: -48.33361,
+  };
+  const dto = {
+    id: "o1",
+    client: { id: "c1", name: "Maria", phone: "+5563999990000" },
+    address,
+    pickupAddress: { ...address, street: "Supermercado X", number: "1" },
+  } as unknown as OrderDTO;
+
+  it("remove telefone, rua, número e rótulo, mantendo bairro e cidade", () => {
+    const r = redactOpenPoolOrder(dto);
+    expect(r.client.phone).toBeNull();
+    expect(r.client.name).toBe("Maria");
+    expect(r.address).toMatchObject({
+      label: null,
+      street: REDACTED_STREET,
+      number: null,
+      neighborhood: "Plano Diretor Norte",
+      city: "Palmas",
+      state: "TO",
+    });
+    expect(r.pickupAddress?.street).toBe(REDACTED_STREET);
+  });
+
+  it("arredonda as coordenadas", () => {
+    const r = redactOpenPoolOrder(dto);
+    expect(r.address.lat).toBe(-10.185);
+    expect(r.address.lng).toBe(-48.335);
+  });
+
+  it("não altera o objeto original", () => {
+    redactOpenPoolOrder(dto);
+    expect(dto.client.phone).toBe("+5563999990000");
+    expect(dto.address.street).toBe("Quadra 104 Norte, Alameda 5");
   });
 });
