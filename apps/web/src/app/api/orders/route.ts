@@ -20,6 +20,7 @@ const createSchema = z
     addressId: z.string().min(1).optional(),
     pickupAddressId: z.string().min(1).optional(),
     priceCents: z.number().int().min(0).max(1_000_000).optional(),
+    riskHint: z.number().int().min(1).max(4).optional(),
     preferences: z
       .object({
         minRating: z.number().min(1).max(5).nullable().optional(),

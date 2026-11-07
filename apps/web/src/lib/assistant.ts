@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { type CategoryDTO, listCategories } from "./catalog";
 import { supabase } from "./db";
+import { RISK_RUBRIC, normalizeRisk } from "./risk";
 
 // Assistente em nuvem: reserva da JudIA quando o modelo não roda no aparelho
 // (Expo Go, web, aparelho sem suporte). Mesmo roteiro do on-device
@@ -19,7 +20,14 @@ const MAX_HISTORY = 10;
 
 export type AssistantAction =
   | { type: "providers"; categoryId: string; categoryName: string; term: string | null }
-  | { type: "help_request"; description: string; categoryId: string | null; priceCents: number | null }
+  | {
+      type: "help_request";
+      description: string;
+      categoryId: string | null;
+      priceCents: number | null;
+      /** Sugestão de risco da IA (1–3); o servidor só usa para subir o nível. */
+      riskLevel: number;
+    }
   | { type: "jobs"; categoryId: string | null; term: string | null };
 
 export type AssistantReply = {
@@ -70,6 +78,21 @@ const TRADE_SIGNALS: Record<string, string[]> = {
   beleza: ["corte", "cabelo", "unha", "manicure", "barbeiro", "maquiagem"],
 };
 
+/** Sinais de risco por palavra-chave (reserva sem IA); vale o maior encontrado. */
+const RISK_SIGNALS: [number, string[]][] = [
+  [4, ["gas", "botijao", "vazamento de gas", "poda de arvore"]],
+  [3, ["fiacao", "soquete", "tomada", "disjuntor", "eletric", "telhado", "laje", "encanamento"]],
+  [2, ["montar movel", "furar", "pendurar", "prateleira", "chuveiro", "desentupir"]],
+];
+
+export function keywordRisk(message: string): number {
+  const text = norm(message);
+  // Palavra inteira no início ("gas" não pode casar "gastar"/"gasolina").
+  const has = (w: string) => new RegExp(`(^|[^a-z])${w}`).test(text) && (w.length > 4 || new RegExp(`(^|[^a-z])${w}([^a-z]|$)`).test(text));
+  for (const [level, words] of RISK_SIGNALS) if (words.some(has)) return level;
+  return 1;
+}
+
 export function keywordAction(
   message: string,
   categories: Pick<CategoryDTO, "id" | "slug" | "name">[],
@@ -101,10 +124,14 @@ export function keywordAction(
     };
   }
 
+  const risk = keywordRisk(message);
+  if (risk === 4) {
+    return { reply: FORBIDDEN_REPLY, action: null, source: "keywords", conversationId: null };
+  }
   if (message.trim().length >= 8) {
     return {
       reply: "Vou publicar como um pedido de ajuda: quem estiver perto pode aceitar.",
-      action: { type: "help_request", description: message.trim(), categoryId: null, priceCents: null },
+      action: { type: "help_request", description: message.trim(), categoryId: null, priceCents: null, riskLevel: risk },
       source: "keywords",
       conversationId: null,
     };
@@ -134,6 +161,9 @@ export function buildSystemPrompt(categories: Pick<CategoryDTO, "slug" | "name">
     "Se faltar informação essencial, faça no máximo uma pergunta, sem ferramenta.",
     "Em pedir_ajuda, a descrição é uma frase completa do que fazer. Não peça endereço — o app pede depois do aceite.",
     "Nunca invente prestadores, vagas, nomes, notas ou preços.",
+    "",
+    RISK_RUBRIC,
+    "Em pedir_ajuda, sempre informe nivel_risco. Se for 4, ainda assim chame a ferramenta (o app explica que não pode).",
     "",
     "Categorias (use o identificador antes dos dois-pontos):",
     lista,
@@ -167,8 +197,13 @@ export function buildTools(categories: Pick<CategoryDTO, "slug" | "name">[]): An
           descricao: { type: "string", description: "O que a pessoa precisa, em uma ou duas frases completas." },
           categoria: { ...categoria, description: "Categoria, se o pedido se aproximar de uma. Opcional." },
           valor_reais: { type: "number", description: "Valor que a pessoa ofereceu, em reais, se citou. Opcional." },
+          nivel_risco: {
+            type: "integer",
+            enum: [1, 2, 3, 4],
+            description: "Risco da tarefa conforme a rubrica do sistema (1 a 4). Na dúvida, o maior.",
+          },
         },
-        required: ["descricao"],
+        required: ["descricao", "nivel_risco"],
       },
     },
     {
@@ -191,7 +226,11 @@ const helpInput = z.object({
   descricao: z.string().trim().min(8),
   categoria: z.string().optional(),
   valor_reais: z.number().positive().optional(),
+  nivel_risco: z.number().int().min(1).max(4).optional(),
 });
+
+export const FORBIDDEN_REPLY =
+  "Esse tipo de tarefa não pode ser feito pelo app, por segurança. Se for urgente (gás, fiação pegando fogo, alguém passando mal), ligue 193 ou 192.";
 const jobsInput = z.object({ categoria: z.string().optional(), termo: z.string().optional() });
 
 /** Converte a chamada de ferramenta do modelo numa ação do app, validando a entrada. */
@@ -215,6 +254,7 @@ export function actionFromToolUse(
       description: p.data.descricao,
       categoryId: cat?.id ?? null,
       priceCents: p.data.valor_reais ? Math.round(p.data.valor_reais * 100) : null,
+      riskLevel: normalizeRisk(p.data.nivel_risco),
     };
   }
   if (tool.name === "buscar_vagas") {
@@ -261,6 +301,9 @@ async function askClaude(
     }
   }
   reply = reply.trim();
+  if (action?.type === "help_request" && action.riskLevel === 4) {
+    return { reply: FORBIDDEN_REPLY, action: null, source: "claude", conversationId: null };
+  }
   if (!reply && !action) return null;
   return {
     reply: reply || "Pronto, encontrei um caminho para o seu pedido.",

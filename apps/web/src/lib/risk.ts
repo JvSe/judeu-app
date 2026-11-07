@@ -52,3 +52,23 @@ export const RISK_DENIED_MESSAGE: Record<Exclude<RiskLevel, 1>, string> = {
   3: "Esta tarefa só pode ser feita por profissional com credencial.",
   4: "Este tipo de tarefa não pode ser pedido pelo app.",
 };
+
+/**
+ * Nível final do pedido: o maior entre o da categoria e a sugestão da IA.
+ * A sugestão vem do app (não é confiável), por isso só pode SUBIR o nível.
+ */
+export function effectiveRisk(categoryLevel: number | null | undefined, hint: number | null | undefined): RiskLevel {
+  const base = normalizeRisk(categoryLevel);
+  const suggested = hint == null ? 1 : normalizeRisk(hint);
+  return (Math.max(base, suggested) as RiskLevel);
+}
+
+/** Rubrica usada nos prompts das duas IAs (no aparelho e na nuvem). */
+export const RISK_RUBRIC = [
+  "Nível de risco da tarefa (nivel_risco):",
+  "1 = sem risco físico: recado, compra, fila, buscar/levar, companhia, carregar coisa leve, trocar lâmpada comum.",
+  "2 = reparo simples com ferramenta: montar móvel, pendurar quadro/prateleira, trocar resistência de chuveiro desligado, desentupir pia.",
+  "3 = exige profissional: mexer em fiação, tomada ou soquete, disjuntor, encanamento na parede, trabalho em altura (telhado, escada alta).",
+  "4 = proibido no app: gás (botijão com vazamento, instalação), poda de árvore grande, qualquer coisa ilegal, cuidado médico ou de remédios.",
+  "Na dúvida entre dois níveis, escolha o MAIOR.",
+].join("\n");

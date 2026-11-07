@@ -310,7 +310,13 @@ export type SearchResults = {
 // ---- JudIA em nuvem (reserva quando a IA não roda no aparelho) ----
 export type CloudAssistantAction =
   | { type: "providers"; categoryId: string; categoryName: string; term: string | null }
-  | { type: "help_request"; description: string; categoryId: string | null; priceCents: number | null }
+  | {
+      type: "help_request";
+      description: string;
+      categoryId: string | null;
+      priceCents: number | null;
+      riskLevel: number;
+    }
   | { type: "jobs"; categoryId: string | null; term: string | null };
 
 export type CloudAssistantReply = {
@@ -582,6 +588,8 @@ export type CreateOrderInput = {
   pickupAddressId?: string;
   priceCents?: number;
   preferences?: OrderPreferences;
+  /** Sugestão de risco da IA (1–4); só sobe o nível da categoria. */
+  riskHint?: number;
 };
 
 /** Preferências de quem atende (ajuda aberta): nota mínima, tarefas concluídas, gênero. */

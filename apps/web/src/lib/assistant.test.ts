@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { actionFromToolUse, buildTools, keywordAction, resolveCategory } from "./assistant";
+import { actionFromToolUse, buildTools, keywordAction, keywordRisk, resolveCategory } from "./assistant";
 
 const cats = [
   { id: "c-rep", slug: "reparos", name: "Reparos" },
@@ -35,6 +35,7 @@ describe("keywordAction (sem IA)", () => {
       description: "Buscar documentos na copiadora e deixar no trabalho",
       categoryId: null,
       priceCents: null,
+      riskLevel: 1,
     });
   });
 
@@ -63,7 +64,22 @@ describe("actionFromToolUse", () => {
         { name: "pedir_ajuda", input: { descricao: "Pegar remédio na farmácia", valor_reais: 25 } },
         cats,
       ),
-    ).toEqual({ type: "help_request", description: "Pegar remédio na farmácia", categoryId: null, priceCents: 2500 });
+    ).toEqual({
+      type: "help_request",
+      description: "Pegar remédio na farmácia",
+      categoryId: null,
+      priceCents: 2500,
+      riskLevel: 1,
+    });
+  });
+
+  it("pedir_ajuda leva o nível de risco sugerido", () => {
+    expect(
+      actionFromToolUse(
+        { name: "pedir_ajuda", input: { descricao: "Trocar o soquete da lâmpada da sala", nivel_risco: 3 } },
+        cats,
+      ),
+    ).toMatchObject({ type: "help_request", riskLevel: 3 });
   });
 
   it("entrada inválida → sem ação", () => {
@@ -80,5 +96,18 @@ describe("buildTools", () => {
       "limpeza",
       "frete",
     ]);
+  });
+});
+
+describe("keywordRisk / reserva sem IA", () => {
+  it("detecta níveis", () => {
+    expect(keywordRisk("buscar remédio na farmácia")).toBe(1);
+    expect(keywordRisk("Trocar o soquete da lâmpada")).toBe(3);
+    expect(keywordRisk("Tem cheiro de gás aqui")).toBe(4);
+    expect(keywordRisk("Buscar a nota do que gastei no mercado")).toBe(1);
+    expect(keywordRisk("Levar o carro pra abastecer gasolina")).toBe(1);
+  });
+  it("nível 4 não abre pedido", () => {
+    expect(keywordAction("Instalar o botijão de gás novo", cats).action).toBeNull();
   });
 });
