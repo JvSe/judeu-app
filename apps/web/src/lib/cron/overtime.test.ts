@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { completionGeofence } from "../orders";
 import { isOvertime } from "./overtime";
+import { isRetentionWindow } from "./retention";
 
 const now = new Date("2026-11-07T12:00:00Z");
 
@@ -39,5 +40,14 @@ describe("completionGeofence", () => {
     expect(completionGeofence({ ...base, providerLat: null, providerLng: null, providerLocationAt: null }, 300_000)).toBe(
       "unknown",
     );
+  });
+});
+
+
+describe("isRetentionWindow", () => {
+  it("só às 03:00 UTC", () => {
+    expect(isRetentionWindow(new Date("2026-11-07T03:00:30Z"))).toBe(true);
+    expect(isRetentionWindow(new Date("2026-11-07T03:01:00Z"))).toBe(false);
+    expect(isRetentionWindow(new Date("2026-11-07T15:00:00Z"))).toBe(false);
   });
 });

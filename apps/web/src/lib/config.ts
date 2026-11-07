@@ -22,6 +22,10 @@ export const configSchema = z.object({
   overtimeAlertRatio: z.number().min(1).max(5).default(1.5),
   /** Posição de quem atende mais velha que isto não serve para a geocerca. */
   locationFreshMs: z.number().int().positive().default(5 * 60_000),
+  /** LGPD: dias até apagar posições de pedidos encerrados e de quem está parado. */
+  locationRetentionDays: z.number().int().min(1).default(30),
+  /** LGPD: dias até apagar o KYC de cadastros bloqueados. */
+  blockedKycRetentionDays: z.number().int().min(1).default(180),
   /** Menor saque permitido. */
   payoutMinCents: z.number().int().min(100).default(1000),
   /** Tarifa por saque (cobrada do valor sacado). */
