@@ -127,14 +127,20 @@ export async function getMyReview(authorId: string, orderId: string): Promise<Re
 }
 
 export async function listProviderReviews(providerProfileId: string): Promise<ReviewDTO[]> {
-  const { data: orders } = await supabase.from("order").select("id").eq("providerId", providerProfileId);
+  const [{ data: profile }, { data: orders }] = await Promise.all([
+    supabase.from("providerprofile").select("userId").eq("id", providerProfileId).maybeSingle(),
+    supabase.from("order").select("id").eq("providerId", providerProfileId),
+  ]);
   const ids = (orders ?? []).map((o) => o.id);
-  if (ids.length === 0) return [];
+  if (!profile || ids.length === 0) return [];
 
+  // Só as avaliações RECEBIDAS pelo prestador: nos mesmos pedidos ficam as que
+  // ele escreveu sobre os clientes (QA A-10, C-07, P-13).
   const { data: rows } = await supabase
     .from("review")
     .select("*, author:user!review_authorId_fkey(id, fullName)")
     .in("orderId", ids)
+    .eq("targetId", profile.userId)
     .order("createdAt", { ascending: false })
     .limit(50);
 
