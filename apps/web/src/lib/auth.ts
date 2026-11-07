@@ -1,10 +1,11 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 
 import { env } from "@judeu/env/server";
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 
 import { supabase } from "./db";
+import { sendEmail } from "./mailer";
 
 const ACCESS_TTL = "15m";
 const REFRESH_TTL_DAYS = 30;
@@ -100,37 +101,82 @@ export async function revokeAllRefreshTokens(userId: string): Promise<void> {
 }
 
 const RESET_TTL_MINUTES = 15;
-const MVP_RESET_CODE = "123456";
+export const RESET_MAX_ATTEMPTS = 5;
 
 function hashResetCode(userId: string, code: string): string {
   return createHash("sha256").update(`${userId}:${code}`).digest("hex");
 }
 
-export async function issuePasswordResetCode(userId: string): Promise<string> {
-  const code = MVP_RESET_CODE;
-  const expiresAt = new Date(Date.now() + RESET_TTL_MINUTES * 60 * 1000).toISOString();
-  const tokenHash = hashResetCode(userId, code);
-  const { error } = await supabase.from("passwordresettoken").upsert(
-    {
-      id: randomUUID(),
-      userId,
-      tokenHash,
-      expiresAt,
-      usedAt: null,
-    },
-    { onConflict: "tokenHash" },
-  );
+/** Código de 6 dígitos com gerador criptográfico (antes era fixo "123456" — QA C-01). */
+export function generateResetCode(): string {
+  return String(randomInt(0, 1_000_000)).padStart(6, "0");
+}
+
+export type ResetCheck = "ok" | "mismatch" | "expired" | "locked";
+
+/** Decide se o código confere com o registro ativo, sem tocar no banco. */
+export function checkResetCode(
+  record: { userId: string; tokenHash: string; expiresAt: string; usedAt: string | null; attempts: number },
+  code: string,
+  now = new Date(),
+): ResetCheck {
+  if (record.usedAt || new Date(record.expiresAt) < now) return "expired";
+  if (record.attempts >= RESET_MAX_ATTEMPTS) return "locked";
+  const a = Buffer.from(hashResetCode(record.userId, code));
+  const b = Buffer.from(record.tokenHash);
+  return a.length === b.length && timingSafeEqual(a, b) ? "ok" : "mismatch";
+}
+
+export async function issuePasswordResetCode(userId: string, email: string): Promise<void> {
+  const now = new Date();
+  // Só o código mais recente vale.
+  await supabase
+    .from("passwordresettoken")
+    .update({ usedAt: now.toISOString() })
+    .eq("userId", userId)
+    .is("usedAt", null);
+
+  const code = generateResetCode();
+  const expiresAt = new Date(now.getTime() + RESET_TTL_MINUTES * 60 * 1000).toISOString();
+  const { error } = await supabase.from("passwordresettoken").insert({
+    id: randomUUID(),
+    userId,
+    tokenHash: hashResetCode(userId, code),
+    expiresAt,
+    usedAt: null,
+    attempts: 0,
+  });
   if (error) throw new Error(`reset code: ${error.message}`);
-  return code;
+
+  await sendEmail({
+    to: email,
+    subject: "Seu código para criar uma nova senha",
+    body:
+      `Seu código é ${code}. Ele vale por ${RESET_TTL_MINUTES} minutos.\n\n` +
+      "Se você não pediu para trocar a senha, ignore este e-mail.",
+  });
 }
 
 export async function consumePasswordResetCode(userId: string, code: string): Promise<boolean> {
   const { data: record } = await supabase
     .from("passwordresettoken")
     .select("*")
-    .eq("tokenHash", hashResetCode(userId, code))
+    .eq("userId", userId)
+    .is("usedAt", null)
+    .order("createdAt", { ascending: false })
+    .limit(1)
     .maybeSingle();
-  if (!record || record.usedAt || new Date(record.expiresAt) < new Date()) return false;
+  if (!record) return false;
+
+  const result = checkResetCode(record, code);
+  if (result === "mismatch") {
+    await supabase
+      .from("passwordresettoken")
+      .update({ attempts: record.attempts + 1 })
+      .eq("id", record.id);
+    return false;
+  }
+  if (result !== "ok") return false;
 
   await supabase
     .from("passwordresettoken")

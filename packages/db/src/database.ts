@@ -52,6 +52,7 @@ export type PasswordResetTokenRow = {
   tokenHash: string;
   expiresAt: string;
   usedAt: string | null;
+  attempts: number;
   createdAt: string;
 };
 

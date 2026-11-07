@@ -32,6 +32,10 @@ export const env = createEnv({
     // Painel admin (web, RF-H3) — senha única compartilhada, sem conta/role por ora
     ADMIN_PASSWORD: z.string().min(8).optional(),
 
+    // E-mail transacional (Resend). Sem chave, o mailer só escreve no log (dev).
+    RESEND_API_KEY: z.string().min(1).optional(),
+    MAIL_FROM: z.string().min(3).optional(),
+
     // Job agendado (POST /api/cron/tick, disparado pelo pg_cron). Sem ela, o endpoint fica desligado.
     CRON_SECRET: z.string().min(32).optional(),
   },
