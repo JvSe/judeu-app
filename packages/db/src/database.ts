@@ -289,6 +289,12 @@ export type SupportTicketRow = {
   updatedAt: string;
 };
 
+export type AppConfigRow = {
+  key: string;
+  value: Json;
+  updatedAt: string;
+};
+
 type TableDef<Row> = {
   Row: Row;
   Insert: Partial<Row> & Record<string, unknown>;
@@ -322,6 +328,7 @@ export type Database = {
       jobshift: TableDef<JobShiftRow>;
       jobapplication: TableDef<JobApplicationRow>;
       supportticket: TableDef<SupportTicketRow>;
+      appconfig: TableDef<AppConfigRow>;
     };
     Views: Record<string, never>;
     Functions: {

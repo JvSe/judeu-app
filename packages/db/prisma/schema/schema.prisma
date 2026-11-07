@@ -659,3 +659,13 @@ model SupportTicket {
   @@index([status])
   @@map("supportticket")
 }
+
+// Parâmetros de negócio editáveis sem deploy (taxa, TTLs, limiares). Sem linha,
+// a API usa os padrões de apps/web/src/lib/config.ts.
+model AppConfig {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("appconfig")
+}
