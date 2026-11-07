@@ -13,6 +13,7 @@ export const APP_EVENT_TYPES = [
   "nearby.viewed",
   "order.eta_predicted",
   "order.eta_measured",
+  "emergency.triggered",
 ] as const;
 
 export type AppEventType = (typeof APP_EVENT_TYPES)[number];

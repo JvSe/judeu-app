@@ -6,6 +6,7 @@ import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-nativ
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
+import { EmergencyButton } from "@/components/emergency-button";
 import { IconButton } from "@/components/ui/icon-button";
 import { SelfMarker } from "@/components/ui/map-marker";
 import { RealMap } from "@/components/ui/real-map";
@@ -159,6 +160,7 @@ export function AttendDelivery({
                   : "A caminho do cliente"}
           </Text>
         </View>
+        <EmergencyButton orderId={order.id} status={order.status} />
       </View>
 
       <View style={[styles.sheet, { paddingBottom: insets.bottom + 20 }]}>

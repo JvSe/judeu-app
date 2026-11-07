@@ -8,6 +8,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import type { Order, OrderStatus } from "@/lib/api";
 import { fonts } from "@/constants/fonts";
+import { EmergencyButton } from "@/components/emergency-button";
 import { percentLabel } from "@/lib/fees";
 import { initialsOf, moneyFromCents, orderStatusLabel, shortDateTime, shortTime } from "@/lib/format";
 import { useMyProviderProfile, useOrder } from "@/lib/hooks";
@@ -181,6 +182,10 @@ export function OrderDetailAttending({ routes }: { routes: AttendingRoutes }) {
               );
             })}
           </View>
+        )}
+
+        {order.status === "IN_PROGRESS" && (
+          <EmergencyButton orderId={order.id} status={order.status} variant="wide" />
         )}
 
         <View style={styles.costCard}>

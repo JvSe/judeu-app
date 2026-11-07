@@ -22,6 +22,7 @@ import {
 import { useOrder, useOrderProposals, useRespondToProposal, useTransitionOrder } from "@/lib/hooks";
 import { errorMessage, toast } from "@/lib/toast";
 import { DoorCodeCard } from "@/components/door-code-card";
+import { EmergencyButton } from "@/components/emergency-button";
 import { FamilyShareCard } from "@/components/family-share-card";
 
 // Fluxo canônico do pedido (caminho feliz).
@@ -353,6 +354,9 @@ export function OrderDetailClient() {
           </View>
         )}
 
+        {order.status === "IN_PROGRESS" && (
+          <EmergencyButton orderId={order.id} status={order.status} variant="wide" />
+        )}
         <DoorCodeCard order={order} />
         <FamilyShareCard order={order} />
 

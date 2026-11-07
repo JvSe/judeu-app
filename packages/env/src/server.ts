@@ -10,6 +10,8 @@ export const env = createEnv({
     CORS_ORIGIN: z.url(),
     // URL pública da API/web, usada nos links enviados por e-mail (modo família).
     PUBLIC_WEB_URL: z.url().optional(),
+    // E-mail da equipe que recebe alerta imediato quando alguém aciona a emergência.
+    SECURITY_ALERT_EMAIL: z.email().optional(),
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 
     // Auth custom (email/senha via API própria)

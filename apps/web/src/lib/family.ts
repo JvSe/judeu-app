@@ -23,7 +23,7 @@ export function shareUrl(token: string): string {
   return `${base}/t/${token}`;
 }
 
-export type FamilyEvent = "accept" | "start_route" | "start_work" | "complete";
+export type FamilyEvent = "accept" | "start_route" | "start_work" | "complete" | "emergency";
 
 export function familyEmail(
   event: FamilyEvent,
@@ -35,6 +35,10 @@ export function familyEmail(
     start_route: [`${p} saiu para ajudar ${c}`, `${p} está a caminho de ${c}.`],
     start_work: [`${p} chegou na casa de ${c}`, `${p} chegou e confirmou o código de chegada com ${c}.`],
     complete: [`${p} terminou o atendimento de ${c}`, `${p} marcou o pedido de ${c} como concluído.`],
+    emergency: [
+      `URGENTE: ${c} acionou o botão de emergência`,
+      `${c} acionou o botão de emergência durante o atendimento com ${p}. O app abriu a ligação para o 190 e nossa equipe foi avisada. Tente falar com ${c} agora.`,
+    ],
   };
   const [subject, first] = lines[event];
   return {

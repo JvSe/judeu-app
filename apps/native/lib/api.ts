@@ -616,6 +616,12 @@ export const ordersApi = {
       body: { action, note, doorCode },
     }).then((r) => r.order);
   },
+  emergency(id: string, position: { lat: number; lng: number } | null) {
+    return apiFetch<{ ticketId: string }>(`/api/orders/${id}/emergency`, {
+      method: "POST",
+      body: position ?? {},
+    });
+  },
   doorCode(id: string) {
     return apiFetch<{ code: string | null; locked: boolean }>(`/api/orders/${id}/door-code`);
   },
