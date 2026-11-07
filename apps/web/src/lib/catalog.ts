@@ -127,6 +127,19 @@ export function effectiveProviderPosition(p: {
   return null;
 }
 
+/**
+ * Grade de ~550 m (0,005°) para posições expostas a qualquer usuário: o pin no
+ * mapa continua perto, mas a localização exata/ao vivo de quem atende não vaza
+ * (QA A-06/H-05). O acompanhamento do pedido usa order.tracking, que é exato.
+ */
+export const PUBLIC_POSITION_GRID_DEG = 0.005;
+
+export function coarsen(value: number | null): number | null {
+  if (value == null) return null;
+  const snapped = Math.round(value / PUBLIC_POSITION_GRID_DEG) * PUBLIC_POSITION_GRID_DEG;
+  return Number(snapped.toFixed(4));
+}
+
 export function etaMinFromKm(distanceKm: number): number {
   return Math.max(1, Math.round((distanceKm / 30) * 60));
 }
@@ -146,10 +159,10 @@ function toProviderListDTO(
     reviews: p.ratingCount,
     yearsExperience: p.yearsExperience,
     priceFromCents: minPrice(p.services),
-    baseLat: p.baseLat,
-    baseLng: p.baseLng,
-    lastLat: pos?.lat ?? p.lastLat,
-    lastLng: pos?.lng ?? p.lastLng,
+    baseLat: coarsen(p.baseLat),
+    baseLng: coarsen(p.baseLng),
+    lastLat: coarsen(pos?.lat ?? p.lastLat),
+    lastLng: coarsen(pos?.lng ?? p.lastLng),
     serviceRadiusKm: p.serviceRadiusKm,
     isAvailable: p.isAvailable,
     allowsNegotiation: p.allowsNegotiation,
@@ -268,6 +281,9 @@ export async function getProvider(id: string): Promise<ProviderDetailDTO | null>
     .from("providerprofile")
     .select(PROVIDER_SELECT)
     .eq("id", id)
+    // Perfil pendente/bloqueado ou de helper não é público (QA P-06, C-18).
+    .eq("status", "APPROVED")
+    .eq("isHelper", false)
     .maybeSingle();
   if (!p) return null;
   const row = p as unknown as ProviderRow;
