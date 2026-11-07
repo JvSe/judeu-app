@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { supabase } from "./db";
+import { notifyUser } from "./notifications";
 import { uploadKycDocument } from "./storage";
 import { publicUser, type PublicUser } from "./user";
 
@@ -444,9 +445,31 @@ export async function setProviderProfileStatus(
   providerId: string,
   status: "PENDING" | "APPROVED" | "BLOCKED",
 ): Promise<void> {
+  const { data: before } = await supabase
+    .from("providerprofile")
+    .select("userId, status")
+    .eq("id", providerId)
+    .maybeSingle();
   const { error } = await supabase
     .from("providerprofile")
-    .update({ status, updatedAt: new Date().toISOString() })
+    .update({
+      status,
+      // Bloqueado sai do ar na hora.
+      ...(status === "BLOCKED" ? { isAvailable: false } : {}),
+      updatedAt: new Date().toISOString(),
+    })
     .eq("id", providerId);
   if (error) throw new Error(error.message);
+
+  // Avisa quem atende (QA P-05): antes ninguém sabia que tinha sido aprovado.
+  if (before && before.status !== status && status !== "PENDING") {
+    void notifyUser(before.userId, "SUPPORT", {
+      title: status === "APPROVED" ? "Cadastro aprovado" : "Cadastro bloqueado",
+      body:
+        status === "APPROVED"
+          ? "Você já pode ligar o modo atendimento e receber pedidos perto de você."
+          : "Seu cadastro para atender foi bloqueado. Fale com o suporte para entender o motivo.",
+      data: { type: "provider_status", status },
+    });
+  }
 }
