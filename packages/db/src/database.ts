@@ -310,6 +310,33 @@ export type AppEventRow = {
   createdAt: string;
 };
 
+export type PayoutAccountRow = {
+  id: string;
+  userId: string;
+  pixKeyType: "CPF" | "CNPJ" | "EMAIL" | "PHONE" | "RANDOM";
+  pixKey: string;
+  holderName: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PayoutRow = {
+  id: string;
+  userId: string;
+  walletId: string;
+  amountCents: number;
+  feeCents: number;
+  netCents: number;
+  status: "SIMULATED" | "PROCESSING" | "PAID" | "FAILED";
+  provider: string;
+  providerRef: string | null;
+  pixKeyMasked: string;
+  balanceBeforeCents: number;
+  balanceAfterCents: number;
+  createdAt: string;
+  completedAt: string | null;
+};
+
 type TableDef<Row> = {
   Row: Row;
   Insert: Partial<Row> & Record<string, unknown>;
@@ -345,6 +372,8 @@ export type Database = {
       supportticket: TableDef<SupportTicketRow>;
       appconfig: TableDef<AppConfigRow>;
       appevent: TableDef<AppEventRow>;
+      payoutaccount: TableDef<PayoutAccountRow>;
+      payout: TableDef<PayoutRow>;
     };
     Views: Record<string, never>;
     Functions: {
@@ -392,6 +421,22 @@ export type Database = {
           p_gateway_ref?: string | null;
         };
         Returns: undefined;
+      };
+      request_payout: {
+        Args: {
+          p_payout_id: string;
+          p_user_id: string;
+          p_amount_cents: number;
+          p_fee_cents: number;
+          p_held_cents: number;
+          p_min_cents: number;
+          p_status: string;
+          p_provider: string;
+          p_provider_ref: string | null;
+          p_pix_key_masked: string;
+          p_description: string;
+        };
+        Returns: PayoutRow;
       };
       create_job_with_shifts: {
         Args: { p_job: Json; p_shifts: Json };

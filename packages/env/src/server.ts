@@ -31,6 +31,10 @@ export const env = createEnv({
     NOMINATIM_URL: z.url().optional(),
     GOOGLE_MAPS_API_KEY: z.string().min(1).optional(),
 
+    // Saque de quem atende. Só "simulated" por enquanto: registra e debita a
+    // carteira sem transferir dinheiro. Um provedor real entra em lib/payouts.ts.
+    PAYOUT_PROVIDER: z.enum(["simulated"]).default("simulated"),
+
     // Pagamentos (Stripe) — Pix/cartão/dinheiro, cobrado na conta da plataforma
     STRIPE_SECRET_KEY: z.string().min(1).optional(),
     STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),

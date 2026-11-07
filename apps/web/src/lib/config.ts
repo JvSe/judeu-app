@@ -16,6 +16,10 @@ export const configSchema = z.object({
    * na carteira. Acima deste valor devido, não pode ficar disponível.
    */
   cashDebtLimitCents: z.number().int().min(0).default(5000),
+  /** Menor saque permitido. */
+  payoutMinCents: z.number().int().min(100).default(1000),
+  /** Tarifa por saque (cobrada do valor sacado). */
+  payoutFeeCents: z.number().int().min(0).default(0),
   /** Preço sugerido quando ainda não há histórico nem catálogo. */
   suggestedPriceFallbackCents: z.number().int().min(100).default(4000),
   /** Multiplicador da sugestão fora do horário comercial (Brasília). */
