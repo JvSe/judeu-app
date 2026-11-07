@@ -295,6 +295,15 @@ export type AppConfigRow = {
   updatedAt: string;
 };
 
+export type AppEventRow = {
+  id: string;
+  type: string;
+  userId: string | null;
+  orderId: string | null;
+  props: Json;
+  createdAt: string;
+};
+
 type TableDef<Row> = {
   Row: Row;
   Insert: Partial<Row> & Record<string, unknown>;
@@ -329,6 +338,7 @@ export type Database = {
       jobapplication: TableDef<JobApplicationRow>;
       supportticket: TableDef<SupportTicketRow>;
       appconfig: TableDef<AppConfigRow>;
+      appevent: TableDef<AppEventRow>;
     };
     Views: Record<string, never>;
     Functions: {

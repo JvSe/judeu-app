@@ -167,6 +167,7 @@ model User {
   notifications       Notification[]
   supportTickets      SupportTicket[]
   jobApplications     JobApplication[]
+  appEvents           AppEvent[]
 
   @@index([role])
   @@map("user")
@@ -393,6 +394,7 @@ model Order {
   reviews  Review[]
   supportTickets SupportTicket[]
   proposals OrderProposal[]
+  appEvents AppEvent[]
 
   @@index([clientId])
   @@index([providerId])
@@ -668,4 +670,23 @@ model AppConfig {
   updatedAt DateTime @updatedAt
 
   @@map("appconfig")
+}
+
+// Trilha de eventos de produto (métricas do piloto). O ciclo do pedido continua
+// em OrderEvent; aqui ficam os eventos de produto (ex.: busca sem resultado).
+model AppEvent {
+  id        String   @id @default(uuid())
+  type      String
+  userId    String?
+  orderId   String?
+  props     Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  user  User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  order Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([type, createdAt])
+  @@index([userId])
+  @@index([orderId])
+  @@map("appevent")
 }
