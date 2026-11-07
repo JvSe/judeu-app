@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { ProposalStatus } from "@judeu/db";
 
 import { supabase } from "./db";
+import { firstEmbed } from "./embed";
 import { notifyUser } from "./notifications";
 import { PLATFORM_FEE_RATE } from "./orders";
 
@@ -79,7 +80,12 @@ async function findOrderForNegotiation(orderId: string): Promise<NegotiableOrder
     )
     .eq("id", orderId)
     .maybeSingle();
-  return data as unknown as NegotiableOrder | null;
+  if (!data) return null;
+  const row = data as unknown as Omit<NegotiableOrder, "payment" | "provider"> & {
+    payment: NegotiableOrder["payment"] | NonNullable<NegotiableOrder["payment"]>[];
+    provider: NegotiableOrder["provider"] | NonNullable<NegotiableOrder["provider"]>[];
+  };
+  return { ...row, payment: firstEmbed(row.payment), provider: firstEmbed(row.provider) };
 }
 
 async function loadNegotiableOrder(orderId: string, userId: string) {
@@ -126,9 +132,9 @@ export async function hasBlockingOpenHelpProposal(orderId: string): Promise<bool
   const order = data as unknown as {
     isOpenRequest: boolean;
     status: string;
-    payment: { id: string } | null;
+    payment: { id: string } | { id: string }[] | null;
   };
-  if (!order.isOpenRequest || order.status !== "ACCEPTED" || order.payment) return false;
+  if (!order.isOpenRequest || order.status !== "ACCEPTED" || firstEmbed(order.payment)) return false;
 
   const { data: pending } = await supabase
     .from("orderproposal")
@@ -258,6 +264,13 @@ export async function respondToProposal(
 
   const now = new Date().toISOString();
   const openHelp = isOpenHelpNegotiation(order);
+
+  // Orçamento profissional: só a outra parte responde (QA P-04 — antes, quem
+  // propôs conseguia "recusar" a própria proposta e encerrar a negociação).
+  const callerRole = isClient ? "client" : "provider";
+  if (!openHelp && proposal.byRole === callerRole) {
+    return { error: "Aguarde a resposta da outra parte", status: 403 };
+  }
 
   if (action === "reject") {
     const { data: updated, error } = await supabase
