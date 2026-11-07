@@ -71,6 +71,16 @@ export default function ConfirmCall() {
   const services = provider?.services;
   const createOrder = useCreateOrder();
   const appConfig = useAppConfig();
+  // Preferências de quem atende (pitch: idoso escolhe nota, experiência, só mulheres).
+  const [prefRating, setPrefRating] = useState(false);
+  const [prefExperienced, setPrefExperienced] = useState(false);
+  const [prefWomen, setPrefWomen] = useState(false);
+  const preferences = {
+    minRating: prefRating ? 4.8 : null,
+    minCompleted: prefExperienced ? 50 : null,
+    gender: prefWomen ? ("F" as const) : null,
+  };
+  const hasPrefs = prefRating || prefExperienced || prefWomen;
   // Ajuda aberta sai no endereço padrão (mesma regra da API ao publicar).
   const openAddress = isOpenRequest
     ? (addresses?.find((a) => a.isDefault) ?? addresses?.[0] ?? null)
@@ -78,6 +88,7 @@ export default function ConfirmCall() {
   const { data: availability } = useOpenRequestAvailability(
     openAddress ? { lat: openAddress.lat, lng: openAddress.lng } : null,
     params.categoryId,
+    hasPrefs ? preferences : undefined,
   );
   const availabilityText = availability ? availabilityLabel(availability) : null;
   const { data: suggested } = useSuggestedPrice(params.categoryId, isOpenRequest);
@@ -136,6 +147,7 @@ export default function ConfirmCall() {
           categoryId: params.categoryId,
           description: note.trim(),
           priceCents: offeredCents,
+          ...(hasPrefs ? { preferences } : {}),
         });
         toast.success("Pedido publicado");
         router.replace({ pathname: "/client/waiting/[id]", params: { id: order.id } } as never);
@@ -259,6 +271,25 @@ export default function ConfirmCall() {
                 {suggested.offHours ? " (fora do horário comercial)" : ""} · usar
               </Text>
             </Pressable>
+          )}
+
+          <Text style={styles.label}>Quem pode atender (opcional)</Text>
+          {[
+            { on: prefRating, set: setPrefRating, label: "Só com nota 4,8 ou mais" },
+            { on: prefExperienced, set: setPrefExperienced, label: "Só com mais de 50 ajudas feitas" },
+            { on: prefWomen, set: setPrefWomen, label: "Só mulheres" },
+          ].map((p) => (
+            <Pressable key={p.label} style={styles.prefRow} onPress={() => p.set(!p.on)}>
+              <Ionicons
+                name={p.on ? "checkbox" : "square-outline"}
+                size={20}
+                color={p.on ? theme.colors.primary : theme.colors.mutedForeground}
+              />
+              <Text style={styles.prefText}>{p.label}</Text>
+            </Pressable>
+          ))}
+          {hasPrefs && (
+            <Text style={styles.muted}>Com filtros, menos pessoas recebem o pedido e pode demorar mais.</Text>
           )}
 
           <Pressable
@@ -456,6 +487,8 @@ const styles = StyleSheet.create((theme) => ({
     padding: 16,
     marginBottom: 8,
   },
+  prefRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8 },
+  prefText: { fontSize: 15, fontFamily: fonts.medium, color: "#fff" },
   suggestion: {
     flexDirection: "row",
     alignItems: "center",

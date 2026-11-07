@@ -14,6 +14,8 @@ import { useWatchCurrentLocation } from "@/lib/location";
 import { Avatar } from "@/components/ui/avatar";
 import { IconButton } from "@/components/ui/icon-button";
 import { ProviderMarker, SelfMarker } from "@/components/ui/map-marker";
+import { DoorCodeCard } from "@/components/door-code-card";
+import { EmergencyButton } from "@/components/emergency-button";
 import { RealMap } from "@/components/ui/real-map";
 import { Screen } from "@/components/ui/screen";
 
@@ -157,6 +159,7 @@ export default function Tracking() {
             {statusMessage(order.status, providerFirstName, !!order.pickupAddress)}
           </Text>
         </View>
+        <EmergencyButton orderId={order.id} status={order.status} />
       </View>
 
       <View style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]}>
@@ -169,6 +172,8 @@ export default function Tracking() {
             <Text style={styles.distanceText}>{distanceKm.toFixed(1)} km</Text>
           )}
         </View>
+
+        <DoorCodeCard order={order} />
 
         <View style={styles.progressRow}>
           {STEPS.map((step, index) => {

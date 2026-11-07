@@ -2,7 +2,7 @@ import { supabase } from "./db";
 import { uploadAvatar } from "./storage";
 import { publicUser, type PublicUser } from "./user";
 
-export type UpdateProfileInput = { fullName?: string; phone?: string };
+export type UpdateProfileInput = { fullName?: string; phone?: string; gender?: "F" | "M" | "OTHER" | null };
 
 export async function updateProfile(
   userId: string,

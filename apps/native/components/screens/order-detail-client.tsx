@@ -21,6 +21,9 @@ import {
 } from "@/lib/format";
 import { useOrder, useOrderProposals, useRespondToProposal, useTransitionOrder } from "@/lib/hooks";
 import { errorMessage, toast } from "@/lib/toast";
+import { DoorCodeCard } from "@/components/door-code-card";
+import { EmergencyButton } from "@/components/emergency-button";
+import { FamilyShareCard } from "@/components/family-share-card";
 
 // Fluxo canônico do pedido (caminho feliz).
 const FLOW: { status: OrderStatus; title: string }[] = [
@@ -351,6 +354,12 @@ export function OrderDetailClient() {
           </View>
         )}
 
+        {order.status === "IN_PROGRESS" && (
+          <EmergencyButton orderId={order.id} status={order.status} variant="wide" />
+        )}
+        <DoorCodeCard order={order} />
+        <FamilyShareCard order={order} />
+
         <View style={styles.costCard}>
           <View style={styles.costRow}>
             <Text style={styles.costLabel}>{order.service?.name ?? "Serviço"}</Text>
@@ -434,6 +443,13 @@ export function OrderDetailClient() {
         >
           <Text style={styles.reportText}>Reportar um problema com esse pedido</Text>
         </Pressable>
+        {order.provider && (
+          <Pressable
+            onPress={() => router.push({ pathname: "/client/report/[id]", params: { id: order.id } } as never)}
+          >
+            <Text style={styles.reportText}>Denunciar quem atendeu</Text>
+          </Pressable>
+        )}
       </ScrollView>
     </Screen>
   );

@@ -4,6 +4,8 @@ import { useState } from "react";
 
 import { useAuth } from "@/lib/auth-context";
 import { useMyProviderProfile, useSetAvailability, useUpdateProviderLocation } from "@/lib/hooks";
+import { ApiError } from "@/lib/api";
+import { REVERIFY_STATUS } from "@/lib/device-id";
 import { readForegroundPosition } from "@/lib/location";
 import { errorMessage, toast } from "@/lib/toast";
 
@@ -64,6 +66,7 @@ export function useWorkMode() {
           : "Assim que for aprovado, você pode ficar disponível.",
       });
       if (incomplete) router.push("/client/kyc" as never);
+      else if (!profile.hasDocument || !profile.hasSelfie) router.push("/client/verification" as never);
       return;
     }
 
@@ -102,6 +105,11 @@ export function useWorkMode() {
       toast.success("Modo atendimento ligado");
     } catch (err) {
       setArming(false);
+      if (err instanceof ApiError && err.status === REVERIFY_STATUS) {
+        toast.info("Confirme que é você", { description: err.message });
+        router.push("/client/verification" as never);
+        return;
+      }
       const raw = errorMessage(err, "");
       const locationFailed = /kCLErrorDomain|Current location is unavailable|getCurrentPositionAsync/i.test(
         raw,

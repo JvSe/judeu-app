@@ -27,6 +27,8 @@ export type {
   AppEventRow,
   PayoutAccountRow,
   PayoutRow,
+  ProviderBadgeRow,
+  ReportRow,
 } from "./database";
 
 export type {

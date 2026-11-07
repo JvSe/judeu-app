@@ -41,6 +41,7 @@ function buildMenu(work: {
   const items: MenuItem[] = [
     { id: "edit", icon: "person-outline", label: "Editar perfil", href: "/client/edit-profile" },
     { id: "addresses", icon: "location-outline", label: "Meus endereços", href: "/client/addresses" },
+    { id: "family", icon: "people-outline", label: "Contato de confiança", href: "/client/trusted-contact" },
   ];
   if (work.isProfessional) {
     items.push({
@@ -48,6 +49,14 @@ function buildMenu(work: {
       icon: "shield-checkmark-outline",
       label: work.profile?.headline ? "Cadastro profissional" : "Completar cadastro profissional",
       href: "/client/kyc",
+    });
+  }
+  if (work.hasProfile) {
+    items.push({
+      id: "verification",
+      icon: "finger-print-outline",
+      label: "Verificação de identidade",
+      href: "/client/verification",
     });
   }
   if (work.profile?.isCompany) {

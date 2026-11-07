@@ -184,7 +184,8 @@ export default function Kyc() {
         await uploadDocument.mutateAsync({ base64: document.base64, mimeType: document.mimeType });
       }
       toast.success("Cadastro enviado");
-      router.replace("/client");
+      // KYC v2: selfie e antecedentes ficam na tela de verificação.
+      router.replace((profile?.hasSelfie && profile?.hasBackgroundCheck ? "/client" : "/client/verification") as never);
     } catch (e) {
       const message = errorMessage(e, "Não foi possível enviar seu cadastro.");
       setSubmitError(message);

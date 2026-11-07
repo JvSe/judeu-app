@@ -42,6 +42,9 @@ export default function ClientLayout() {
       <Stack.Screen name="rating/[id]" />
       <Stack.Screen name="notifications" />
       <Stack.Screen name="withdraw" />
+      <Stack.Screen name="trusted-contact" />
+      <Stack.Screen name="verification" />
+      <Stack.Screen name="report/[id]" />
       <Stack.Screen name="support" />
       <Stack.Screen name="support-ticket-new" />
       <Stack.Screen name="support-ticket/[id]" />

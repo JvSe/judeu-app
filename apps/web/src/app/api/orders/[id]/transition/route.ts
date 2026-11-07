@@ -21,6 +21,7 @@ const bodySchema = z.object({
     "cancel",
   ]),
   note: z.string().max(300).optional(),
+  doorCode: z.string().max(10).optional(),
 });
 
 // POST /api/orders/:id/transition — avança a máquina de estados do pedido.
@@ -32,7 +33,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return error("Ação inválida", 400);
 
-  const result = await transitionOrder(id, claims.sub, parsed.data.action, parsed.data.note);
+  const result = await transitionOrder(id, claims.sub, parsed.data.action, parsed.data.note, {
+    doorCode: parsed.data.doorCode,
+  });
   if ("error" in result) return error(result.error, result.status);
   return json({ order: result });
 }

@@ -10,6 +10,7 @@ export type PublicUser = {
   avatarUrl: string | null;
   emailVerified: boolean;
   phoneVerified: boolean;
+  gender: "F" | "M" | "OTHER" | null;
   createdAt: string;
 };
 
@@ -23,6 +24,7 @@ export function publicUser(u: {
   emailVerified: boolean;
   phoneVerified: boolean;
   createdAt: Date | string;
+  gender?: string | null;
 }): PublicUser {
   return {
     id: u.id,
@@ -33,6 +35,7 @@ export function publicUser(u: {
     avatarUrl: u.avatarUrl,
     emailVerified: u.emailVerified,
     phoneVerified: u.phoneVerified,
+    gender: (u.gender as PublicUser["gender"]) ?? null,
     createdAt: typeof u.createdAt === "string" ? u.createdAt : u.createdAt.toISOString(),
   };
 }

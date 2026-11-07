@@ -34,6 +34,11 @@ export type UserRow = {
   termsAcceptedAt: string | null;
   acquisitionChannel: string | null;
   acquisitionCode: string | null;
+  trustedContactName: string | null;
+  trustedContactEmail: string | null;
+  blockedAt: string | null;
+  blockedReason: string | null;
+  gender: "F" | "M" | "OTHER" | null;
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -45,6 +50,7 @@ export type RefreshTokenRow = {
   tokenHash: string;
   expiresAt: string;
   revokedAt: string | null;
+  deviceId: string | null;
   createdAt: string;
 };
 
@@ -86,6 +92,11 @@ export type ProviderProfileRow = {
   ratingAvg: number;
   ratingCount: number;
   documentUrl: string | null;
+  selfieUrl: string | null;
+  backgroundCheckUrl: string | null;
+  lastSelfieAt: string | null;
+  reverifyRequiredAt: string | null;
+  reverifyReason: string | null;
   baseLat: number | null;
   baseLng: number | null;
   serviceRadiusKm: number;
@@ -102,6 +113,8 @@ export type CategoryRow = {
   name: string;
   icon: string | null;
   feeRate: number | null;
+  riskLevel: number;
+  expectedDurationMin: number | null;
   createdAt: string;
 };
 
@@ -154,6 +167,15 @@ export type OrderRow = {
   totalCents: number;
   feeRate: number;
   feePayer: "CLIENT" | "PROVIDER";
+  doorCode: string | null;
+  doorCodeAttempts: number;
+  shareToken: string | null;
+  riskLevel: number;
+  expectedDurationMin: number | null;
+  overtimeAlertedAt: string | null;
+  prefMinRating: number | null;
+  prefMinCompleted: number | null;
+  prefGender: "F" | "M" | null;
   couponCode: string | null;
   cancelReason: string | null;
   acceptedAt: string | null;
@@ -291,6 +313,8 @@ export type SupportTicketRow = {
   status: SupportTicketStatus;
   adminResponse: string | null;
   resolvedAt: string | null;
+  slaDueAt: string | null;
+  escalatedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -337,6 +361,26 @@ export type PayoutRow = {
   completedAt: string | null;
 };
 
+export type ProviderBadgeRow = {
+  id: string;
+  providerId: string;
+  type: "REPAIRS_SEAL" | "PRO_CREDENTIAL";
+  note: string | null;
+  grantedAt: string;
+  expiresAt: string | null;
+};
+
+export type ReportRow = {
+  id: string;
+  reporterId: string;
+  reportedUserId: string;
+  orderId: string | null;
+  reason: "SAFETY" | "BEHAVIOR" | "FRAUD" | "NO_SHOW" | "OTHER";
+  details: string | null;
+  status: "OPEN" | "REVIEWED";
+  createdAt: string;
+};
+
 type TableDef<Row> = {
   Row: Row;
   Insert: Partial<Row> & Record<string, unknown>;
@@ -374,6 +418,8 @@ export type Database = {
       appevent: TableDef<AppEventRow>;
       payoutaccount: TableDef<PayoutAccountRow>;
       payout: TableDef<PayoutRow>;
+      providerbadge: TableDef<ProviderBadgeRow>;
+      report: TableDef<ReportRow>;
     };
     Views: Record<string, never>;
     Functions: {

@@ -62,10 +62,15 @@ export default async function AdminSupportPage() {
 }
 
 function TicketRow({ ticket }: { ticket: AdminSupportTicketDTO }) {
+  const overdue =
+    ticket.status !== "RESOLVED" && !!ticket.slaDueAt && new Date(ticket.slaDueAt).getTime() < Date.now();
   return (
-    <Card>
+    <Card className={overdue ? "border-destructive" : undefined}>
       <CardHeader>
-        <CardTitle>{ticket.subject}</CardTitle>
+        <CardTitle>
+          {overdue && <span className="mr-2 text-xs font-semibold text-destructive">ATRASADO</span>}
+          {ticket.subject}
+        </CardTitle>
         <CardDescription>
           {ticket.userName} ({ticket.userEmail}) · {CATEGORY_LABEL[ticket.category]}
           {ticket.orderId ? ` · pedido #${ticket.orderId.slice(0, 8)}` : ""} ·{" "}

@@ -1,0 +1,3 @@
+ALTER TABLE supportticket DROP COLUMN IF EXISTS "slaDueAt", DROP COLUMN IF EXISTS "escalatedAt";
+DROP TABLE IF EXISTS report;
+ALTER TABLE "user" DROP COLUMN IF EXISTS "blockedAt", DROP COLUMN IF EXISTS "blockedReason";

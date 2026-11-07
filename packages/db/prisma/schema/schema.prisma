@@ -151,6 +151,14 @@ model User {
   // Como conheceu o app (CAC por canal) e código de convite/parceiro digitado no cadastro.
   acquisitionChannel String?
   acquisitionCode    String?
+  // Modo família: contato que acompanha os pedidos pelo link e recebe e-mails.
+  trustedContactName  String?
+  trustedContactEmail String?
+  // Suspensão da conta (cliente ou quem atende) — não entra nem renova sessão.
+  blockedAt     DateTime?
+  blockedReason String?
+  // Opcional, informado pela própria pessoa (F | M | OTHER) — filtro "só mulheres".
+  gender        String?
   // Marca a conta como excluída (RF-A7) sem quebrar FKs de pedidos/avaliações/mensagens já
   // existentes — os dados pessoais são anonimizados, o registro em si é preservado.
   deletedAt       DateTime?
@@ -185,6 +193,8 @@ model RefreshToken {
   tokenHash String    @unique
   expiresAt DateTime
   revokedAt DateTime?
+  // Aparelho que abriu a sessão (quem atende: um aparelho por vez).
+  deviceId  String?
   createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -260,6 +270,12 @@ model ProviderProfile {
   ratingAvg       Float          @default(0)
   ratingCount     Int            @default(0)
   documentUrl     String? // documento de verificação (KYC) no Supabase Storage
+  selfieUrl          String? // selfie tirada pela câmera (KYC v2)
+  lastSelfieAt       DateTime?
+  // Reverificação pendente (selfie aleatória antes de começar, ou aparelho novo).
+  reverifyRequiredAt DateTime?
+  reverifyReason     String?
+  backgroundCheckUrl String? // certidão de antecedentes criminais (KYC v2)
   // localização base + raio de atuação (matching por proximidade)
   baseLat         Float?
   baseLng         Float?
@@ -277,6 +293,7 @@ model ProviderProfile {
   ordersAsProvider Order[]           @relation("ProviderOrders")
   jobPostings     JobPosting[]
 
+  badges     ProviderBadge[]
   @@index([status, isAvailable])
   @@map("providerprofile")
 }
@@ -288,6 +305,10 @@ model Category {
   icon      String?
   // Taxa da plataforma desta categoria; null = usa a geral (AppConfig).
   feeRate   Float?
+  // Nível de risco: 1 livre · 2 selo de reparos · 3 profissional com credencial · 4 proibido.
+  riskLevel Int      @default(1)
+  // Duração típica do serviço; null = padrão da configuração (alerta de tempo excedido).
+  expectedDurationMin Int?
   createdAt DateTime @default(now())
 
   services   Service[]
@@ -382,6 +403,19 @@ model Order {
   // ao total; PROVIDER = taxa descontada do repasse de quem atende.
   feeRate         Float       @default(0.08)
   feePayer        String      @default("CLIENT")
+  // Código de chegada: gerado no aceite, só o cliente vê; quem atende digita em start_work.
+  doorCode         String?
+  doorCodeAttempts Int        @default(0)
+  // Link público de acompanhamento (modo família), /t/<shareToken>.
+  shareToken       String?    @unique
+  // Nível de risco da categoria quando o pedido foi criado (snapshot).
+  riskLevel        Int        @default(1)
+  expectedDurationMin Int?
+  overtimeAlertedAt   DateTime?
+  // Preferências de quem pede (ex.: idoso): nota mínima, tarefas concluídas, gênero.
+  prefMinRating    Float?
+  prefMinCompleted Int?
+  prefGender       String?
   couponCode      String?
   cancelReason    String?
   acceptedAt      DateTime?
@@ -703,6 +737,9 @@ model SupportTicket {
   status        SupportTicketStatus   @default(OPEN)
   adminResponse String?
   resolvedAt    DateTime?
+  // Prazo de atendimento (1 h para segurança/disputa) e quando foi escalado.
+  slaDueAt      DateTime?
+  escalatedAt   DateTime?
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
 
@@ -712,6 +749,38 @@ model SupportTicket {
   @@index([userId])
   @@index([status])
   @@map("supportticket")
+}
+
+// Selos de quem atende: REPAIRS_SEAL (treino + teste + tarefas) libera nível 2;
+// PRO_CREDENTIAL (credencial/registro + seguro de RC) libera nível 3.
+model ProviderBadge {
+  id         String    @id @default(uuid())
+  providerId String
+  type       String // REPAIRS_SEAL | PRO_CREDENTIAL
+  note       String?
+  grantedAt  DateTime  @default(now())
+  expiresAt  DateTime?
+
+  provider ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, type])
+  @@map("providerbadge")
+}
+
+// Denúncia de um participante do pedido contra o outro.
+model Report {
+  id             String   @id @default(uuid())
+  reporterId     String
+  reportedUserId String
+  orderId        String?
+  reason         String // SAFETY | BEHAVIOR | FRAUD | NO_SHOW | OTHER
+  details        String?
+  status         String   @default("OPEN") // OPEN | REVIEWED
+  createdAt      DateTime @default(now())
+
+  @@unique([reporterId, orderId])
+  @@index([status, createdAt])
+  @@map("report")
 }
 
 // Parâmetros de negócio editáveis sem deploy (taxa, TTLs, limiares). Sem linha,

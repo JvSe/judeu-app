@@ -12,6 +12,9 @@ import {
   signAdminSession,
 } from "@/lib/admin-auth";
 import { setProviderProfileStatus } from "@/lib/provider-profile";
+import type { BadgeType, RiskLevel } from "@/lib/risk";
+import { setCategoryRisk, setProviderBadge } from "@/lib/risk-admin";
+import { markReportReviewed, setUserBlocked } from "@/lib/moderation";
 import { markSupportTicketInProgress, respondToSupportTicket as respondTicket } from "@/lib/support";
 
 export async function loginAdmin(formData: FormData): Promise<void> {
@@ -59,4 +62,34 @@ export async function claimSupportTicket(ticketId: string): Promise<void> {
   await requireAdminSession();
   await markSupportTicketInProgress(ticketId);
   revalidatePath("/admin/support");
+}
+
+export async function updateProviderBadge(
+  providerId: string,
+  type: BadgeType,
+  granted: boolean,
+): Promise<void> {
+  await requireAdminSession();
+  await setProviderBadge(providerId, type, granted);
+  revalidatePath("/admin");
+}
+
+export async function updateCategoryRisk(categoryId: string, formData: FormData): Promise<void> {
+  await requireAdminSession();
+  const level = Number(formData.get("riskLevel"));
+  if (![1, 2, 3, 4].includes(level)) return;
+  await setCategoryRisk(categoryId, level as RiskLevel);
+  revalidatePath("/admin/categories");
+}
+
+export async function updateUserBlocked(userId: string, blocked: boolean): Promise<void> {
+  await requireAdminSession();
+  await setUserBlocked(userId, blocked, blocked ? "Suspenso pelo suporte após denúncia" : null);
+  revalidatePath("/admin/reports");
+}
+
+export async function reviewReport(reportId: string): Promise<void> {
+  await requireAdminSession();
+  await markReportReviewed(reportId);
+  revalidatePath("/admin/reports");
 }

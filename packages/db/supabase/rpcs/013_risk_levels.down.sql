@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS providerbadge;
+ALTER TABLE "order" DROP COLUMN IF EXISTS "riskLevel";
+ALTER TABLE category DROP COLUMN IF EXISTS "riskLevel";

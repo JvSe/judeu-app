@@ -5,8 +5,14 @@ import type { Json, OrderRow, OrderStatus, PaymentMethod, PaymentStatus } from "
 import { coarsen, effectiveProviderPosition } from "./catalog";
 import { getConfig } from "./config";
 import { ensureUtcIso } from "./dates";
+import { DOOR_CODE_MAX_ATTEMPTS, DOOR_CODE_MESSAGES, checkDoorCode, generateDoorCode } from "./door-code";
 import { recordEtaMeasurement, recordEtaPrediction } from "./eta-tracking";
+import { isUserBlocked } from "./moderation";
+import { REVERIFY_MESSAGES, REVERIFY_STATUS, requireReverification, reverifyDecision } from "./reverify";
+import { PREFERENCES_DENIED, type OrderPreferences, hasPreferences, meetsPreferences } from "./preferences";
+import { RISK_DENIED_MESSAGE, canTakeRisk, normalizeRisk, type RiskLevel } from "./risk";
 import { trackEvent } from "./events";
+import { type FamilyEvent, newShareToken, notifyTrustedContact } from "./family";
 import { completionWalletMovement, computeFees, feeRuleOf, resolveFeeRule } from "./fees";
 import { supabase } from "./db";
 import { haversineKm, routeBetween } from "./geo";
@@ -120,6 +126,12 @@ type OrderFull = {
   totalCents: number;
   feeRate?: number | null;
   feePayer?: string | null;
+  doorCode?: string | null;
+  doorCodeAttempts?: number | null;
+  riskLevel?: number | null;
+  prefMinRating?: number | null;
+  prefMinCompleted?: number | null;
+  prefGender?: "F" | "M" | null;
   cancelReason: string | null;
   createdAt: string;
   isOpenRequest: boolean;
@@ -191,6 +203,11 @@ export type OrderDTO = {
   feeRate: number;
   /** O que quem atende recebe por este pedido. */
   providerNetCents: number;
+  /** Quem atende precisa digitar o código de chegada para iniciar (o código em si nunca vai no DTO). */
+  requiresDoorCode: boolean;
+  /** 1 livre · 2 selo de reparos · 3 profissional com credencial. */
+  riskLevel: number;
+  preferences: OrderPreferences;
   cancelReason: string | null;
   createdAt: string;
   offerExpiresAt: string;
@@ -253,6 +270,9 @@ function toDTO(o: OrderFull, unreadMessages = 0): OrderDTO {
     feeRate: feeRuleOf(o).rate,
     providerNetCents:
       feeRuleOf(o).payer === "PROVIDER" ? o.priceCents - o.platformFeeCents : o.priceCents,
+    requiresDoorCode: !!o.doorCode,
+    riskLevel: normalizeRisk(o.riskLevel),
+    preferences: orderPreferences(o),
     cancelReason: o.cancelReason,
     createdAt: o.createdAt,
     offerExpiresAt: new Date(
@@ -411,6 +431,8 @@ export type CreateOrderInput = {
   addressId?: string;
   pickupAddressId?: string;
   priceCents?: number;
+  /** Preferências de quem atende (só ajuda aberta). */
+  preferences?: OrderPreferences;
 };
 
 /** Perfil elegível a push de ajuda aberta (modo atendimento ligado). */
@@ -425,6 +447,11 @@ export type OpenRequestAudienceProfile = {
   baseLat: number | null;
   baseLng: number | null;
   categories: { categoryId: string }[];
+  badges?: { type: string; expiresAt: string | null }[] | null;
+  ratingAvg?: number | null;
+  ratingCount?: number | null;
+  completedCount?: number | null;
+  gender?: string | null;
 };
 
 /**
@@ -435,10 +462,13 @@ export type OpenRequestAudienceProfile = {
  */
 export function matchesOpenRequestAudience(
   profile: OpenRequestAudienceProfile,
-  order: { categoryId: string | null; address: LatLng },
+  order: { categoryId: string | null; address: LatLng; riskLevel?: number; preferences?: OrderPreferences | null },
   busyIds: Set<string>,
 ): boolean {
   if (busyIds.has(profile.id)) return false;
+  if (!meetsPreferences(profile, order.preferences)) return false;
+  // Nível de tarefa: só quem tem a qualificação recebe/vê (pitch, rodada 3).
+  if (!canTakeRisk(profile, normalizeRisk(order.riskLevel))) return false;
   const origin = effectiveProviderPosition(profile);
   if (!isInsideServiceRadius(origin, profile.serviceRadiusKm, order.address)) return false;
   if (profile.isHelper) return true;
@@ -451,11 +481,13 @@ async function loadOpenRequestAudience(excludeUserId: string) {
   const { data: rows } = await supabase
     .from("providerprofile")
     .select(
-      "id, userId, isHelper, serviceRadiusKm, lastLat, lastLng, lastLocationAt, baseLat, baseLng, categories:providercategory(categoryId)",
+      "id, userId, isHelper, serviceRadiusKm, lastLat, lastLng, lastLocationAt, baseLat, baseLng, ratingAvg, ratingCount, categories:providercategory(categoryId), badges:providerbadge(type, expiresAt), user:user!inner(gender)",
     )
     .eq("status", "APPROVED")
     .eq("isAvailable", true)
     .neq("userId", excludeUserId);
+  const ids = (rows ?? []).map((r) => r.id);
+  const completed = await completedCounts(ids);
 
   const { data: busy } = await supabase
     .from("order")
@@ -465,7 +497,23 @@ async function loadOpenRequestAudience(excludeUserId: string) {
   const busyIds = new Set(
     (busy ?? []).map((o) => o.providerId).filter((id): id is string => Boolean(id)),
   );
-  return { rows: (rows ?? []) as unknown as OpenRequestAudienceProfile[], busyIds };
+  const profiles = ((rows ?? []) as unknown as (OpenRequestAudienceProfile & {
+    user: { gender: string | null } | null;
+  })[]).map(({ user, ...p }) => ({ ...p, gender: user?.gender ?? null, completedCount: completed.get(p.id) ?? 0 }));
+  return { rows: profiles as OpenRequestAudienceProfile[], busyIds };
+}
+
+/** Tarefas concluídas por quem atende (filtro "mais de N tarefas"). */
+async function completedCounts(providerIds: string[]): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (providerIds.length === 0) return map;
+  const { data } = await supabase
+    .from("order")
+    .select("providerId")
+    .eq("status", "COMPLETED")
+    .in("providerId", providerIds);
+  for (const o of data ?? []) if (o.providerId) map.set(o.providerId, (map.get(o.providerId) ?? 0) + 1);
+  return map;
 }
 
 export type AvailabilitySummary = {
@@ -480,7 +528,7 @@ export type AvailabilitySummary = {
 /** Mesmo público do push de ajuda aberta, agregado (sem identificar ninguém). */
 export function summarizeAvailability(
   profiles: OpenRequestAudienceProfile[],
-  request: { categoryId: string | null; address: LatLng },
+  request: { categoryId: string | null; address: LatLng; riskLevel?: number; preferences?: OrderPreferences | null },
   busyIds: Set<string>,
 ): AvailabilitySummary & { nearest: LatLng | null } {
   let helpers = 0;
@@ -510,9 +558,19 @@ export async function openRequestAvailability(
   clientId: string,
   point: LatLng,
   categoryId: string | null,
+  preferences: OrderPreferences | null = null,
 ): Promise<AvailabilitySummary & { etaMin: number | null }> {
-  const { rows, busyIds } = await loadOpenRequestAudience(clientId);
-  const { nearest, ...summary } = summarizeAvailability(rows, { categoryId, address: point }, busyIds);
+  const [{ rows, busyIds }, { data: category }] = await Promise.all([
+    loadOpenRequestAudience(clientId),
+    categoryId
+      ? supabase.from("category").select("riskLevel").eq("id", categoryId).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const { nearest, ...summary } = summarizeAvailability(
+    rows,
+    { categoryId, address: point, riskLevel: category?.riskLevel ?? 1, preferences },
+    busyIds,
+  );
   let etaMin: number | null = null;
   if (nearest) {
     const route = await routeBetween(nearest, point);
@@ -540,7 +598,12 @@ async function notifyAvailableProviders(order: OrderFull) {
     if (
       !matchesOpenRequestAudience(
         p,
-        { categoryId, address: { lat: order.address.lat, lng: order.address.lng } },
+        {
+          categoryId,
+          address: { lat: order.address.lat, lng: order.address.lng },
+          riskLevel: order.riskLevel ?? 1,
+          preferences: orderPreferences(order),
+        },
         busyIds,
       )
     ) {
@@ -560,6 +623,9 @@ export async function createOrder(
   clientId: string,
   input: CreateOrderInput,
 ): Promise<OrderDTO | { error: string; status: number }> {
+  if (await isUserBlocked(clientId)) {
+    return { error: "Sua conta está suspensa. Fale com o suporte.", status: 403 };
+  }
   const isOpenRequest = !input.providerId;
   const description = input.description?.trim() || undefined;
 
@@ -596,13 +662,20 @@ export async function createOrder(
 
   let priceCents = 0;
   let serviceId: string | undefined;
-  type ProviderPick = { id: string; userId: string; services: { id: string; priceCents: number }[] };
+  type ProviderPick = {
+    id: string;
+    userId: string;
+    isHelper: boolean;
+    services: { id: string; priceCents: number; categoryId: string }[];
+    badges: { type: string; expiresAt: string | null }[];
+  };
+  let serviceCategoryId: string | null = null;
   let provider: ProviderPick | null = null;
 
   if (!isOpenRequest) {
     const { data: found } = await supabase
       .from("providerprofile")
-      .select("*, services:service(id, priceCents)")
+      .select("*, services:service(id, priceCents, categoryId), badges:providerbadge(type, expiresAt)")
       .eq("id", input.providerId!)
       .maybeSingle();
     if (!found || found.status !== "APPROVED" || !found.isAvailable) {
@@ -631,6 +704,7 @@ export async function createOrder(
       if (!service) return { error: "Serviço não pertence ao prestador", status: 400 };
       priceCents = service.priceCents;
       serviceId = service.id;
+      serviceCategoryId = service.categoryId;
     }
   } else {
     priceCents = input.priceCents!;
@@ -638,10 +712,28 @@ export async function createOrder(
 
   // Snapshot da regra de cobrança: o pedido fica com ela até o fim.
   const config = await getConfig();
-  const { data: category } = input.categoryId
-    ? await supabase.from("category").select("feeRate").eq("id", input.categoryId).maybeSingle()
+  const riskCategoryId = input.categoryId ?? serviceCategoryId;
+  const { data: category } = riskCategoryId
+    ? await supabase
+        .from("category")
+        .select("feeRate, riskLevel, expectedDurationMin")
+        .eq("id", riskCategoryId)
+        .maybeSingle()
     : { data: null };
-  const feeRule = resolveFeeRule(config, category);
+  const feeRule = resolveFeeRule(config, input.categoryId ? category : null);
+  // Nível de tarefa: proibido nem é criado; chamada direta só para quem pode.
+  const riskLevel: RiskLevel = normalizeRisk(category?.riskLevel);
+  if (riskLevel === 4) return { error: RISK_DENIED_MESSAGE[4], status: 400 };
+  if (provider && !canTakeRisk(provider, riskLevel)) {
+    return { error: `Essa pessoa não pode fazer esta tarefa. ${RISK_DENIED_MESSAGE[riskLevel as 2 | 3]}`, status: 400 };
+  }
+  // Modo família: quem tem contato de confiança ganha link de acompanhamento.
+  const { data: clientRow } = await supabase
+    .from("user")
+    .select("trustedContactEmail")
+    .eq("id", clientId)
+    .maybeSingle();
+  const shareToken = clientRow?.trustedContactEmail ? newShareToken() : null;
   const { platformFeeCents, totalCents } = computeFees(priceCents, feeRule);
   const orderId = randomUUID();
 
@@ -667,6 +759,22 @@ export async function createOrder(
     p_event_note: isOpenRequest ? "Solicitação publicada" : "Chamada enviada",
   });
   if (error || !created) return { error: error?.message ?? "Falha ao criar pedido", status: 500 };
+
+  await supabase
+    .from("order")
+    .update({
+      ...(shareToken ? { shareToken } : {}),
+      ...(isOpenRequest && hasPreferences(input.preferences)
+        ? {
+            prefMinRating: input.preferences?.minRating ?? null,
+            prefMinCompleted: input.preferences?.minCompleted ?? null,
+            prefGender: input.preferences?.gender ?? null,
+          }
+        : {}),
+      riskLevel,
+      expectedDurationMin: category?.expectedDurationMin ?? config.defaultExpectedDurationMin,
+    })
+    .eq("id", (created as OrderRow).id);
 
   const order = await fetchOrder((created as OrderRow).id);
   if (!order) return { error: "Pedido criado mas não encontrado", status: 500 };
@@ -870,6 +978,58 @@ const ACTION_NOTES: Record<OrderAction, string> = {
   cancel: "Chamada cancelada",
 };
 
+/**
+ * Geocerca da conclusão: "ok" no local; "away" com posição recente longe do
+ * local; "unknown" sem posição recente (não bloqueia, mas fica registrado).
+ */
+export function completionGeofence(
+  order: {
+    status: OrderStatus;
+    providerLat: number | null;
+    providerLng: number | null;
+    providerLocationAt: string | null;
+    address: LatLng;
+    pickupAddress: LatLng | null;
+  },
+  freshMs: number,
+  now = Date.now(),
+): "ok" | "away" | "unknown" {
+  const at = order.providerLocationAt ? new Date(ensureUtcIso(order.providerLocationAt)).getTime() : 0;
+  if (!at || now - at > freshMs || order.providerLat == null || order.providerLng == null) return "unknown";
+  return hasArrivedAt(order.providerLat, order.providerLng, trackingDestination(order)) ? "ok" : "away";
+}
+
+const DOOR_CODE_STATUSES = new Set<OrderStatus>(["ACCEPTED", "EN_ROUTE"]);
+
+/** Código de chegada — só para o cliente do pedido, enquanto alguém está a caminho. */
+export async function getDoorCode(
+  id: string,
+  userId: string,
+  regenerate = false,
+): Promise<{ code: string | null; locked: boolean } | { error: string; status: number }> {
+  const { data: order } = await supabase
+    .from("order")
+    .select("clientId, status, doorCode, doorCodeAttempts")
+    .eq("id", id)
+    .maybeSingle();
+  if (!order || order.clientId !== userId) return { error: "Pedido não encontrado", status: 404 };
+  if (!DOOR_CODE_STATUSES.has(order.status) || !order.doorCode) return { code: null, locked: false };
+  if (regenerate) {
+    const code = generateDoorCode();
+    await supabase.from("order").update({ doorCode: code, doorCodeAttempts: 0 }).eq("id", id);
+    return { code, locked: false };
+  }
+  return { code: order.doorCode, locked: order.doorCodeAttempts >= DOOR_CODE_MAX_ATTEMPTS };
+}
+
+function orderPreferences(o: {
+  prefMinRating?: number | null;
+  prefMinCompleted?: number | null;
+  prefGender?: "F" | "M" | null;
+}): OrderPreferences {
+  return { minRating: o.prefMinRating ?? null, minCompleted: o.prefMinCompleted ?? null, gender: o.prefGender ?? null };
+}
+
 /** Quem atende já tem outra chamada em andamento? (ignora o próprio pedido) */
 async function isProviderBusy(providerId: string, exceptOrderId: string): Promise<boolean> {
   const { data: busy } = await supabase
@@ -888,6 +1048,7 @@ export async function transitionOrder(
   userId: string,
   action: OrderAction,
   note?: string,
+  opts: { doorCode?: string } = {},
 ): Promise<OrderDTO | { error: string; status: number }> {
   const order = await fetchOrder(id);
   if (!order) return { error: "Pedido não encontrado", status: 404 };
@@ -914,6 +1075,30 @@ export async function transitionOrder(
     }
     if (await isProviderBusy(profile.id, order.id)) {
       return { error: "Você já está em uma chamada", status: 409 };
+    }
+    // Preferências de quem pediu (nota, tarefas, gênero).
+    const prefs = orderPreferences(order);
+    if (hasPreferences(prefs)) {
+      const [{ data: me }, done] = await Promise.all([
+        supabase.from("user").select("gender").eq("id", userId).maybeSingle(),
+        completedCounts([profile.id]),
+      ]);
+      const ok = meetsPreferences(
+        { ratingAvg: profile.ratingAvg, ratingCount: profile.ratingCount, completedCount: done.get(profile.id) ?? 0, gender: me?.gender ?? null },
+        prefs,
+      );
+      if (!ok) return { error: PREFERENCES_DENIED, status: 403 };
+    }
+    // Nível de tarefa: confere a qualificação de quem aceita.
+    const risk = normalizeRisk(order.riskLevel);
+    if (risk !== 1) {
+      const { data: badges } = await supabase
+        .from("providerbadge")
+        .select("type, expiresAt")
+        .eq("providerId", profile.id);
+      if (!canTakeRisk({ isHelper: profile.isHelper, badges: badges ?? [] }, risk)) {
+        return { error: RISK_DENIED_MESSAGE[risk as 2 | 3 | 4], status: 403 };
+      }
     }
     // Profissional só pega ajuda da própria categoria; helper pega qualquer uma
     // (mesma regra do push — QA P-08/C-13).
@@ -965,6 +1150,41 @@ export async function transitionOrder(
         status: 409,
       };
     }
+    // Reverificação: às vezes pede uma selfie nova antes de começar.
+    if (order.providerId) {
+      const { data: me } = await supabase
+        .from("providerprofile")
+        .select("reverifyRequiredAt, lastSelfieAt")
+        .eq("id", order.providerId)
+        .maybeSingle();
+      const decision = reverifyDecision(me ?? {}, await getConfig(), Math.random());
+      if (decision === "required") {
+        await requireReverification(order.providerId, "Verificação aleatória antes de começar");
+        return { error: REVERIFY_MESSAGES.random, status: REVERIFY_STATUS };
+      }
+      if (decision === "pending") return { error: REVERIFY_MESSAGES.pending, status: REVERIFY_STATUS };
+    }
+    // Código na porta: confirma que é a pessoa certa antes de começar.
+    const check = checkDoorCode(order, opts.doorCode);
+    if (check === "wrong") {
+      await supabase
+        .from("order")
+        .update({ doorCodeAttempts: (order.doorCodeAttempts ?? 0) + 1 })
+        .eq("id", id);
+    }
+    if (check !== "ok" && check !== "not_required") {
+      return { error: DOOR_CODE_MESSAGES[check], status: 409 };
+    }
+  }
+
+  // Geocerca na conclusão: com posição recente, precisa estar no local.
+  let completeNote: string | null = null;
+  if (action === "complete") {
+    const fence = completionGeofence(order, (await getConfig()).locationFreshMs);
+    if (fence === "away") {
+      return { error: "Para concluir, você precisa estar no local do atendimento.", status: 409 };
+    }
+    if (fence === "unknown") completeNote = "Concluído sem localização recente confirmada";
   }
 
   const now = new Date().toISOString();
@@ -982,9 +1202,18 @@ export async function transitionOrder(
     p_order_id: id,
     p_status: rule.to,
     p_patch: patch,
-    p_event_note: note ?? (action === "accept" ? acceptNote : ACTION_NOTES[action]),
+    p_event_note:
+      note ?? completeNote ?? (action === "accept" ? acceptNote : ACTION_NOTES[action]),
   });
   if (rpcError) return { error: rpcError.message, status: 500 };
+
+  if (action === "accept") {
+    await supabase
+      .from("order")
+      .update({ doorCode: generateDoorCode(), doorCodeAttempts: 0 })
+      .eq("id", id)
+      .is("doorCode", null);
+  }
 
   const updated = await fetchOrder(id);
   if (!updated) return { error: "Pedido não encontrado", status: 404 };
@@ -1008,6 +1237,14 @@ export async function transitionOrder(
     await refundIfPaid(id);
   }
   if (action === "start_work") void recordEtaMeasurement(id);
+  const familyEvents: Partial<Record<OrderAction, FamilyEvent>> = {
+    accept: "accept",
+    start_route: "start_route",
+    start_work: "start_work",
+    complete: "complete",
+  };
+  const familyEvent = familyEvents[action];
+  if (familyEvent) void notifyTrustedContact(id, familyEvent);
 
   const recipientId = rule.by === "provider" ? order.clientId : updated.provider?.userId;
   if (recipientId) {

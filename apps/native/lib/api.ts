@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { getDeviceId } from "@/lib/device-id";
 import { clearTokens, getTokens, saveTokens } from "@/lib/tokens";
 
 // Base da API (apps/web). Em dev, simulador iOS enxerga o Mac via "localhost" e
@@ -20,6 +21,7 @@ export type AppUser = {
   avatarUrl: string | null;
   emailVerified: boolean;
   phoneVerified: boolean;
+  gender?: "F" | "M" | "OTHER" | null;
   createdAt: string;
 };
 
@@ -119,10 +121,11 @@ export const authApi = {
       auth: false,
     });
   },
-  login(input: { email: string; password: string }) {
+  async login(input: { email: string; password: string }) {
+    const deviceId = await getDeviceId();
     return apiFetch<AuthResponse>("/api/auth/login", {
       method: "POST",
-      body: input,
+      body: { ...input, ...(deviceId ? { deviceId } : {}) },
       auth: false,
     });
   },
@@ -166,8 +169,31 @@ export const authApi = {
 // ---- Edição de perfil (RF-A6) ----
 export type ClientStats = { completedOrders: number; ratingAvg: number | null; ratingCount: number };
 
+export type ReportReason = "SAFETY" | "BEHAVIOR" | "FRAUD" | "NO_SHOW" | "OTHER";
+
+export type KycFileKind = "DOCUMENT" | "SELFIE" | "BACKGROUND_CHECK";
+
+export type TrustedContact = { name: string; email: string } | null;
+
+export const familyApi = {
+  getContact() {
+    return apiFetch<{ contact: TrustedContact }>("/api/auth/me/trusted-contact").then((r) => r.contact);
+  },
+  setContact(contact: TrustedContact) {
+    return apiFetch<{ contact: TrustedContact }>("/api/auth/me/trusted-contact", {
+      method: "PUT",
+      body: { contact },
+    }).then((r) => r.contact);
+  },
+  orderShare(orderId: string) {
+    return apiFetch<{ share: { url: string; contactName: string | null } | null }>(
+      `/api/orders/${orderId}/share`,
+    ).then((r) => r.share);
+  },
+};
+
 export const profileApi = {
-  update(input: { fullName?: string; phone?: string }) {
+  update(input: { fullName?: string; phone?: string; gender?: "F" | "M" | "OTHER" | null }) {
     return apiFetch<{ user: AppUser }>("/api/auth/me", { method: "PATCH", body: input }).then(
       (r) => r.user,
     );
@@ -369,6 +395,10 @@ export type MyProviderProfile = {
   companyName: string | null;
   responsibleName: string | null;
   hasDocument: boolean;
+  hasSelfie: boolean;
+  hasBackgroundCheck: boolean;
+  /** Precisa de selfie nova antes de atender (aleatória ou aparelho novo). */
+  reverifyRequired: boolean;
   categoryIds: string[];
   services: { id: string; categoryId: string; name: string; priceCents: number }[];
 };
@@ -398,6 +428,12 @@ export const providerProfileApi = {
     return apiFetch<{ profile: MyProviderProfile }>("/api/providers/me", {
       method: "POST",
       body: input,
+    }).then((r) => r.profile);
+  },
+  uploadKycFile(kind: KycFileKind, base64: string, mimeType: string) {
+    return apiFetch<{ profile: MyProviderProfile }>("/api/providers/me/kyc-file", {
+      method: "POST",
+      body: { kind, base64, mimeType },
     }).then((r) => r.profile);
   },
   uploadDocument(base64: string, mimeType: string) {
@@ -485,6 +521,11 @@ export type Order = {
   feeRate: number;
   /** O que quem atende recebe por este pedido. */
   providerNetCents: number;
+  /** Quem atende precisa digitar o código de chegada para iniciar. */
+  requiresDoorCode: boolean;
+  /** 1 livre · 2 selo de reparos · 3 profissional com credencial. */
+  riskLevel: number;
+  preferences: OrderPreferences;
   cancelReason: string | null;
   createdAt: string;
   offerExpiresAt: string;
@@ -540,6 +581,14 @@ export type CreateOrderInput = {
   addressId?: string;
   pickupAddressId?: string;
   priceCents?: number;
+  preferences?: OrderPreferences;
+};
+
+/** Preferências de quem atende (ajuda aberta): nota mínima, tarefas concluídas, gênero. */
+export type OrderPreferences = {
+  minRating?: number | null;
+  minCompleted?: number | null;
+  gender?: "F" | "M" | null;
 };
 
 export type ArrangeOrderInput = {
@@ -567,9 +616,12 @@ export const ordersApi = {
     const qs = categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : "";
     return apiFetch<SuggestedPrice>(`/api/orders/suggested-price${qs}`);
   },
-  availability(opts: { lat: number; lng: number; categoryId?: string }) {
+  availability(opts: { lat: number; lng: number; categoryId?: string; preferences?: OrderPreferences }) {
     const qs = new URLSearchParams({ lat: String(opts.lat), lng: String(opts.lng) });
     if (opts.categoryId) qs.set("categoryId", opts.categoryId);
+    if (opts.preferences?.minRating) qs.set("minRating", String(opts.preferences.minRating));
+    if (opts.preferences?.minCompleted) qs.set("minCompleted", String(opts.preferences.minCompleted));
+    if (opts.preferences?.gender) qs.set("gender", opts.preferences.gender);
     return apiFetch<OpenRequestAvailability>(`/api/orders/availability?${qs}`);
   },
   list(as: "client" | "provider" = "client") {
@@ -589,11 +641,31 @@ export const ordersApi = {
       body: input,
     }).then((r) => r.order);
   },
-  transition(id: string, action: OrderAction, note?: string) {
+  transition(id: string, action: OrderAction, note?: string, doorCode?: string) {
     return apiFetch<{ order: Order }>(`/api/orders/${id}/transition`, {
       method: "POST",
-      body: { action, note },
+      body: { action, note, doorCode },
     }).then((r) => r.order);
+  },
+  emergency(id: string, position: { lat: number; lng: number } | null) {
+    return apiFetch<{ ticketId: string }>(`/api/orders/${id}/emergency`, {
+      method: "POST",
+      body: position ?? {},
+    });
+  },
+  report(id: string, reason: ReportReason, details?: string) {
+    return apiFetch<{ id: string }>(`/api/orders/${id}/report`, {
+      method: "POST",
+      body: { reason, details },
+    });
+  },
+  doorCode(id: string) {
+    return apiFetch<{ code: string | null; locked: boolean }>(`/api/orders/${id}/door-code`);
+  },
+  regenerateDoorCode(id: string) {
+    return apiFetch<{ code: string | null; locked: boolean }>(`/api/orders/${id}/door-code`, {
+      method: "POST",
+    });
   },
   updateLocation(id: string, lat: number, lng: number) {
     return apiFetch<{ order: Order }>(`/api/orders/${id}/location`, {

@@ -1,0 +1,2 @@
+ALTER TABLE "order" DROP COLUMN IF EXISTS "prefMinRating", DROP COLUMN IF EXISTS "prefMinCompleted", DROP COLUMN IF EXISTS "prefGender";
+ALTER TABLE "user" DROP COLUMN IF EXISTS "gender";

@@ -16,6 +16,26 @@ export const configSchema = z.object({
    * na carteira. Acima deste valor devido, não pode ficar disponível.
    */
   cashDebtLimitCents: z.number().int().min(0).default(5000),
+  /** Duração prevista de um serviço quando a categoria não define (minutos). */
+  defaultExpectedDurationMin: z.number().int().min(10).default(120),
+  /** Alerta de tempo excedido quando passa desta fração da duração prevista. */
+  overtimeAlertRatio: z.number().min(1).max(5).default(1.5),
+  /** Posição de quem atende mais velha que isto não serve para a geocerca. */
+  locationFreshMs: z.number().int().positive().default(5 * 60_000),
+  /** LGPD: dias até apagar posições de pedidos encerrados e de quem está parado. */
+  locationRetentionDays: z.number().int().min(1).default(30),
+  /** LGPD: dias até apagar o KYC de cadastros bloqueados. */
+  blockedKycRetentionDays: z.number().int().min(1).default(180),
+  /** Bloqueio automático: mínimo de avaliações e média abaixo da qual a conta é suspensa. */
+  autoBlockMinReviews: z.number().int().min(1).default(5),
+  autoBlockMaxAvg: z.number().min(1).max(5).default(3),
+  /** Prazo de atendimento do suporte (minutos): segurança/disputa e demais. */
+  supportUrgentSlaMin: z.number().int().min(5).default(60),
+  supportSlaMin: z.number().int().min(30).default(24 * 60),
+  /** Chance de pedir selfie antes de começar um atendimento (0 desliga). */
+  reverifyProbability: z.number().min(0).max(1).default(0.1),
+  /** Selfie mais recente que isto dispensa a reverificação aleatória (minutos). */
+  reverifyFreshMin: z.number().int().min(1).default(30),
   /** Menor saque permitido. */
   payoutMinCents: z.number().int().min(100).default(1000),
   /** Tarifa por saque (cobrada do valor sacado). */

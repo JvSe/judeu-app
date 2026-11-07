@@ -8,6 +8,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import type { Order, OrderStatus } from "@/lib/api";
 import { fonts } from "@/constants/fonts";
+import { EmergencyButton } from "@/components/emergency-button";
 import { percentLabel } from "@/lib/fees";
 import { initialsOf, moneyFromCents, orderStatusLabel, shortDateTime, shortTime } from "@/lib/format";
 import { useMyProviderProfile, useOrder } from "@/lib/hooks";
@@ -183,6 +184,10 @@ export function OrderDetailAttending({ routes }: { routes: AttendingRoutes }) {
           </View>
         )}
 
+        {order.status === "IN_PROGRESS" && (
+          <EmergencyButton orderId={order.id} status={order.status} variant="wide" />
+        )}
+
         <View style={styles.costCard}>
           {order.feePayer === "PROVIDER" ? (
             <>
@@ -261,6 +266,11 @@ export function OrderDetailAttending({ routes }: { routes: AttendingRoutes }) {
           }
         >
           <Text style={styles.reportText}>Reportar um problema com esse pedido</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push({ pathname: "/client/report/[id]", params: { id: order.id } } as never)}
+        >
+          <Text style={styles.reportText}>Denunciar o cliente</Text>
         </Pressable>
       </ScrollView>
     </Screen>
