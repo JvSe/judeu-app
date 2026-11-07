@@ -279,6 +279,28 @@ export type SearchResults = {
   providers: ProviderListItem[];
 };
 
+// ---- Configuração pública (taxa, TTLs) ----
+export type AppConfig = {
+  platformFeeRate: number;
+  feePayer: "CLIENT" | "PROVIDER";
+  openRequestTtlMs: number;
+  offerTtlMs: number;
+};
+
+/** Valores usados enquanto `/api/config` não respondeu — iguais ao comportamento atual. */
+export const DEFAULT_APP_CONFIG: AppConfig = {
+  platformFeeRate: 0.08,
+  feePayer: "CLIENT",
+  openRequestTtlMs: 4 * 60 * 60 * 1000,
+  offerTtlMs: 60_000,
+};
+
+export const configApi = {
+  get() {
+    return apiFetch<AppConfig>("/api/config", { auth: false });
+  },
+};
+
 export const catalogApi = {
   categories() {
     return apiFetch<{ categories: Category[] }>("/api/categories").then((r) => r.categories);

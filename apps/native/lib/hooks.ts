@@ -4,8 +4,10 @@ import { useEffect, useRef } from "react";
 import notifee from "react-native-notify-kit";
 
 import {
+  DEFAULT_APP_CONFIG,
   addressesApi,
   catalogApi,
+  configApi,
   chatApi,
   jobsApi,
   notificationsApi,
@@ -36,6 +38,17 @@ import type {
   SavedAddressInput,
   UpsertProviderProfileInput,
 } from "@/lib/api";
+
+// Configuração pública da API (taxa, TTLs). Nunca fica vazia: até a resposta
+// chegar (ou se ela falhar), vale DEFAULT_APP_CONFIG.
+export function useAppConfig() {
+  const query = useQuery({
+    queryKey: ["app-config"],
+    queryFn: () => configApi.get(),
+    staleTime: 5 * 60_000,
+  });
+  return query.data ?? DEFAULT_APP_CONFIG;
+}
 
 // Hooks de dados do catálogo (cache via TanStack Query).
 export function useCategories() {

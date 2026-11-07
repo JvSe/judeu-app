@@ -23,6 +23,8 @@ export type {
   JobShiftRow,
   JobApplicationRow,
   SupportTicketRow,
+  AppConfigRow,
+  AppEventRow,
 } from "./database";
 
 export type {
