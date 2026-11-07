@@ -8,6 +8,7 @@ import {
   addressesApi,
   catalogApi,
   configApi,
+  familyApi,
   chatApi,
   jobsApi,
   notificationsApi,
@@ -215,6 +216,27 @@ export function useRegenerateDoorCode() {
   return useMutation({
     mutationFn: (orderId: string) => ordersApi.regenerateDoorCode(orderId),
     onSuccess: (data, orderId) => qc.setQueryData(["door-code", orderId], data),
+  });
+}
+
+// ---- Modo família ----
+export function useTrustedContact() {
+  return useQuery({ queryKey: ["trusted-contact"], queryFn: () => familyApi.getContact() });
+}
+
+export function useSetTrustedContact() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: familyApi.setContact,
+    onSuccess: (contact) => qc.setQueryData(["trusted-contact"], contact),
+  });
+}
+
+export function useOrderShare(orderId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["order-share", orderId],
+    queryFn: () => familyApi.orderShare(orderId),
+    enabled,
   });
 }
 

@@ -151,6 +151,9 @@ model User {
   // Como conheceu o app (CAC por canal) e código de convite/parceiro digitado no cadastro.
   acquisitionChannel String?
   acquisitionCode    String?
+  // Modo família: contato que acompanha os pedidos pelo link e recebe e-mails.
+  trustedContactName  String?
+  trustedContactEmail String?
   // Marca a conta como excluída (RF-A7) sem quebrar FKs de pedidos/avaliações/mensagens já
   // existentes — os dados pessoais são anonimizados, o registro em si é preservado.
   deletedAt       DateTime?
@@ -385,6 +388,8 @@ model Order {
   // Código de chegada: gerado no aceite, só o cliente vê; quem atende digita em start_work.
   doorCode         String?
   doorCodeAttempts Int        @default(0)
+  // Link público de acompanhamento (modo família), /t/<shareToken>.
+  shareToken       String?    @unique
   couponCode      String?
   cancelReason    String?
   acceptedAt      DateTime?

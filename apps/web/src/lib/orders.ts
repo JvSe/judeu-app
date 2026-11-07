@@ -8,6 +8,7 @@ import { ensureUtcIso } from "./dates";
 import { DOOR_CODE_MAX_ATTEMPTS, DOOR_CODE_MESSAGES, checkDoorCode, generateDoorCode } from "./door-code";
 import { recordEtaMeasurement, recordEtaPrediction } from "./eta-tracking";
 import { trackEvent } from "./events";
+import { type FamilyEvent, newShareToken, notifyTrustedContact } from "./family";
 import { completionWalletMovement, computeFees, feeRuleOf, resolveFeeRule } from "./fees";
 import { supabase } from "./db";
 import { haversineKm, routeBetween } from "./geo";
@@ -648,6 +649,13 @@ export async function createOrder(
     ? await supabase.from("category").select("feeRate").eq("id", input.categoryId).maybeSingle()
     : { data: null };
   const feeRule = resolveFeeRule(config, category);
+  // Modo família: quem tem contato de confiança ganha link de acompanhamento.
+  const { data: clientRow } = await supabase
+    .from("user")
+    .select("trustedContactEmail")
+    .eq("id", clientId)
+    .maybeSingle();
+  const shareToken = clientRow?.trustedContactEmail ? newShareToken() : null;
   const { platformFeeCents, totalCents } = computeFees(priceCents, feeRule);
   const orderId = randomUUID();
 
@@ -673,6 +681,10 @@ export async function createOrder(
     p_event_note: isOpenRequest ? "Solicitação publicada" : "Chamada enviada",
   });
   if (error || !created) return { error: error?.message ?? "Falha ao criar pedido", status: 500 };
+
+  if (shareToken) {
+    await supabase.from("order").update({ shareToken }).eq("id", (created as OrderRow).id);
+  }
 
   const order = await fetchOrder((created as OrderRow).id);
   if (!order) return { error: "Pedido criado mas não encontrado", status: 500 };
@@ -1057,6 +1069,14 @@ export async function transitionOrder(
     await refundIfPaid(id);
   }
   if (action === "start_work") void recordEtaMeasurement(id);
+  const familyEvents: Partial<Record<OrderAction, FamilyEvent>> = {
+    accept: "accept",
+    start_route: "start_route",
+    start_work: "start_work",
+    complete: "complete",
+  };
+  const familyEvent = familyEvents[action];
+  if (familyEvent) void notifyTrustedContact(id, familyEvent);
 
   const recipientId = rule.by === "provider" ? order.clientId : updated.provider?.userId;
   if (recipientId) {

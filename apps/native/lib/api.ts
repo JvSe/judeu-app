@@ -166,6 +166,25 @@ export const authApi = {
 // ---- Edição de perfil (RF-A6) ----
 export type ClientStats = { completedOrders: number; ratingAvg: number | null; ratingCount: number };
 
+export type TrustedContact = { name: string; email: string } | null;
+
+export const familyApi = {
+  getContact() {
+    return apiFetch<{ contact: TrustedContact }>("/api/auth/me/trusted-contact").then((r) => r.contact);
+  },
+  setContact(contact: TrustedContact) {
+    return apiFetch<{ contact: TrustedContact }>("/api/auth/me/trusted-contact", {
+      method: "PUT",
+      body: { contact },
+    }).then((r) => r.contact);
+  },
+  orderShare(orderId: string) {
+    return apiFetch<{ share: { url: string; contactName: string | null } | null }>(
+      `/api/orders/${orderId}/share`,
+    ).then((r) => r.share);
+  },
+};
+
 export const profileApi = {
   update(input: { fullName?: string; phone?: string }) {
     return apiFetch<{ user: AppUser }>("/api/auth/me", { method: "PATCH", body: input }).then(

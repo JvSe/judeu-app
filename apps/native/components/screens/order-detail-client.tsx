@@ -22,6 +22,7 @@ import {
 import { useOrder, useOrderProposals, useRespondToProposal, useTransitionOrder } from "@/lib/hooks";
 import { errorMessage, toast } from "@/lib/toast";
 import { DoorCodeCard } from "@/components/door-code-card";
+import { FamilyShareCard } from "@/components/family-share-card";
 
 // Fluxo canônico do pedido (caminho feliz).
 const FLOW: { status: OrderStatus; title: string }[] = [
@@ -353,6 +354,7 @@ export function OrderDetailClient() {
         )}
 
         <DoorCodeCard order={order} />
+        <FamilyShareCard order={order} />
 
         <View style={styles.costCard}>
           <View style={styles.costRow}>

@@ -34,6 +34,8 @@ export type UserRow = {
   termsAcceptedAt: string | null;
   acquisitionChannel: string | null;
   acquisitionCode: string | null;
+  trustedContactName: string | null;
+  trustedContactEmail: string | null;
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -156,6 +158,7 @@ export type OrderRow = {
   feePayer: "CLIENT" | "PROVIDER";
   doorCode: string | null;
   doorCodeAttempts: number;
+  shareToken: string | null;
   couponCode: string | null;
   cancelReason: string | null;
   acceptedAt: string | null;
