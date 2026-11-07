@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Json, OrderRow, OrderStatus, PaymentMethod, PaymentStatus } from "@judeu/db";
 
 import { coarsen, effectiveProviderPosition } from "./catalog";
+import { ensureUtcIso } from "./dates";
 import { supabase } from "./db";
 import { haversineKm, routeBetween } from "./geo";
 import { notifyUser } from "./notifications";
@@ -227,7 +228,7 @@ export type OrderDTO = {
 function toDTO(o: OrderFull, unreadMessages = 0): OrderDTO {
   const dest = trackingDestination(o);
   const openWait = o.isOpenRequest && !o.providerId && o.status === "CREATED";
-  const createdAtMs = new Date(o.createdAt).getTime();
+  const createdAtMs = new Date(ensureUtcIso(o.createdAt)).getTime();
   return {
     id: o.id,
     status: o.status,
