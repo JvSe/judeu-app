@@ -766,6 +766,19 @@ const ACTION_NOTES: Record<OrderAction, string> = {
   cancel: "Chamada cancelada",
 };
 
+/** Quem atende já tem outra chamada em andamento? (ignora o próprio pedido) */
+async function isProviderBusy(providerId: string, exceptOrderId: string): Promise<boolean> {
+  const { data: busy } = await supabase
+    .from("order")
+    .select("id")
+    .eq("providerId", providerId)
+    .in("status", [...BUSY_ORDER_STATUSES])
+    .neq("id", exceptOrderId)
+    .limit(1)
+    .maybeSingle();
+  return !!busy;
+}
+
 export async function transitionOrder(
   id: string,
   userId: string,
@@ -795,17 +808,17 @@ export async function transitionOrder(
     if (!profile.isAvailable) {
       return { error: "Fique disponível para atender solicitações", status: 409 };
     }
-    const { data: busy } = await supabase
-      .from("order")
-      .select("id")
-      .eq("providerId", profile.id)
-      .in("status", [...BUSY_ORDER_STATUSES])
-      .limit(1)
-      .maybeSingle();
-    if (busy) return { error: "Você já está em uma chamada", status: 409 };
+    if (await isProviderBusy(profile.id, order.id)) {
+      return { error: "Você já está em uma chamada", status: 409 };
+    }
     claimProviderId = profile.id;
   } else if (rule.by === "provider" && !isProvider) {
     return { error: "Ação permitida apenas ao prestador", status: 403 };
+  } else if (action === "accept" && order.providerId) {
+    // Chamada direta: a mesma trava de "ocupado" da ajuda aberta (QA A-01/H-02/P-09).
+    if (await isProviderBusy(order.providerId, order.id)) {
+      return { error: "Termine a chamada em andamento antes de aceitar outra", status: 409 };
+    }
   }
   if (rule.by === "client" && !isClient) {
     return { error: "Ação permitida apenas ao cliente", status: 403 };
