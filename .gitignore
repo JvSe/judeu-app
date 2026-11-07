@@ -60,3 +60,9 @@ temp
 
 # pnpm store local
 .pnpm-store
+
+# QA 2026-11-03: screenshots pesados (~ 35M) e logs ficam fora do git
+docs/qa-2026-11-03/maestro/shots/
+docs/qa-2026-11-03/*.log
+docs/qa-2026-11-03/*.json
+docs/qa-2026-11-03/*.txt

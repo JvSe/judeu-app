@@ -80,13 +80,19 @@
         "expo-notifications",
         {
           "icon": "./assets/images/android-icon-monochrome.png",
-          "color": "#FF6600"
+          "color": "#FF6600",
+          "sounds": ["./assets/sounds/judeu.wav"]
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Usado para mostrar sua localização no mapa e compartilhar com o prestador durante o atendimento."
+          "locationWhenInUsePermission": "Usado para mostrar sua localização no mapa e compartilhar com o prestador durante o atendimento.",
+          "locationAlwaysAndWhenInUsePermission": "Durante um atendimento ativo, sua localização continua sendo compartilhada com o cliente mesmo com o app em segundo plano, para ele acompanhar sua chegada.",
+          "locationAlwaysPermission": "Durante um atendimento ativo, sua localização continua sendo compartilhada com o cliente mesmo com o app em segundo plano, para ele acompanhar sua chegada.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       "@maplibre/maplibre-react-native",

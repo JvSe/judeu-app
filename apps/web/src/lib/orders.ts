@@ -369,10 +369,45 @@ export type CreateOrderInput = {
   priceCents?: number;
 };
 
+/** Perfil elegível a push de ajuda aberta (modo atendimento ligado). */
+export type OpenRequestAudienceProfile = {
+  id: string;
+  userId: string;
+  isHelper: boolean;
+  serviceRadiusKm: number;
+  lastLat: number | null;
+  lastLng: number | null;
+  lastLocationAt: string | null;
+  baseLat: number | null;
+  baseLng: number | null;
+  categories: { categoryId: string }[];
+};
+
+/**
+ * Quem recebe push de ajuda aberta:
+ * - disponível (já filtrado na query) e com GPS no raio;
+ * - helper: qualquer pedido no raio (está "procurando ajudar");
+ * - profissional: só se a categoria do pedido bater com as dele (ou pedido sem categoria).
+ */
+export function matchesOpenRequestAudience(
+  profile: OpenRequestAudienceProfile,
+  order: { categoryId: string | null; address: LatLng },
+  busyIds: Set<string>,
+): boolean {
+  if (busyIds.has(profile.id)) return false;
+  const origin = effectiveProviderPosition(profile);
+  if (!isInsideServiceRadius(origin, profile.serviceRadiusKm, order.address)) return false;
+  if (profile.isHelper) return true;
+  if (!order.categoryId) return true;
+  return profile.categories.some((c) => c.categoryId === order.categoryId);
+}
+
 async function notifyAvailableProviders(order: OrderFull) {
   const { data: rows } = await supabase
     .from("providerprofile")
-    .select("id, userId")
+    .select(
+      "id, userId, isHelper, serviceRadiusKm, lastLat, lastLng, lastLocationAt, baseLat, baseLng, categories:providercategory(categoryId)",
+    )
     .eq("status", "APPROVED")
     .eq("isAvailable", true)
     .neq("userId", order.clientId);
@@ -382,12 +417,24 @@ async function notifyAvailableProviders(order: OrderFull) {
     .select("providerId")
     .in("status", [...BUSY_ORDER_STATUSES])
     .not("providerId", "is", null);
-  const busyIds = new Set((busy ?? []).map((o) => o.providerId).filter(Boolean));
+  const busyIds = new Set(
+    (busy ?? []).map((o) => o.providerId).filter((id): id is string => Boolean(id)),
+  );
 
+  const categoryId = order.category?.id ?? null;
   const body = order.description?.trim() || order.category?.name || "Alguém precisa de ajuda";
   let sent = 0;
-  for (const p of rows ?? []) {
-    if (busyIds.has(p.id)) continue;
+  for (const raw of rows ?? []) {
+    const p = raw as unknown as OpenRequestAudienceProfile;
+    if (
+      !matchesOpenRequestAudience(
+        p,
+        { categoryId, address: { lat: order.address.lat, lng: order.address.lng } },
+        busyIds,
+      )
+    ) {
+      continue;
+    }
     void notifyUser(p.userId, "ORDER", {
       title: "Nova solicitação",
       body,

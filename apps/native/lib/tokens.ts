@@ -6,10 +6,16 @@ const REFRESH_KEY = "ajuda.refreshToken";
 
 export type Tokens = { accessToken: string; refreshToken: string };
 
+// AFTER_FIRST_UNLOCK: a task de localização em background precisa ler o token
+// com o iPhone bloqueado (o default WHEN_UNLOCKED falha nesse caso).
+const STORE_OPTIONS: SecureStore.SecureStoreOptions = {
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+};
+
 export async function saveTokens(tokens: Tokens): Promise<void> {
   await Promise.all([
-    SecureStore.setItemAsync(ACCESS_KEY, tokens.accessToken),
-    SecureStore.setItemAsync(REFRESH_KEY, tokens.refreshToken),
+    SecureStore.setItemAsync(ACCESS_KEY, tokens.accessToken, STORE_OPTIONS),
+    SecureStore.setItemAsync(REFRESH_KEY, tokens.refreshToken, STORE_OPTIONS),
   ]);
 }
 

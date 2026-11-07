@@ -10,7 +10,7 @@ import type { OrderStatus } from "@/lib/api";
 import { fonts } from "@/constants/fonts";
 import { initialsOf } from "@/lib/format";
 import { useOrder } from "@/lib/hooks";
-import { useCurrentLocation } from "@/lib/location";
+import { useWatchCurrentLocation } from "@/lib/location";
 import { Avatar } from "@/components/ui/avatar";
 import { IconButton } from "@/components/ui/icon-button";
 import { ProviderMarker, SelfMarker } from "@/components/ui/map-marker";
@@ -51,7 +51,7 @@ export default function Tracking() {
   const insets = useSafeAreaInsets();
   const { theme } = useUnistyles();
   const { data: order, isLoading } = useOrder(id, { poll: true });
-  const myLocation = useCurrentLocation();
+  const myLocation = useWatchCurrentLocation();
 
   useEffect(() => {
     if (!order) return;

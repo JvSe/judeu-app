@@ -15,7 +15,7 @@ import { fonts } from "@/constants/fonts";
 import { openGoogleMapsNavigation, openWazeNavigation } from "@/lib/external-maps";
 import { isOrderPaid } from "@/lib/format";
 import { useOrder, useTransitionOrder } from "@/lib/hooks";
-import { useShareLocationWhileEnRoute, useWatchCurrentLocation } from "@/lib/location";
+import { useWatchCurrentLocation } from "@/lib/location";
 import { errorMessage, toast } from "@/lib/toast";
 
 function orderTitle(order: {
@@ -52,11 +52,8 @@ export function AttendDelivery({
     null,
   );
 
-  const shareOrderId =
-    order?.status === "ACCEPTED" || order?.status === "EN_ROUTE" || order?.status === "IN_PROGRESS"
-      ? order.id
-      : undefined;
-  useShareLocationWhileEnRoute(shareOrderId);
+  // O envio da posição ao backend fica só na home (sempre montada na pilha),
+  // via useShareLocationWhileEnRoute — aqui apenas desenhamos o próprio pin.
 
   const leave =
     order?.status === "IN_PROGRESS" ||

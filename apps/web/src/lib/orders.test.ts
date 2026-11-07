@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   isInsideServiceRadius,
+  matchesOpenRequestAudience,
   OFFER_TTL_MS,
   OPEN_REQUEST_TTL_MS,
   PLATFORM_FEE_RATE,
   TRANSITIONS,
+  type OpenRequestAudienceProfile,
 } from "./orders";
 
 describe("PLATFORM_FEE_RATE", () => {
@@ -81,5 +83,66 @@ describe("oferta vs solicitação aberta", () => {
   it("chamada dirigida expira em 60s; solicitação aberta fica no ar por 4h", () => {
     expect(OFFER_TTL_MS).toBe(60_000);
     expect(OPEN_REQUEST_TTL_MS).toBe(4 * 60 * 60 * 1000);
+  });
+});
+
+describe("matchesOpenRequestAudience", () => {
+  const origin = { lat: -10.1841, lng: -48.3336 };
+  const nearby = { lat: -10.185, lng: -48.334 };
+  const far = { lat: -23.55, lng: -46.63 };
+
+  function profile(
+    overrides: Partial<OpenRequestAudienceProfile> = {},
+  ): OpenRequestAudienceProfile {
+    return {
+      id: "p1",
+      userId: "u1",
+      isHelper: false,
+      serviceRadiusKm: 10,
+      lastLat: origin.lat,
+      lastLng: origin.lng,
+      lastLocationAt: new Date().toISOString(),
+      baseLat: origin.lat,
+      baseLng: origin.lng,
+      categories: [{ categoryId: "cat-reparos" }],
+      ...overrides,
+    };
+  }
+
+  it("bloqueia prestador ocupado", () => {
+    expect(
+      matchesOpenRequestAudience(profile(), { categoryId: "cat-reparos", address: nearby }, new Set(["p1"])),
+    ).toBe(false);
+  });
+
+  it("bloqueia fora do raio", () => {
+    expect(
+      matchesOpenRequestAudience(profile(), { categoryId: "cat-reparos", address: far }, new Set()),
+    ).toBe(false);
+  });
+
+  it("helper no raio recebe qualquer categoria", () => {
+    expect(
+      matchesOpenRequestAudience(
+        profile({ isHelper: true, categories: [] }),
+        { categoryId: "cat-frete", address: nearby },
+        new Set(),
+      ),
+    ).toBe(true);
+  });
+
+  it("profissional só recebe categoria compatível", () => {
+    expect(
+      matchesOpenRequestAudience(profile(), { categoryId: "cat-reparos", address: nearby }, new Set()),
+    ).toBe(true);
+    expect(
+      matchesOpenRequestAudience(profile(), { categoryId: "cat-frete", address: nearby }, new Set()),
+    ).toBe(false);
+  });
+
+  it("pedido sem categoria notifica profissional no raio", () => {
+    expect(
+      matchesOpenRequestAudience(profile(), { categoryId: null, address: nearby }, new Set()),
+    ).toBe(true);
   });
 });

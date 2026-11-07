@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Json, NotificationType } from "@judeu/db";
 
 import { supabase } from "./db";
-import { sendPushNotification } from "./push";
+import { INCOMING_HELP_CHANNEL, INCOMING_HELP_SOUND, sendPushNotification } from "./push";
 
 export type NotificationDTO = {
   id: string;
@@ -59,7 +59,16 @@ export async function notifyUser(
       body: payload.body,
       data: (payload.data as Json | undefined) ?? null,
     });
-    void sendPushNotification(userId, payload);
+    void sendPushNotification(userId, {
+      ...payload,
+      ...(type === "ORDER"
+        ? {
+            sound: INCOMING_HELP_SOUND,
+            channelId: INCOMING_HELP_CHANNEL,
+            priority: "high" as const,
+          }
+        : { sound: "default" }),
+    });
   } catch {
     // Best-effort
   }

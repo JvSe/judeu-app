@@ -19,8 +19,15 @@ import notifee, { EventType } from "react-native-notify-kit";
 
 import { AuthSessionBoundary } from "@/components/auth-session-boundary";
 import { AuthProvider } from "@/lib/auth-context";
+// Registra a task de localização em background no boot (exigência do TaskManager).
+import "@/lib/background-location";
 import { initAssistant } from "@/lib/assistant";
 import { pathForNotification } from "@/lib/notifications";
+import {
+  ensureNotificationChannels,
+  INCOMING_HELP_CHANNEL,
+  INCOMING_HELP_SOUND_FILE,
+} from "@/lib/push";
 import { QueryProvider } from "@/lib/query";
 import { Toaster } from "@/lib/toast";
 
@@ -87,15 +94,24 @@ export default function RootLayout() {
     }
   }, [fontsLoaded]);
 
+  useEffect(() => {
+    void ensureNotificationChannels();
+  }, []);
+
   // Exibe via notifee (em vez do banner nativo) quando a push chega com o app aberto.
   useEffect(() => {
     const sub = Notifications.addNotificationReceivedListener((event) => {
       const { title, body, data } = event.request.content;
+      const isOrder = (data as { type?: string } | null)?.type === "order";
       notifee.displayNotification({
         title: title ?? undefined,
         body: body ?? undefined,
         data: data as Record<string, string | number | object>,
-        android: { channelId: "default" },
+        android: {
+          channelId: isOrder ? INCOMING_HELP_CHANNEL : "default",
+          pressAction: { id: "default" },
+        },
+        ios: { sound: isOrder ? INCOMING_HELP_SOUND_FILE : "default" },
       });
     });
     return () => sub.remove();

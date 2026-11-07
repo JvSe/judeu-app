@@ -1,7 +1,11 @@
 import * as Location from "expo-location";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import { useEffect, useRef, useState } from "react";
 
+import {
+  startOrderBackgroundTracking,
+  stopOrderBackgroundTracking,
+} from "@/lib/background-location";
 import { useUpdateOrderLocation, useUpdateProviderLocation } from "@/lib/hooks";
 
 export const FOREGROUND_LOCATION_WATCH = {
@@ -10,7 +14,29 @@ export const FOREGROUND_LOCATION_WATCH = {
   distanceInterval: 25,
 } as const;
 
+// Chamada ativa: GPS de verdade. Balanced no iOS é precisão de ~100 m e quase não
+// gera callbacks a pé; aqui o pin acompanha quem atende andando.
+export const ACTIVE_ORDER_LOCATION_WATCH = {
+  accuracy: Location.Accuracy.High,
+  timeInterval: 4000,
+  distanceInterval: 5,
+} as const;
+
+// Throttle do envio ao backend (cada POST recalcula rota/ETA).
+const SEND_MIN_INTERVAL_MS = 4000;
+const SEND_MIN_DISTANCE_M = 5;
+
 export type LatLng = { lat: number; lng: number };
+
+function distanceMeters(a: LatLng, b: LatLng): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(h));
+}
 
 const FRESH_MS = 5 * 60 * 1000;
 
@@ -133,7 +159,7 @@ export async function readForegroundPosition(): Promise<LatLng | null> {
   return null;
 }
 
-// Posição ao vivo (foreground) — mapa do prestador durante a entrega.
+// Posição ao vivo (foreground) — mapa durante a chamada (quem atende e cliente).
 export function useWatchCurrentLocation(): { lat: number; lng: number } | null {
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
@@ -148,11 +174,15 @@ export function useWatchCurrentLocation(): { lat: number; lng: number } | null {
         console.warn("[location] useWatchCurrentLocation: permissão de localização negada");
         return;
       }
-      subscriptionRef.current = await Location.watchPositionAsync(FOREGROUND_LOCATION_WATCH, (pos) => {
+      const now = await readLastKnownPosition();
+      if (!cancelled && now) setPosition(now);
+      const sub = await Location.watchPositionAsync(ACTIVE_ORDER_LOCATION_WATCH, (pos) => {
         if (!cancelled) {
           setPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude });
         }
       });
+      if (cancelled) sub.remove();
+      else subscriptionRef.current = sub;
     })().catch((err) => console.warn("[location] useWatchCurrentLocation falhou:", err));
 
     return () => {
@@ -165,18 +195,38 @@ export function useWatchCurrentLocation(): { lat: number; lng: number } | null {
   return position;
 }
 
-// Compartilha a posição do prestador (foreground) enquanto o pedido está a
-// caminho (RF-E3) — sem permissão concedida ou fora de um pedido ativo, não
-// faz nada (mesmo padrão best-effort do push, RF-E2).
+// Compartilha a posição de quem atende enquanto a chamada está ativa (RF-E3).
+// Foreground: watch de alta precisão com throttle. Background (tela bloqueada,
+// Waze aberto): task do expo-location, se o usuário concedeu "Sempre".
+// Sem permissão ou fora de um pedido ativo, não faz nada (best-effort, RF-E2).
+// Deve haver um único dono por app (hoje: a home), senão os POSTs duplicam.
 export function useShareLocationWhileEnRoute(orderId: string | undefined) {
   const updateLocation = useUpdateOrderLocation();
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
 
   useEffect(() => {
-    if (!orderId) return;
+    if (!orderId) {
+      void stopOrderBackgroundTracking();
+      return;
+    }
     let cancelled = false;
+    let lastSent: { point: LatLng; at: number } | null = null;
 
-    const report = (lat: number, lng: number) => {
+    const report = (lat: number, lng: number, force = false) => {
+      if (cancelled) return;
+      // Em background quem envia é a task; evita POST em dobro.
+      if (AppState.currentState !== "active") return;
+      const point = { lat, lng };
+      const now = Date.now();
+      if (
+        !force &&
+        lastSent &&
+        (now - lastSent.at < SEND_MIN_INTERVAL_MS ||
+          distanceMeters(lastSent.point, point) < SEND_MIN_DISTANCE_M)
+      ) {
+        return;
+      }
+      lastSent = { point, at: now };
       updateLocation.mutate(
         { id: orderId, lat, lng },
         {
@@ -194,11 +244,18 @@ export function useShareLocationWhileEnRoute(orderId: string | undefined) {
       }
 
       const now = await readLastKnownPosition();
-      if (!cancelled && now) report(now.lat, now.lng);
+      if (now) report(now.lat, now.lng, true);
 
-      subscriptionRef.current = await Location.watchPositionAsync(FOREGROUND_LOCATION_WATCH, (position) => {
+      const sub = await Location.watchPositionAsync(ACTIVE_ORDER_LOCATION_WATCH, (position) => {
         report(position.coords.latitude, position.coords.longitude);
       });
+      if (cancelled) {
+        sub.remove();
+        return;
+      }
+      subscriptionRef.current = sub;
+
+      void startOrderBackgroundTracking(orderId);
     })().catch((err) => console.warn("[location] useShareLocationWhileEnRoute falhou:", err));
 
     return () => {
