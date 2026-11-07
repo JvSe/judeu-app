@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { EXPIRY_NOTES } from "./cron/expire-orders";
-import { type MetricsOrder, acceptanceStats, funnel, repurchase30d } from "./metrics";
+import { type MetricsOrder, acceptanceStats, etaStats, funnel, geocodeStats, repurchase30d } from "./metrics";
 
 const now = new Date("2026-11-06T12:00:00Z");
 const minAgo = (m: number) => new Date(now.getTime() - m * 60_000).toISOString().replace("Z", "");
@@ -87,5 +87,24 @@ describe("repurchase30d", () => {
       now,
     );
     expect(r).toEqual({ cohort: 2, repurchased: 1, rate: 0.5 });
+  });
+});
+
+describe("etaStats / geocodeStats (gatilhos de migração)", () => {
+  it("mediana do erro e fatia acima de 20%", () => {
+    expect(etaStats([{ errorRatio: 0.1 }, { errorRatio: 0.3 }, { errorRatio: 0.05 }])).toEqual({
+      samples: 3,
+      medianErrorRatio: 0.1,
+      shareOver20: 1 / 3,
+    });
+    expect(etaStats([])).toEqual({ samples: 0, medianErrorRatio: null, shareOver20: null });
+  });
+
+  it("taxa de falha de geocodificação", () => {
+    expect(geocodeStats([{ ok: true }, { ok: false }, { ok: true }, { ok: true }])).toEqual({
+      attempts: 4,
+      failures: 1,
+      failureRate: 0.25,
+    });
   });
 });

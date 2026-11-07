@@ -2,7 +2,12 @@ import Link from "next/link";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@judeu/ui/components/card";
 
-import { ACCEPT_TARGET_MIN, loadMetricsReport } from "@/lib/metrics";
+import {
+  ACCEPT_TARGET_MIN,
+  ETA_ERROR_TRIGGER,
+  GEOCODE_FAILURE_TRIGGER,
+  loadMetricsReport,
+} from "@/lib/metrics";
 
 export const dynamic = "force-dynamic";
 
@@ -127,6 +132,26 @@ export default async function AdminMetricsPage({
           <Row label="Cancelados" value={`${funnel.cancelled} (${funnel.expired} expirados)`} />
           <Row label="Valor transacionado" value={money(funnel.gmvCents)} />
           <Row label="Receita da plataforma" value={money(funnel.platformRevenueCents)} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Gatilhos de migração (mapa e endereços)</CardTitle>
+          <CardDescription>
+            Acima do limite, vale migrar rotas/endereços para o Google (ver o plano, Fase 4).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-1 text-sm">
+          <Row
+            label={`Erro mediano do ETA (limite ${pct(ETA_ERROR_TRIGGER)})`}
+            value={`${pct(report.eta.medianErrorRatio)} · ${report.eta.samples} chegadas`}
+          />
+          <Row label="Chegadas com erro acima do limite" value={pct(report.eta.shareOver20)} />
+          <Row
+            label={`Endereços não encontrados (limite ${pct(GEOCODE_FAILURE_TRIGGER)})`}
+            value={`${pct(report.geocode.failureRate)} · ${report.geocode.failures} de ${report.geocode.attempts}`}
+          />
         </CardContent>
       </Card>
 

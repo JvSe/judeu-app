@@ -5,6 +5,7 @@ import type { Json, OrderRow, OrderStatus, PaymentMethod, PaymentStatus } from "
 import { coarsen, effectiveProviderPosition } from "./catalog";
 import { getConfig } from "./config";
 import { ensureUtcIso } from "./dates";
+import { recordEtaMeasurement, recordEtaPrediction } from "./eta-tracking";
 import { trackEvent } from "./events";
 import { completionWalletMovement, computeFees, feeRuleOf, resolveFeeRule } from "./fees";
 import { supabase } from "./db";
@@ -852,7 +853,11 @@ export async function updateOrderLocation(
 
   const updated = await fetchOrder(id);
   if (!updated) return { error: "Pedido não encontrado", status: 404 };
-  return withRoute(updated, toDTO(updated));
+  const dto = await withRoute(updated, toDTO(updated));
+  if (updated.status === "EN_ROUTE") {
+    void recordEtaPrediction(id, { etaMin: dto.tracking.etaMin, distanceKm: dto.tracking.distanceKm });
+  }
+  return dto;
 }
 
 const ACTION_NOTES: Record<OrderAction, string> = {
@@ -1002,6 +1007,7 @@ export async function transitionOrder(
   if (rule.to === "CANCELLED") {
     await refundIfPaid(id);
   }
+  if (action === "start_work") void recordEtaMeasurement(id);
 
   const recipientId = rule.by === "provider" ? order.clientId : updated.provider?.userId;
   if (recipientId) {

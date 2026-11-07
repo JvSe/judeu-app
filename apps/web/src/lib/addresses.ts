@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { supabase } from "./db";
+import { trackEvent } from "./events";
 import { geocodeAddress } from "./geo";
 import { FALLBACK_LAT, FALLBACK_LNG } from "./orders";
 
@@ -74,7 +75,10 @@ export async function listAddresses(userId: string): Promise<AddressDTO[]> {
   return (rows ?? []).map(toDTO);
 }
 
-async function resolveLatLng(input: AddressInput): Promise<{ lat: number; lng: number }> {
+async function resolveLatLng(
+  input: AddressInput,
+  userId?: string,
+): Promise<{ lat: number; lng: number }> {
   const query = [
     `${input.street}${input.number ? `, ${input.number}` : ""}`,
     input.neighborhood,
@@ -83,21 +87,35 @@ async function resolveLatLng(input: AddressInput): Promise<{ lat: number; lng: n
   ]
     .filter(Boolean)
     .join(", ");
+  // Gatilho do pitch: "erro de endereço > 3%" → hora de trocar a geocodificação.
+  const report = (ok: boolean, fallback?: "device" | "city_default", reason?: string) =>
+    void trackEvent({
+      type: "geocode.result",
+      userId,
+      props: { ok, city: input.city, ...(fallback ? { fallback } : {}), ...(reason ? { reason } : {}) },
+    });
+  let reason = "not_found";
   try {
     const geocoded = await geocodeAddress(query);
-    if (geocoded) return { lat: geocoded.lat, lng: geocoded.lng };
+    if (geocoded) {
+      report(true);
+      return { lat: geocoded.lat, lng: geocoded.lng };
+    }
     console.warn(`[addresses] Nominatim não encontrou resultado para "${query}"`);
   } catch (err) {
+    reason = "error";
     console.warn(`[addresses] geocodeAddress falhou para "${query}":`, err);
   }
   if (input.lat != null && input.lng != null) {
+    report(false, "device", reason);
     return { lat: input.lat, lng: input.lng };
   }
+  report(false, "city_default", reason);
   return { lat: FALLBACK_LAT, lng: FALLBACK_LNG };
 }
 
 export async function createAddress(userId: string, input: AddressInput): Promise<AddressDTO> {
-  const { lat, lng } = await resolveLatLng(input);
+  const { lat, lng } = await resolveLatLng(input, userId);
   const { count } = await supabase
     .from("address")
     .select("*", { count: "exact", head: true })
@@ -153,7 +171,7 @@ export async function updateAddress(
       neighborhood: input.neighborhood ?? existing.neighborhood ?? undefined,
       city: input.city ?? existing.city,
       state: input.state ?? existing.state,
-    });
+    }, userId);
     lat = resolved.lat;
     lng = resolved.lng;
   }

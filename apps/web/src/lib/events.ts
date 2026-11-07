@@ -9,8 +9,9 @@ import { supabase } from "./db";
 export const APP_EVENT_TYPES = [
   "search.performed",
   "search.no_results",
-  "geocode.failed",
+  "geocode.result",
   "nearby.viewed",
+  "order.eta_predicted",
   "order.eta_measured",
 ] as const;
 

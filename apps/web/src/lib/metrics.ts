@@ -141,6 +141,34 @@ export function repurchase30d(
   return { cohort, repurchased, rate: cohort ? repurchased / cohort : null };
 }
 
+/** Limites do pitch para migrar para Google (Routes / Geocoding). */
+export const ETA_ERROR_TRIGGER = 0.2;
+export const GEOCODE_FAILURE_TRIGGER = 0.03;
+
+export type EtaStats = { samples: number; medianErrorRatio: number | null; shareOver20: number | null };
+
+export function etaStats(measurements: { errorRatio: number }[]): EtaStats {
+  const ratios = measurements.map((m) => m.errorRatio).filter((r) => Number.isFinite(r));
+  if (ratios.length === 0) return { samples: 0, medianErrorRatio: null, shareOver20: null };
+  const m = median(ratios.map((r) => Math.round(r * 1000)));
+  return {
+    samples: ratios.length,
+    medianErrorRatio: m == null ? null : m / 1000,
+    shareOver20: ratios.filter((r) => r > ETA_ERROR_TRIGGER).length / ratios.length,
+  };
+}
+
+export type GeocodeStats = { attempts: number; failures: number; failureRate: number | null };
+
+export function geocodeStats(results: { ok: boolean }[]): GeocodeStats {
+  const failures = results.filter((r) => !r.ok).length;
+  return {
+    attempts: results.length,
+    failures,
+    failureRate: results.length ? failures / results.length : null,
+  };
+}
+
 export type MetricsReport = {
   from: string;
   to: string;
@@ -149,6 +177,8 @@ export type MetricsReport = {
   repurchase: Repurchase;
   incidents: { category: string; count: number }[];
   byChannel: { channel: string; newClients: number }[];
+  eta: EtaStats;
+  geocode: GeocodeStats;
 };
 
 type OrderQueryRow = Omit<MetricsOrder, "neighborhood" | "categoryName"> & {
@@ -162,7 +192,7 @@ export async function loadMetricsReport(days: number, now = new Date()): Promise
   const from = new Date(now.getTime() - days * DAY);
   const fromIso = from.toISOString();
 
-  const [ordersRes, historyRes, ticketsRes, usersRes] = await Promise.all([
+  const [ordersRes, historyRes, ticketsRes, usersRes, eventsRes] = await Promise.all([
     supabase
       .from("order")
       .select(
@@ -177,7 +207,14 @@ export async function loadMetricsReport(days: number, now = new Date()): Promise
       .limit(20_000),
     supabase.from("supportticket").select("category").gte("createdAt", fromIso).limit(5_000),
     supabase.from("user").select("acquisitionChannel").gte("createdAt", fromIso).limit(10_000),
+    supabase
+      .from("appevent")
+      .select("type, props")
+      .in("type", ["order.eta_measured", "geocode.result"])
+      .gte("createdAt", fromIso)
+      .limit(20_000),
   ]);
+  const events = (eventsRes.data ?? []) as { type: string; props: Record<string, unknown> | null }[];
   if (ordersRes.error) throw new Error(ordersRes.error.message);
 
   const orders: MetricsOrder[] = ((ordersRes.data ?? []) as unknown as OrderQueryRow[]).map((o) => ({
@@ -207,5 +244,13 @@ export async function loadMetricsReport(days: number, now = new Date()): Promise
     byChannel: [...channels.entries()]
       .map(([channel, newClients]) => ({ channel, newClients }))
       .sort((a, b) => b.newClients - a.newClients),
+    eta: etaStats(
+      events
+        .filter((e) => e.type === "order.eta_measured")
+        .map((e) => ({ errorRatio: Number(e.props?.errorRatio) })),
+    ),
+    geocode: geocodeStats(
+      events.filter((e) => e.type === "geocode.result").map((e) => ({ ok: e.props?.ok === true })),
+    ),
   };
 }
