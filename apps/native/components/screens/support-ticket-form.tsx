@@ -63,7 +63,7 @@ export function SupportTicketForm({ role }: { role: "client" | "provider" }) {
         orderId,
       });
       toast.success("Chamado aberto");
-      router.replace(`/client/support-ticket/` as never);
+      router.replace(`/client/support-ticket/${ticket.id}` as never);
     } catch (e) {
       const message = errorMessage(e, "Não foi possível abrir o chamado.");
       setSubmitError(message);

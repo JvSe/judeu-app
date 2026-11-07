@@ -46,7 +46,7 @@ export function SupportScreen({ role }: { role: SupportRole }) {
             ) : (
               <View style={styles.ticketList}>
                 {tickets!.map((t) => (
-                  <Pressable key={t.id} onPress={() => router.push(`/client/support-ticket/` as never)}>
+                  <Pressable key={t.id} onPress={() => router.push(`/client/support-ticket/${t.id}` as never)}>
                     <View style={styles.ticketCard}>
                       <View style={styles.ticketTop}>
                         <Text style={styles.ticketSubject} numberOfLines={1}>

@@ -73,6 +73,8 @@ export async function createSupportTicket(
       category: input.category,
       subject: input.subject,
       message: input.message,
+      // A coluna não tem default no banco: sem isto o insert dava 500 (QA C-02).
+      updatedAt: new Date().toISOString(),
     })
     .select("*")
     .single();
