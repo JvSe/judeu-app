@@ -12,7 +12,7 @@ describe("moneyLabel", () => {
 
 describe("computeAcceptedTotals", () => {
   it("bate com o mesmo exemplo verificado em orders.test.ts (R$60 -> taxa R$4,80 -> total R$64,80)", () => {
-    expect(computeAcceptedTotals(6000)).toEqual({ platformFeeCents: 480, totalCents: 6480 });
+    expect(computeAcceptedTotals(6000)).toEqual({ platformFeeCents: 480, totalCents: 6480, discountCents: 0 });
   });
 
   it("nunca gera um total menor que o preço proposto", () => {
@@ -29,6 +29,15 @@ describe("computeAcceptedTotals com a regra do pedido", () => {
     expect(computeAcceptedTotals(6000, { rate: 0.2, payer: "PROVIDER" })).toEqual({
       platformFeeCents: 1200,
       totalCents: 6000,
+      discountCents: 0,
+    });
+  });
+
+  it("o desconto do pedido continua valendo no novo preço", () => {
+    expect(computeAcceptedTotals(6000, { rate: 0.2, payer: "PROVIDER" }, 1000)).toEqual({
+      platformFeeCents: 1200,
+      totalCents: 5000,
+      discountCents: 1000,
     });
   });
 });

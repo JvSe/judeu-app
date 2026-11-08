@@ -19,7 +19,8 @@ import { haversineKm, routeBetween } from "./geo";
 import { notifyUser } from "./notifications";
 import { onDutyAnchorIds } from "./anchors-admin";
 import { type EscalationLevel, escalationTarget, radiusScale } from "./escalation";
-import { areaDenial, type AreaStatus } from "./zones";
+import { releaseOrderDiscounts, recordDiscountUse, resolveDiscount } from "./discounts";
+import { areaDenial, type AreaStatus, formatBrasiliaDateTime } from "./zones";
 import { checkArea } from "./zones-db";
 import { applyWalletMovement, refundIfPaid, syncOrderPaymentStatus } from "./payments";
 import { batchClientStats } from "./profile";
@@ -135,6 +136,9 @@ type OrderFull = {
   doorCode?: string | null;
   doorCodeAttempts?: number | null;
   escalationLevel?: number | null;
+  discountCents?: number | null;
+  creditUsedCents?: number | null;
+  couponCode?: string | null;
   riskLevel?: number | null;
   prefMinRating?: number | null;
   prefMinCompleted?: number | null;
@@ -210,6 +214,9 @@ export type OrderDTO = {
   feeRate: number;
   /** O que quem atende recebe por este pedido. */
   providerNetCents: number;
+  /** Desconto (cupom + crédito) já abatido do total. A plataforma absorve. */
+  discountCents: number;
+  couponCode: string | null;
   /** Quem atende precisa digitar o código de chegada para iniciar (o código em si nunca vai no DTO). */
   requiresDoorCode: boolean;
   /** 1 livre · 2 selo de reparos · 3 profissional com credencial. */
@@ -265,6 +272,9 @@ function toDTO(o: OrderFull, unreadMessages = 0): OrderDTO {
   const dest = trackingDestination(o);
   const openWait = o.isOpenRequest && !o.providerId && o.status === "CREATED";
   const createdAtMs = new Date(ensureUtcIso(o.createdAt)).getTime();
+  // Ajuda aberta agendada só começa a expirar no horário marcado (mesma regra do cron).
+  const waitStartMs =
+    openWait && o.scheduledAt ? Math.max(createdAtMs, new Date(ensureUtcIso(o.scheduledAt)).getTime()) : createdAtMs;
   return {
     id: o.id,
     status: o.status,
@@ -277,13 +287,15 @@ function toDTO(o: OrderFull, unreadMessages = 0): OrderDTO {
     feeRate: feeRuleOf(o).rate,
     providerNetCents:
       feeRuleOf(o).payer === "PROVIDER" ? o.priceCents - o.platformFeeCents : o.priceCents,
+    discountCents: o.discountCents ?? 0,
+    couponCode: o.couponCode ?? null,
     requiresDoorCode: !!o.doorCode,
     riskLevel: normalizeRisk(o.riskLevel),
     preferences: orderPreferences(o),
     cancelReason: o.cancelReason,
     createdAt: o.createdAt,
     offerExpiresAt: new Date(
-      createdAtMs + (openWait ? OPEN_REQUEST_TTL_MS : OFFER_TTL_MS),
+      waitStartMs + (openWait ? OPEN_REQUEST_TTL_MS : OFFER_TTL_MS),
     ).toISOString(),
     isOpenRequest: o.isOpenRequest,
     detailsReady: o.detailsReady,
@@ -442,6 +454,10 @@ export type CreateOrderInput = {
   preferences?: OrderPreferences;
   /** Sugestão de risco da IA (1–4). Só sobe o nível da categoria, nunca baixa. */
   riskHint?: number;
+  /** Cupom digitado pelo cliente. */
+  couponCode?: string;
+  /** Abater o crédito do cliente. */
+  useCredits?: boolean;
 };
 
 /** Perfil elegível a push de ajuda aberta (modo atendimento ligado). */
@@ -628,7 +644,7 @@ async function notifyAvailableProviders(order: OrderFull) {
       continue;
     }
     void notifyUser(p.userId, "ORDER", {
-      title: "Nova solicitação",
+      title: order.scheduledAt ? `Nova solicitação para ${formatBrasiliaDateTime(order.scheduledAt)}` : "Nova solicitação",
       body,
       data: { type: "order", orderId: order.id, role: "provider" },
     });
@@ -885,7 +901,15 @@ export async function createOrder(
     .eq("id", clientId)
     .maybeSingle();
   const shareToken = clientRow?.trustedContactEmail ? newShareToken() : null;
-  const { platformFeeCents, totalCents } = computeFees(priceCents, feeRule);
+  // Cupom e crédito: o desconto sai da parte da plataforma (quem atende recebe igual).
+  const discount = await resolveDiscount(clientId, {
+    couponCode: input.couponCode,
+    useCredits: input.useCredits,
+    priceCents,
+    grossTotalCents: computeFees(priceCents, feeRule).totalCents,
+  });
+  if ("error" in discount) return discount;
+  const { platformFeeCents, totalCents, discountCents } = computeFees(priceCents, feeRule, discount.totalCents);
   const orderId = randomUUID();
 
   const { data: created, error } = await supabase.rpc("create_order_with_event", {
@@ -924,8 +948,22 @@ export async function createOrder(
         : {}),
       riskLevel,
       expectedDurationMin: category?.expectedDurationMin ?? config.defaultExpectedDurationMin,
+      ...(discountCents > 0
+        ? {
+            discountCents,
+            creditUsedCents: discount.creditCents,
+            couponId: discount.couponCents > 0 ? discount.couponId : null,
+            couponCode: discount.couponCents > 0 ? discount.couponCode : null,
+          }
+        : {}),
     })
     .eq("id", (created as OrderRow).id);
+  if (discountCents > 0) {
+    await recordDiscountUse((created as OrderRow).id, clientId, {
+      ...discount,
+      couponId: discount.couponCents > 0 ? discount.couponId : null,
+    });
+  }
 
   const order = await fetchOrder((created as OrderRow).id);
   if (!order) return { error: "Pedido criado mas não encontrado", status: 500 };
@@ -992,7 +1030,8 @@ async function listNearbyOpenRequests(
   const origin = effectiveProviderPosition(profile);
   if (!origin) return [];
   const config = await getConfig();
-  const minCreatedAt = new Date(Date.now() - OPEN_REQUEST_TTL_MS).toISOString();
+  // Agendada conta a partir do horário marcado (mesma regra da expiração no cron).
+  const minStart = new Date(Date.now() - config.openRequestTtlMs).toISOString();
   const { data: rows } = await supabase
     .from("order")
     .select(ORDER_SELECT)
@@ -1000,7 +1039,7 @@ async function listNearbyOpenRequests(
     .is("providerId", null)
     .eq("status", "CREATED")
     .neq("clientId", userId)
-    .gte("createdAt", minCreatedAt)
+    .or(`createdAt.gte.${minStart},scheduledAt.gte.${minStart}`)
     .order("createdAt", { ascending: false })
     .limit(200);
   return ((rows ?? []) as unknown as OrderFull[])
@@ -1389,6 +1428,7 @@ export async function transitionOrder(
   }
   if (rule.to === "CANCELLED") {
     await refundIfPaid(id);
+    await releaseOrderDiscounts(id);
   }
   if (action === "start_work") void recordEtaMeasurement(id);
   const familyEvents: Partial<Record<OrderAction, FamilyEvent>> = {

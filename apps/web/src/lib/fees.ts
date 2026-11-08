@@ -10,23 +10,41 @@ export type FeeRule = { rate: number; payer: FeePayer };
 export const LEGACY_FEE_RULE: FeeRule = { rate: 0.08, payer: "CLIENT" };
 
 export type FeeBreakdown = {
-  /** Parte da plataforma. */
+  /** Parte da plataforma (antes do desconto, que ela mesma absorve). */
   platformFeeCents: number;
-  /** O que o cliente paga. */
+  /** O que o cliente paga (já com o desconto). */
   totalCents: number;
-  /** O que quem atende recebe. */
+  /** O que quem atende recebe — o desconto não mexe nisso. */
   providerNetCents: number;
+  /** Desconto aplicado de fato (cupom + crédito), depois do teto. */
+  discountCents: number;
 };
+
+/** O desconto nunca deixa o total abaixo disto (mínimo de cobrança no cartão). */
+export const MIN_TOTAL_AFTER_DISCOUNT_CENTS = 100;
+
+/** Teto do desconto para um total bruto. */
+export function maxDiscountFor(grossTotalCents: number): number {
+  return Math.max(0, grossTotalCents - MIN_TOTAL_AFTER_DISCOUNT_CENTS);
+}
 
 /**
  * CLIENT: a taxa é somada ao preço (cliente paga preço + taxa; quem atende recebe o preço).
  * PROVIDER: a taxa sai do preço (cliente paga o preço; quem atende recebe preço − taxa).
  */
-export function computeFees(priceCents: number, rule: FeeRule): FeeBreakdown {
+export function computeFees(priceCents: number, rule: FeeRule, discountCents = 0): FeeBreakdown {
   const platformFeeCents = Math.round(priceCents * rule.rate);
-  return rule.payer === "PROVIDER"
-    ? { platformFeeCents, totalCents: priceCents, providerNetCents: priceCents - platformFeeCents }
-    : { platformFeeCents, totalCents: priceCents + platformFeeCents, providerNetCents: priceCents };
+  const gross =
+    rule.payer === "PROVIDER"
+      ? { totalCents: priceCents, providerNetCents: priceCents - platformFeeCents }
+      : { totalCents: priceCents + platformFeeCents, providerNetCents: priceCents };
+  const applied = Math.min(Math.max(0, Math.round(discountCents)), maxDiscountFor(gross.totalCents));
+  return {
+    platformFeeCents,
+    totalCents: gross.totalCents - applied,
+    providerNetCents: gross.providerNetCents,
+    discountCents: applied,
+  };
 }
 
 /** Regra para um pedido novo: taxa da categoria (se houver) ou a da configuração. */
@@ -59,12 +77,25 @@ export type WalletMovement =
  */
 export function completionWalletMovement(
   rule: FeeRule,
-  order: { priceCents: number; platformFeeCents: number },
+  order: { priceCents: number; platformFeeCents: number; totalCents?: number; discountCents?: number | null },
   payment: { method: string; paid: boolean } | null,
 ): WalletMovement {
   if (!payment) return null;
   const isCash = payment.method === "CASH";
   if (!isCash && !payment.paid) return null;
+
+  // Com desconto em dinheiro: quem atende recebeu só o total (já descontado) em
+  // mãos. A carteira acerta a diferença até o líquido dele (o desconto é da plataforma).
+  const discount = order.discountCents ?? 0;
+  if (discount > 0 && isCash && order.totalCents != null) {
+    const net = computeFees(order.priceCents, rule).providerNetCents;
+    const diff = net - order.totalCents;
+    if (diff > 0) return { type: "CREDIT", amountCents: diff, description: "Reembolso do desconto dado ao cliente" };
+    if (diff < 0) {
+      return { type: "DEBIT", amountCents: -diff, description: "Taxa da plataforma (pedido recebido em dinheiro)" };
+    }
+    return null;
+  }
 
   if (rule.payer === "CLIENT") {
     return order.priceCents > 0

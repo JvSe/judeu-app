@@ -16,6 +16,7 @@ import type { BadgeType, RiskLevel } from "@/lib/risk";
 import { setCategoryRisk, setProviderBadge } from "@/lib/risk-admin";
 import { markReportReviewed, setUserBlocked } from "@/lib/moderation";
 import { cancelShift, createShift } from "@/lib/anchors-admin";
+import { createCoupon, findUserIdByEmail, grantCredit, setCouponActive } from "@/lib/discounts";
 import { createZone, deleteZone, updateZone } from "@/lib/zones-db";
 import { brasiliaToUtc, parseClock, parsePolygonInput } from "@/lib/zones";
 import { markSupportTicketInProgress, respondToSupportTicket as respondTicket } from "@/lib/support";
@@ -156,4 +157,79 @@ export async function cancelAnchorShift(shiftId: string): Promise<void> {
   await requireAdminSession();
   await cancelShift(shiftId);
   revalidatePath("/admin/anchors");
+}
+
+/** "10,50" → 1050; vazio → null; inválido → NaN. */
+function reaisToCents(value: FormDataEntryValue | null): number | null {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  return Math.round(Number(text.replace(",", ".")) * 100);
+}
+
+function optionalInt(value: FormDataEntryValue | null): number | null {
+  const text = String(value ?? "").trim();
+  return text ? Number(text) : null;
+}
+
+export async function createDiscountCoupon(formData: FormData): Promise<void> {
+  await requireAdminSession();
+  const fail = (msg: string) => redirect(`/admin/coupons?error=${encodeURIComponent(msg)}`);
+  const code = String(formData.get("code") ?? "").trim();
+  const kind = formData.get("kind") === "FIXED" ? "FIXED" : "PERCENT";
+  const rawValue = String(formData.get("value") ?? "").trim();
+  const value = kind === "FIXED" ? reaisToCents(rawValue) : Number(rawValue);
+  const maxDiscountCents = reaisToCents(formData.get("maxDiscount"));
+  const minPriceCents = reaisToCents(formData.get("minPrice"));
+  const maxRedemptions = optionalInt(formData.get("maxRedemptions"));
+  const perUserLimit = optionalInt(formData.get("perUserLimit")) ?? 1;
+  const expiresOn = String(formData.get("expiresOn") ?? "").trim();
+  const expiresAt = expiresOn ? brasiliaToUtc(expiresOn, 1440) : null;
+
+  if (!/^[A-Za-z0-9_-]{3,40}$/.test(code)) fail("Código: 3 a 40 letras, números, - ou _.");
+  if (value == null || !Number.isInteger(value) || value <= 0) fail("Valor do desconto inválido.");
+  if (kind === "PERCENT" && value! > 100) fail("Percentual vai de 1 a 100.");
+  for (const n of [maxDiscountCents, minPriceCents, maxRedemptions]) {
+    if (n != null && (!Number.isFinite(n) || n <= 0)) fail("Teto, mínimo e usos precisam ser positivos.");
+  }
+  if (!Number.isInteger(perUserLimit) || perUserLimit < 1) fail("Usos por pessoa: pelo menos 1.");
+  if (expiresOn && !expiresAt) fail("Data de vencimento inválida.");
+
+  try {
+    await createCoupon({
+      code,
+      kind,
+      value: value!,
+      maxDiscountCents,
+      minPriceCents,
+      maxRedemptions,
+      perUserLimit,
+      firstOrderOnly: formData.get("firstOrderOnly") === "on",
+      startsAt: null,
+      expiresAt,
+    });
+  } catch (err) {
+    fail(err instanceof Error ? err.message : "Falha ao criar o cupom.");
+  }
+  revalidatePath("/admin/coupons");
+  redirect("/admin/coupons");
+}
+
+export async function toggleCoupon(couponId: string, active: boolean): Promise<void> {
+  await requireAdminSession();
+  await setCouponActive(couponId, active);
+  revalidatePath("/admin/coupons");
+}
+
+export async function grantClientCredit(formData: FormData): Promise<void> {
+  await requireAdminSession();
+  const fail = (msg: string) => redirect(`/admin/coupons?error=${encodeURIComponent(msg)}`);
+  const email = String(formData.get("email") ?? "");
+  const amount = reaisToCents(formData.get("amount"));
+  const reason = String(formData.get("reason") ?? "").trim() || "Cortesia";
+  if (amount == null || !Number.isFinite(amount) || amount <= 0) fail("Valor inválido.");
+  const userId = await findUserIdByEmail(email);
+  if (!userId) fail("Nenhum usuário com esse e-mail.");
+  await grantCredit(userId!, amount!, reason);
+  revalidatePath("/admin/coupons");
+  redirect(`/admin/coupons?ok=${encodeURIComponent("Crédito concedido.")}`);
 }

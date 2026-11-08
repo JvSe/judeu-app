@@ -529,6 +529,9 @@ export type Order = {
   feeRate: number;
   /** O que quem atende recebe por este pedido. */
   providerNetCents: number;
+  /** Desconto (cupom + crédito) já abatido do total. */
+  discountCents?: number;
+  couponCode?: string | null;
   /** Quem atende precisa digitar o código de chegada para iniciar. */
   requiresDoorCode: boolean;
   /** 1 livre · 2 selo de reparos · 3 profissional com credencial. */
@@ -592,6 +595,20 @@ export type CreateOrderInput = {
   preferences?: OrderPreferences;
   /** Sugestão de risco da IA (1–4); só sobe o nível da categoria. */
   riskHint?: number;
+  /** Cupom digitado pelo cliente. */
+  couponCode?: string;
+  /** Abater o crédito do cliente. */
+  useCredits?: boolean;
+};
+
+/** Prévia do desconto (cupom + crédito) antes de criar o pedido. */
+export type DiscountPreview = {
+  couponLabel: string | null;
+  couponCents: number;
+  creditCents: number;
+  creditBalanceCents: number;
+  discountCents: number;
+  totalCents: number;
 };
 
 /** Preferências de quem atende (ajuda aberta): nota mínima, tarefas concluídas, gênero. */
@@ -627,6 +644,12 @@ export type SuggestedPrice = {
 };
 
 export const ordersApi = {
+  discountPreview(input: { priceCents: number; categoryId?: string; couponCode?: string; useCredits?: boolean }) {
+    return apiFetch<DiscountPreview>("/api/orders/discount-preview", { method: "POST", body: input });
+  },
+  creditBalance() {
+    return apiFetch<{ balanceCents: number }>("/api/credits").then((r) => r.balanceCents);
+  },
   suggestedPrice(categoryId?: string) {
     const qs = categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : "";
     return apiFetch<SuggestedPrice>(`/api/orders/suggested-price${qs}`);

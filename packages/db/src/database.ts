@@ -179,6 +179,9 @@ export type OrderRow = {
   couponCode: string | null;
   escalationLevel: number;
   escalatedAt: string | null;
+  discountCents: number;
+  creditUsedCents: number;
+  couponId: string | null;
   cancelReason: string | null;
   acceptedAt: string | null;
   completedAt: string | null;
@@ -410,6 +413,41 @@ export type AnchorShiftRow = {
   createdAt: string;
 };
 
+export type CouponRow = {
+  id: string;
+  code: string;
+  kind: "PERCENT" | "FIXED";
+  value: number;
+  maxDiscountCents: number | null;
+  minPriceCents: number | null;
+  maxRedemptions: number | null;
+  perUserLimit: number;
+  firstOrderOnly: boolean;
+  startsAt: string | null;
+  expiresAt: string | null;
+  active: boolean;
+  createdAt: string;
+};
+
+export type CouponRedemptionRow = {
+  id: string;
+  couponId: string;
+  userId: string;
+  orderId: string;
+  discountCents: number;
+  createdAt: string;
+};
+
+export type ClientCreditRow = {
+  id: string;
+  userId: string;
+  amountCents: number;
+  kind: "GRANT" | "USE" | "REFUND";
+  reason: string | null;
+  orderId: string | null;
+  createdAt: string;
+};
+
 type TableDef<Row> = {
   Row: Row;
   Insert: Partial<Row> & Record<string, unknown>;
@@ -451,6 +489,9 @@ export type Database = {
       report: TableDef<ReportRow>;
       servicezone: TableDef<ServiceZoneRow>;
       anchorshift: TableDef<AnchorShiftRow>;
+      coupon: TableDef<CouponRow>;
+      couponredemption: TableDef<CouponRedemptionRow>;
+      clientcredit: TableDef<ClientCreditRow>;
     };
     Views: Record<string, never>;
     Functions: {

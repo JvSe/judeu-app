@@ -1,5 +1,6 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { useQuery } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
@@ -10,11 +11,13 @@ import { Screen } from "@/components/ui/screen";
 import { fonts } from "@/constants/fonts";
 import { previewOrderTotals } from "@/lib/fees";
 import { formatAddressLine, moneyFromCents } from "@/lib/format";
+import { ordersApi } from "@/lib/api";
 import { availabilityLabel } from "@/lib/availability";
 import {
   useAddresses,
   useAppConfig,
   useCreateOrder,
+  useCreditBalance,
   useOpenRequestAvailability,
   useProvider,
   useSuggestedPrice,
@@ -35,6 +38,16 @@ function parseScheduledAt(date: string, time: string): Date | null {
     parsed.getHours() === Number(hh) &&
     parsed.getMinutes() === Number(min);
   return valid ? parsed : null;
+}
+
+/** ISO → campos "DD/MM/AAAA" e "HH:MM" no fuso do aparelho. */
+function toScheduleFields(iso: string): { date: string; time: string } {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return {
+    date: `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`,
+    time: `${p(d.getHours())}:${p(d.getMinutes())}`,
+  };
 }
 
 export default function ConfirmCall() {
@@ -73,6 +86,11 @@ export default function ConfirmCall() {
   const services = provider?.services;
   const createOrder = useCreateOrder();
   const appConfig = useAppConfig();
+  // Cupom e crédito (Fase 6): o desconto sai da parte da plataforma.
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
+  const [useCredits, setUseCredits] = useState(false);
+  const { data: creditBalanceCents = 0 } = useCreditBalance();
   // Preferências de quem atende (pitch: idoso escolhe nota, experiência, só mulheres).
   const [prefRating, setPrefRating] = useState(false);
   const [prefExperienced, setPrefExperienced] = useState(false);
@@ -94,6 +112,18 @@ export default function ConfirmCall() {
   );
   const availabilityText = availability ? availabilityLabel(availability) : null;
   const areaOpen = (availability?.area?.status ?? "OPEN") === "OPEN";
+  // Fora do horário da zona: só dá para agendar; já sugere a próxima abertura.
+  const areaClosed = availability?.area?.status === "CLOSED";
+  const nextOpenAt = availability?.area?.status === "CLOSED" ? availability.area.nextOpenAt : null;
+  useEffect(() => {
+    if (!areaClosed) return;
+    setWhen("agendar");
+    if (nextOpenAt) {
+      const fields = toScheduleFields(nextOpenAt);
+      setScheduleDate((current) => current || fields.date);
+      setScheduleTime((current) => current || fields.time);
+    }
+  }, [areaClosed, nextOpenAt]);
   const { data: suggested } = useSuggestedPrice(params.categoryId, isOpenRequest);
   const suggestedReais = suggested ? String(Math.round(suggested.priceCents / 100)) : null;
 
@@ -123,12 +153,47 @@ export default function ConfirmCall() {
       : 0
     : (selectedService?.priceCents ?? (params.priceCents ? Number(params.priceCents) : 0));
   const { totalCents } = previewOrderTotals(priceCents, appConfig);
+  const wantsDiscount = Boolean(appliedCoupon) || useCredits;
+  const discountQuery = useQuery({
+    queryKey: ["discount-preview", priceCents, params.categoryId ?? null, appliedCoupon, useCredits],
+    queryFn: () =>
+      ordersApi.discountPreview({
+        priceCents,
+        categoryId: params.categoryId,
+        couponCode: appliedCoupon ?? undefined,
+        useCredits,
+      }),
+    enabled: wantsDiscount && priceCents >= 100,
+    retry: false,
+  });
+  const discount = wantsDiscount && discountQuery.data ? discountQuery.data : null;
+  const discountError =
+    wantsDiscount && discountQuery.error ? errorMessage(discountQuery.error, "Não foi possível aplicar o desconto.") : null;
+  const payableCents = discount ? discount.totalCents : totalCents;
+  // Cupom recusado não vai no pedido (a API recusaria o pedido inteiro).
+  const discountInput = {
+    ...(appliedCoupon && !discountError ? { couponCode: appliedCoupon } : {}),
+    ...(useCredits ? { useCredits: true } : {}),
+  };
   const totalLabel = appConfig.feePayer === "CLIENT" ? "Total com taxa" : "Total";
   const providerName = provider?.name ?? params.providerName ?? "Pessoa";
   const selectedAddress = addresses?.find((a) => a.id === selectedAddressId);
   const scheduled = when === "agendar";
   const canNegotiate =
     scheduled && (provider?.allowsNegotiation || params.allowsNegotiation === "true");
+
+  /** Lê o agendamento; avisa e devolve ok=false se a data for inválida ou passada. */
+  const readScheduledAt = (): { ok: true; value?: string } | { ok: false } => {
+    if (!scheduled) return { ok: true };
+    const parsed = parseScheduledAt(scheduleDate, scheduleTime);
+    if (!parsed || parsed.getTime() <= Date.now()) {
+      const message = "Informe uma data e hora futuras.";
+      setSubmitError(message);
+      toast.warning(message);
+      return { ok: false };
+    }
+    return { ok: true, value: parsed.toISOString() };
+  };
 
   const onConfirm = async () => {
     setSubmitError(null);
@@ -145,15 +210,19 @@ export default function ConfirmCall() {
         toast.warning(message);
         return;
       }
+      const schedule = readScheduledAt();
+      if (!schedule.ok) return;
       try {
         const order = await createOrder.mutateAsync({
           categoryId: params.categoryId,
           description: note.trim(),
           priceCents: offeredCents,
+          scheduledAt: schedule.value,
           ...(hasPrefs ? { preferences } : {}),
           ...(riskHint ? { riskHint } : {}),
+          ...discountInput,
         });
-        toast.success("Pedido publicado");
+        toast.success(schedule.value ? "Pedido agendado" : "Pedido publicado");
         router.replace({ pathname: "/client/waiting/[id]", params: { id: order.id } } as never);
       } catch (e) {
         const message = errorMessage(e, "Não foi possível publicar.");
@@ -175,17 +244,9 @@ export default function ConfirmCall() {
       toast.warning(message);
       return;
     }
-    let scheduledAt: string | undefined;
-    if (scheduled) {
-      const parsed = parseScheduledAt(scheduleDate, scheduleTime);
-      if (!parsed || parsed.getTime() <= Date.now()) {
-        const message = "Informe uma data e hora futuras.";
-        setSubmitError(message);
-        toast.warning(message);
-        return;
-      }
-      scheduledAt = parsed.toISOString();
-    }
+    const schedule = readScheduledAt();
+    if (!schedule.ok) return;
+    const scheduledAt = schedule.value;
     try {
       const order = await createOrder.mutateAsync({
         providerId: params.providerId,
@@ -194,6 +255,7 @@ export default function ConfirmCall() {
         description: note.trim() || undefined,
         scheduledAt,
         addressId: selectedAddress.id,
+        ...discountInput,
       });
       toast.success("Chamada enviada");
       if (canNegotiate) {
@@ -207,6 +269,90 @@ export default function ConfirmCall() {
       toast.error(message);
     }
   };
+
+  const whenSection = (
+    <>
+      <Text style={styles.label}>Quando</Text>
+      <View style={styles.whenRow}>
+        <Pressable
+          style={[styles.whenChip, when === "agora" && styles.whenChipOn, areaClosed && { opacity: 0.4 }]}
+          onPress={() => !areaClosed && setWhen("agora")}
+          disabled={areaClosed}
+        >
+          <Text style={[styles.whenText, when === "agora" && styles.whenTextOn]}>Agora</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.whenChip, scheduled && styles.whenChipOn]}
+          onPress={() => setWhen("agendar")}
+        >
+          <Text style={[styles.whenText, scheduled && styles.whenTextOn]}>Agendar</Text>
+        </Pressable>
+      </View>
+      {scheduled && (
+        <View style={styles.whenRow}>
+          <TextInput
+            style={styles.input}
+            value={scheduleDate}
+            onChangeText={setScheduleDate}
+            placeholder="DD/MM/AAAA"
+            placeholderTextColor={theme.colors.mutedForeground}
+          />
+          <TextInput
+            style={styles.input}
+            value={scheduleTime}
+            onChangeText={setScheduleTime}
+            placeholder="HH:MM"
+            placeholderTextColor={theme.colors.mutedForeground}
+          />
+        </View>
+      )}
+    </>
+  );
+
+  const discountSection = (
+    <>
+      <Text style={styles.label}>Cupom (opcional)</Text>
+      <View style={styles.whenRow}>
+        <TextInput
+          style={styles.input}
+          value={couponInput}
+          onChangeText={(text) => {
+            setCouponInput(text);
+            if (appliedCoupon) setAppliedCoupon(null);
+          }}
+          placeholder="Código do cupom"
+          placeholderTextColor={theme.colors.mutedForeground}
+          autoCapitalize="characters"
+          autoCorrect={false}
+        />
+        <Pressable
+          style={({ pressed }) => [styles.suggestion, { marginTop: 0, opacity: pressed ? 0.8 : 1 }]}
+          onPress={() => setAppliedCoupon(couponInput.trim() ? couponInput.trim().toUpperCase() : null)}
+        >
+          <Text style={styles.suggestionText}>Aplicar</Text>
+        </Pressable>
+      </View>
+      {creditBalanceCents > 0 && (
+        <Pressable style={styles.prefRow} onPress={() => setUseCredits(!useCredits)}>
+          <Ionicons
+            name={useCredits ? "checkbox" : "square-outline"}
+            size={20}
+            color={useCredits ? theme.colors.primary : theme.colors.mutedForeground}
+          />
+          <Text style={styles.prefText}>Usar meus créditos ({moneyFromCents(creditBalanceCents)})</Text>
+        </Pressable>
+      )}
+      {discountError ? (
+        <Text style={[styles.muted, { color: theme.colors.destructive }]}>{discountError}</Text>
+      ) : discount && discount.discountCents > 0 ? (
+        <Text style={styles.muted}>
+          {discount.couponLabel ? `${discount.couponLabel}. ` : ""}
+          Desconto de {moneyFromCents(discount.discountCents)}
+          {discount.creditCents > 0 ? ` (${moneyFromCents(discount.creditCents)} do seu crédito)` : ""}.
+        </Text>
+      ) : null}
+    </>
+  );
 
   if (isOpenRequest) {
     return (
@@ -297,6 +443,9 @@ export default function ConfirmCall() {
             </Pressable>
           )}
 
+          {whenSection}
+          {discountSection}
+
           <Text style={styles.label}>Quem pode atender (opcional)</Text>
           {[
             { on: prefRating, set: setPrefRating, label: "Só com nota 4,8 ou mais" },
@@ -329,7 +478,7 @@ export default function ConfirmCall() {
           <View>
             <Text style={styles.footerLabel}>{totalLabel}</Text>
             <Text style={styles.footerPrice}>
-              {priceCents >= 100 ? moneyFromCents(totalCents) : "—"}
+              {priceCents >= 100 ? moneyFromCents(payableCents) : "—"}
             </Text>
           </View>
           <Pressable
@@ -430,45 +579,14 @@ export default function ConfirmCall() {
           </View>
         )}
 
-        <Text style={styles.label}>Quando</Text>
-        <View style={styles.whenRow}>
-          <Pressable
-            style={[styles.whenChip, when === "agora" && styles.whenChipOn]}
-            onPress={() => setWhen("agora")}
-          >
-            <Text style={[styles.whenText, when === "agora" && styles.whenTextOn]}>Agora</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.whenChip, scheduled && styles.whenChipOn]}
-            onPress={() => setWhen("agendar")}
-          >
-            <Text style={[styles.whenText, scheduled && styles.whenTextOn]}>Agendar</Text>
-          </Pressable>
-        </View>
-        {scheduled && (
-          <View style={styles.whenRow}>
-            <TextInput
-              style={styles.input}
-              value={scheduleDate}
-              onChangeText={setScheduleDate}
-              placeholder="DD/MM/AAAA"
-              placeholderTextColor={theme.colors.mutedForeground}
-            />
-            <TextInput
-              style={styles.input}
-              value={scheduleTime}
-              onChangeText={setScheduleTime}
-              placeholder="HH:MM"
-              placeholderTextColor={theme.colors.mutedForeground}
-            />
-          </View>
-        )}
+        {whenSection}
+        {discountSection}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         <View>
           <Text style={styles.footerLabel}>{totalLabel}</Text>
-          <Text style={styles.footerPrice}>{moneyFromCents(totalCents)}</Text>
+          <Text style={styles.footerPrice}>{moneyFromCents(payableCents)}</Text>
         </View>
         <Pressable
           style={[styles.callButton, createOrder.isPending && { opacity: 0.7 }]}

@@ -51,12 +51,15 @@ export function moneyLabel(cents: number): string {
 export function computeAcceptedTotals(
   priceCents: number,
   rule: FeeRule = LEGACY_FEE_RULE,
+  discountCents = 0,
 ): {
   platformFeeCents: number;
   totalCents: number;
+  discountCents: number;
 } {
-  const { platformFeeCents, totalCents } = computeFees(priceCents, rule);
-  return { platformFeeCents, totalCents };
+  // O desconto do pedido (cupom + crédito) continua valendo no novo preço, até o teto.
+  const fees = computeFees(priceCents, rule, discountCents);
+  return { platformFeeCents: fees.platformFeeCents, totalCents: fees.totalCents, discountCents: fees.discountCents };
 }
 
 type NegotiableOrder = {
@@ -66,6 +69,7 @@ type NegotiableOrder = {
   isOpenRequest: boolean;
   feeRate?: number | null;
   feePayer?: string | null;
+  discountCents?: number | null;
   provider: { userId: string; allowsNegotiation: boolean } | null;
   payment: { id: string; status?: string } | null;
   service: { name: string } | null;
@@ -77,7 +81,7 @@ async function findOrderForNegotiation(orderId: string): Promise<NegotiableOrder
     .from("order")
     .select(
       `
-      id, clientId, status, isOpenRequest, feeRate, feePayer,
+      id, clientId, status, isOpenRequest, feeRate, feePayer, discountCents,
       provider:providerprofile(userId, allowsNegotiation),
       payment:payment(id, status),
       service:service(name),
@@ -335,7 +339,11 @@ export async function respondToProposal(
       return { error: "Você já confirmou. Aguarde quem ajuda aceitar.", status: 403 };
     }
 
-    const { platformFeeCents, totalCents } = computeAcceptedTotals(proposal.priceCents, feeRuleOf(order));
+    const { platformFeeCents, totalCents, discountCents } = computeAcceptedTotals(
+      proposal.priceCents,
+      feeRuleOf(order),
+      order.discountCents ?? 0,
+    );
     const { data: updatedProposal, error } = await supabase
       .from("orderproposal")
       .update({
@@ -354,6 +362,7 @@ export async function respondToProposal(
         priceCents: proposal.priceCents,
         platformFeeCents,
         totalCents,
+        discountCents,
         updatedAt: now,
       })
       .eq("id", orderId);
@@ -380,7 +389,11 @@ export async function respondToProposal(
     return { error: "Você não pode responder à própria proposta", status: 403 };
   }
 
-  const { platformFeeCents, totalCents } = computeAcceptedTotals(proposal.priceCents, feeRuleOf(order));
+  const { platformFeeCents, totalCents, discountCents } = computeAcceptedTotals(
+      proposal.priceCents,
+      feeRuleOf(order),
+      order.discountCents ?? 0,
+    );
   const { data: updatedProposal, error } = await supabase
     .from("orderproposal")
     .update({
@@ -400,6 +413,7 @@ export async function respondToProposal(
       priceCents: proposal.priceCents,
       platformFeeCents,
       totalCents,
+      discountCents,
       updatedAt: now,
     })
     .eq("id", orderId);

@@ -31,6 +31,9 @@ export type {
   ReportRow,
   ServiceZoneRow,
   AnchorShiftRow,
+  CouponRow,
+  CouponRedemptionRow,
+  ClientCreditRow,
 } from "./database";
 
 export type {
