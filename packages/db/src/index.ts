@@ -30,6 +30,7 @@ export type {
   ProviderBadgeRow,
   ReportRow,
   ServiceZoneRow,
+  AnchorShiftRow,
 } from "./database";
 
 export type {

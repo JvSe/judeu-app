@@ -294,6 +294,8 @@ model ProviderProfile {
   jobPostings     JobPosting[]
 
   badges     ProviderBadge[]
+  anchorShifts AnchorShift[]
+
   @@index([status, isAvailable])
   @@map("providerprofile")
 }
@@ -826,4 +828,26 @@ model ServiceZone {
   updatedAt   DateTime @default(now())
 
   @@map("servicezone")
+}
+
+// Turno de âncora (Fase 6): piso por hora proporcional ao tempo disponível.
+model AnchorShift {
+  id               String    @id @default(uuid())
+  providerId       String
+  startsAt         DateTime
+  endsAt           DateTime
+  hourlyFloorCents Int
+  onlineMinutes    Int       @default(0)
+  lastPresenceAt   DateTime?
+  status           String    @default("SCHEDULED") // SCHEDULED | SETTLED | CANCELLED
+  earnedCents      Int?
+  subsidyCents     Int?
+  settledAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  provider ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([status, endsAt])
+  @@index([providerId])
+  @@map("anchorshift")
 }

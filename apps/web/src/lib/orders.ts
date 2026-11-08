@@ -33,7 +33,7 @@ export const OFFER_TTL_MS = 60_000;
 export const OPEN_REQUEST_TTL_MS = 4 * 60 * 60 * 1000;
 const OPEN_REQUEST_MIN_CHARS = 8;
 const OPEN_NOTIFY_LIMIT = 100;
-const BUSY_ORDER_STATUSES = ["ACCEPTED", "EN_ROUTE", "IN_PROGRESS", "AWAITING_CONFIRMATION"] as const;
+export const BUSY_ORDER_STATUSES = ["ACCEPTED", "EN_ROUTE", "IN_PROGRESS", "AWAITING_CONFIRMATION"] as const;
 
 type LatLng = { lat: number; lng: number };
 

@@ -29,6 +29,9 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
           <Link href="/admin/zones" className="text-lg font-medium hover:underline">
             Zonas
           </Link>
+          <Link href="/admin/anchors" className="text-lg font-medium hover:underline">
+            Âncoras
+          </Link>
           <Link href="/admin/metrics" className="text-lg font-medium hover:underline">
             Métricas
           </Link>

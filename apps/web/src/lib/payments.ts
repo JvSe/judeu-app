@@ -548,7 +548,7 @@ export async function markFailedByGatewayRef(gatewayRef: string) {
 export async function applyWalletMovement(
   providerUserId: string,
   movement: { type: "CREDIT" | "DEBIT"; amountCents: number; description: string },
-  orderId: string,
+  orderId: string | null,
 ) {
   if (movement.amountCents <= 0) return;
   const delta = movement.type === "CREDIT" ? movement.amountCents : -movement.amountCents;

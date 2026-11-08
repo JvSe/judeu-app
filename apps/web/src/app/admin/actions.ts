@@ -15,8 +15,9 @@ import { setProviderProfileStatus } from "@/lib/provider-profile";
 import type { BadgeType, RiskLevel } from "@/lib/risk";
 import { setCategoryRisk, setProviderBadge } from "@/lib/risk-admin";
 import { markReportReviewed, setUserBlocked } from "@/lib/moderation";
+import { cancelShift, createShift } from "@/lib/anchors-admin";
 import { createZone, deleteZone, updateZone } from "@/lib/zones-db";
-import { parseClock, parsePolygonInput } from "@/lib/zones";
+import { brasiliaToUtc, parseClock, parsePolygonInput } from "@/lib/zones";
 import { markSupportTicketInProgress, respondToSupportTicket as respondTicket } from "@/lib/support";
 
 export async function loginAdmin(formData: FormData): Promise<void> {
@@ -129,4 +130,30 @@ export async function removeServiceZone(zoneId: string): Promise<void> {
   await requireAdminSession();
   await deleteZone(zoneId);
   revalidatePath("/admin/zones");
+}
+
+export async function createAnchorShift(formData: FormData): Promise<void> {
+  await requireAdminSession();
+  const fail = (msg: string) => redirect(`/admin/anchors?error=${encodeURIComponent(msg)}`);
+  const providerId = String(formData.get("providerId") ?? "");
+  const date = String(formData.get("date") ?? "");
+  const start = parseClock(String(formData.get("start") ?? ""));
+  const end = parseClock(String(formData.get("end") ?? ""));
+  const floor = Math.round(Number(String(formData.get("floor") ?? "").replace(",", ".")) * 100);
+  if (!providerId) fail("Escolha quem atende.");
+  if (start == null || end == null || start === end) fail("Horário inválido (use HH:MM).");
+  if (!Number.isFinite(floor) || floor < 0) fail("Piso inválido.");
+  const startsAt = brasiliaToUtc(date, start!);
+  // Fim antes do início = termina no dia seguinte.
+  const endsAt = brasiliaToUtc(date, end! <= start! ? end! + 1440 : end!);
+  if (!startsAt || !endsAt) fail("Data inválida.");
+  await createShift({ providerId, startsAt: startsAt!, endsAt: endsAt!, hourlyFloorCents: floor });
+  revalidatePath("/admin/anchors");
+  redirect("/admin/anchors");
+}
+
+export async function cancelAnchorShift(shiftId: string): Promise<void> {
+  await requireAdminSession();
+  await cancelShift(shiftId);
+  revalidatePath("/admin/anchors");
 }

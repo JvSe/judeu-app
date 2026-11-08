@@ -164,6 +164,15 @@ export function areaDenial(area: AreaStatus, scheduled: boolean): { error: strin
   return { error: `${AREA_MESSAGES.CLOSED}${next}`, status: 409 };
 }
 
+/** Data "AAAA-MM-DD" + minuto do dia em Brasília → instante UTC (ISO). */
+export function brasiliaToUtc(date: string, minuteOfDay: number): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.trim());
+  if (!match) return null;
+  const ms = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) +
+    (minuteOfDay - BRT_OFFSET_MIN) * 60_000;
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
 /** "08:00" ↔ 480. */
 export function parseClock(value: string): number | null {
   const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());

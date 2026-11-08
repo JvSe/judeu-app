@@ -60,6 +60,10 @@ export const configSchema = z.object({
   serviceAreaLabel: z.string().min(2).max(80).default("Palmas, Tocantins"),
   /** Até quantos dias à frente dá para agendar. */
   scheduleMaxDays: z.number().int().min(1).max(365).default(30),
+  /** Piso por hora de plantão de um âncora (R$ 15/h). */
+  anchorHourlyFloorCents: z.number().int().min(0).default(1500),
+  /** Espera depois do fim do turno antes de fechar a conta (pedidos aceitos no turno ainda terminando). */
+  anchorSettleGraceMin: z.number().int().min(0).default(180),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;

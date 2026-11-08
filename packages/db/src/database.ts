@@ -393,6 +393,21 @@ export type ServiceZoneRow = {
   updatedAt: string;
 };
 
+export type AnchorShiftRow = {
+  id: string;
+  providerId: string;
+  startsAt: string;
+  endsAt: string;
+  hourlyFloorCents: number;
+  onlineMinutes: number;
+  lastPresenceAt: string | null;
+  status: "SCHEDULED" | "SETTLED" | "CANCELLED";
+  earnedCents: number | null;
+  subsidyCents: number | null;
+  settledAt: string | null;
+  createdAt: string;
+};
+
 type TableDef<Row> = {
   Row: Row;
   Insert: Partial<Row> & Record<string, unknown>;
@@ -433,6 +448,7 @@ export type Database = {
       providerbadge: TableDef<ProviderBadgeRow>;
       report: TableDef<ReportRow>;
       servicezone: TableDef<ServiceZoneRow>;
+      anchorshift: TableDef<AnchorShiftRow>;
     };
     Views: Record<string, never>;
     Functions: {
