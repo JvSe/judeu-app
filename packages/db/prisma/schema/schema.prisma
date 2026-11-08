@@ -419,6 +419,9 @@ model Order {
   prefMinCompleted Int?
   prefGender       String?
   couponCode      String?
+  // Escalonamento da ajuda aberta (Fase 6): 0 normal, 1 âncoras avisados, 2 raio ampliado.
+  escalationLevel Int       @default(0)
+  escalatedAt     DateTime?
   cancelReason    String?
   acceptedAt      DateTime?
   completedAt     DateTime?

@@ -177,6 +177,8 @@ export type OrderRow = {
   prefMinCompleted: number | null;
   prefGender: "F" | "M" | null;
   couponCode: string | null;
+  escalationLevel: number;
+  escalatedAt: string | null;
   cancelReason: string | null;
   acceptedAt: string | null;
   completedAt: string | null;

@@ -14,6 +14,7 @@ export const APP_EVENT_TYPES = [
   "order.eta_predicted",
   "order.eta_measured",
   "emergency.triggered",
+  "order.escalated",
 ] as const;
 
 export type AppEventType = (typeof APP_EVENT_TYPES)[number];

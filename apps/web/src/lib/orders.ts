@@ -17,6 +17,8 @@ import { completionWalletMovement, computeFees, feeRuleOf, resolveFeeRule } from
 import { supabase } from "./db";
 import { haversineKm, routeBetween } from "./geo";
 import { notifyUser } from "./notifications";
+import { onDutyAnchorIds } from "./anchors-admin";
+import { type EscalationLevel, escalationTarget, radiusScale } from "./escalation";
 import { areaDenial, type AreaStatus } from "./zones";
 import { checkArea } from "./zones-db";
 import { applyWalletMovement, refundIfPaid, syncOrderPaymentStatus } from "./payments";
@@ -132,6 +134,7 @@ type OrderFull = {
   feePayer?: string | null;
   doorCode?: string | null;
   doorCodeAttempts?: number | null;
+  escalationLevel?: number | null;
   riskLevel?: number | null;
   prefMinRating?: number | null;
   prefMinCompleted?: number | null;
@@ -468,7 +471,14 @@ export type OpenRequestAudienceProfile = {
  */
 export function matchesOpenRequestAudience(
   profile: OpenRequestAudienceProfile,
-  order: { categoryId: string | null; address: LatLng; riskLevel?: number; preferences?: OrderPreferences | null },
+  order: {
+    categoryId: string | null;
+    address: LatLng;
+    riskLevel?: number;
+    preferences?: OrderPreferences | null;
+    /** Escalonamento: multiplica o raio de cada pessoa (padrão 1). */
+    radiusScale?: number;
+  },
   busyIds: Set<string>,
 ): boolean {
   if (busyIds.has(profile.id)) return false;
@@ -476,7 +486,7 @@ export function matchesOpenRequestAudience(
   // Nível de tarefa: só quem tem a qualificação recebe/vê (pitch, rodada 3).
   if (!canTakeRisk(profile, normalizeRisk(order.riskLevel))) return false;
   const origin = effectiveProviderPosition(profile);
-  if (!isInsideServiceRadius(origin, profile.serviceRadiusKm, order.address)) return false;
+  if (!isInsideServiceRadius(origin, profile.serviceRadiusKm * (order.radiusScale ?? 1), order.address)) return false;
   if (profile.isHelper) return true;
   if (!order.categoryId) return true;
   return profile.categories.some((c) => c.categoryId === order.categoryId);
@@ -625,6 +635,120 @@ async function notifyAvailableProviders(order: OrderFull) {
     sent += 1;
     if (sent >= OPEN_NOTIFY_LIMIT) break;
   }
+}
+
+type EscalationCandidate = {
+  id: string;
+  clientId: string;
+  description: string | null;
+  createdAt: string;
+  scheduledAt: string | null;
+  categoryId: string | null;
+  riskLevel: number | null;
+  escalationLevel: number | null;
+  prefMinRating: number | null;
+  prefMinCompleted: number | null;
+  prefGender: "F" | "M" | null;
+  address: { lat: number; lng: number } | { lat: number; lng: number }[] | null;
+  category: { name: string } | { name: string }[] | null;
+};
+
+/**
+ * Escalonamento (cron): ajuda aberta sem aceite sobe de nível com o tempo.
+ * Nível 1 avisa os âncoras de plantão; nível 2 amplia o raio e avisa quem passou
+ * a alcançar o pedido. Cada nível é gravado com trava (só sobe uma vez).
+ */
+export async function escalateOpenRequests(now = new Date()): Promise<{ anchors: number; widened: number; notified: number }> {
+  const config = await getConfig();
+  if (config.escalateAnchorsAfterMin <= 0 && config.escalateRadiusAfterMin <= 0) {
+    return { anchors: 0, widened: 0, notified: 0 };
+  }
+  const { data, error } = await supabase
+    .from("order")
+    .select(
+      "id, clientId, description, createdAt, scheduledAt, categoryId, riskLevel, escalationLevel, prefMinRating, prefMinCompleted, prefGender, address:address!order_addressId_fkey(lat, lng), category:category(name)",
+    )
+    .eq("status", "CREATED")
+    .eq("isOpenRequest", true)
+    .is("providerId", null)
+    .lt("escalationLevel", 2)
+    .order("createdAt", { ascending: true })
+    .limit(200);
+  if (error) throw new Error(error.message);
+
+  const due = ((data ?? []) as unknown as EscalationCandidate[])
+    .map((o) => ({ order: o, target: escalationTarget(o, config, now) }))
+    .filter(({ order, target }) => target > (order.escalationLevel ?? 0));
+  if (due.length === 0) return { anchors: 0, widened: 0, notified: 0 };
+
+  const anchorIds = await onDutyAnchorIds(now);
+  // O público é o mesmo para todos os pedidos de um cliente (só exclui ele mesmo).
+  const audienceByClient = new Map<string, Awaited<ReturnType<typeof loadOpenRequestAudience>>>();
+  let anchors = 0;
+  let widened = 0;
+  let notified = 0;
+  const mult = config.escalationRadiusMultiplier;
+
+  for (const { order, target } of due) {
+    const from = (order.escalationLevel ?? 0) as EscalationLevel;
+    const { data: claimed } = await supabase
+      .from("order")
+      .update({ escalationLevel: target, escalatedAt: now.toISOString() })
+      .eq("id", order.id)
+      .eq("status", "CREATED")
+      .eq("escalationLevel", from)
+      .select("id");
+    if (!claimed?.length) continue;
+
+    const address = Array.isArray(order.address) ? order.address[0] : order.address;
+    if (!address) continue;
+    const category = Array.isArray(order.category) ? order.category[0] : order.category;
+    let audience = audienceByClient.get(order.clientId);
+    if (!audience) {
+      audience = await loadOpenRequestAudience(order.clientId);
+      audienceByClient.set(order.clientId, audience);
+    }
+    const base = {
+      categoryId: order.categoryId,
+      address: { lat: address.lat, lng: address.lng },
+      riskLevel: order.riskLevel ?? 1,
+      preferences: orderPreferences(order),
+    };
+    const body = order.description?.trim() || category?.name || "Alguém precisa de ajuda";
+    const recipients = new Set<string>();
+    for (const p of audience.rows) {
+      const wide = matchesOpenRequestAudience(p, { ...base, radiusScale: mult }, audience.busyIds);
+      if (!wide) continue;
+      // Nível 1: âncoras de plantão, mesmo um pouco além do raio deles.
+      if (from < 1 && target >= 1 && anchorIds.has(p.id)) recipients.add(p.userId);
+      // Nível 2: quem só alcança o pedido com o raio ampliado (os outros já foram avisados).
+      if (from < 2 && target >= 2 && !matchesOpenRequestAudience(p, base, audience.busyIds)) recipients.add(p.userId);
+      if (recipients.size >= OPEN_NOTIFY_LIMIT) break;
+    }
+    for (const userId of recipients) {
+      void notifyUser(userId, "ORDER", {
+        title: "Ainda sem ninguém: ajuda perto de você",
+        body,
+        data: { type: "order", orderId: order.id, role: "provider" },
+      });
+    }
+    notified += recipients.size;
+    if (from < 1 && target >= 1) anchors += 1;
+    if (from < 2 && target >= 2) {
+      widened += 1;
+      void notifyUser(order.clientId, "ORDER", {
+        title: "Ampliamos a busca",
+        body: "Ninguém aceitou ainda, então avisamos mais gente um pouco mais longe.",
+        data: { type: "order", orderId: order.id, role: "client" },
+      });
+    }
+    void trackEvent({
+      type: "order.escalated",
+      userId: order.clientId,
+      props: { orderId: order.id, from, to: target, notified: recipients.size },
+    });
+  }
+  return { anchors, widened, notified };
 }
 
 export async function createOrder(
@@ -867,6 +991,7 @@ async function listNearbyOpenRequests(
 ): Promise<OrderFull[]> {
   const origin = effectiveProviderPosition(profile);
   if (!origin) return [];
+  const config = await getConfig();
   const minCreatedAt = new Date(Date.now() - OPEN_REQUEST_TTL_MS).toISOString();
   const { data: rows } = await supabase
     .from("order")
@@ -880,10 +1005,12 @@ async function listNearbyOpenRequests(
     .limit(200);
   return ((rows ?? []) as unknown as OrderFull[])
     .filter((row) =>
-      isInsideServiceRadius(origin, profile.serviceRadiusKm, {
-        lat: row.address.lat,
-        lng: row.address.lng,
-      }),
+      // Pedido escalonado aparece também para quem está mais longe (raio ampliado).
+      isInsideServiceRadius(
+        origin,
+        profile.serviceRadiusKm * radiusScale(row.escalationLevel, config.escalationRadiusMultiplier),
+        { lat: row.address.lat, lng: row.address.lng },
+      ),
     )
     .slice(0, 40);
 }
