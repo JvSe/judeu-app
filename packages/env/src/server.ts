@@ -52,6 +52,10 @@ export const env = createEnv({
 
     // Job agendado (POST /api/cron/tick, disparado pelo pg_cron). Sem ela, o endpoint fica desligado.
     CRON_SECRET: z.string().min(32).optional(),
+
+    // Cron local: roda as mesmas tarefas a cada minuto dentro do próprio servidor,
+    // sem pg_cron e sem CRON_SECRET. Padrão: ligado no `next dev`, desligado em produção.
+    LOCAL_CRON: z.enum(["true", "false"]).optional(),
   },
   runtimeEnv: process.env,
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,
