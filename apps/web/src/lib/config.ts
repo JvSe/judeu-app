@@ -56,6 +56,10 @@ export const configSchema = z.object({
    * já pode trocar de pessoa após offerTtlMs; aqui só limpamos o abandonado).
    */
   directOfferAbandonMs: z.number().int().positive().default(30 * 60_000),
+  /** Nome da região atendida, usado nos textos e no prompt da JudIA. */
+  serviceAreaLabel: z.string().min(2).max(80).default("Palmas, Tocantins"),
+  /** Até quantos dias à frente dá para agendar. */
+  scheduleMaxDays: z.number().int().min(1).max(365).default(30),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
@@ -69,6 +73,7 @@ export const PUBLIC_CONFIG_KEYS = [
   "feePayer",
   "openRequestTtlMs",
   "offerTtlMs",
+  "serviceAreaLabel",
 ] as const satisfies readonly ConfigKey[];
 
 export type PublicConfig = Pick<AppConfig, (typeof PUBLIC_CONFIG_KEYS)[number]>;

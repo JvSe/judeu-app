@@ -13,7 +13,7 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
-        <nav className="flex gap-4">
+        <nav className="flex flex-wrap gap-4">
           <Link href="/admin" className="text-lg font-medium hover:underline">
             Prestadores
           </Link>
@@ -25,6 +25,9 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
           </Link>
           <Link href="/admin/categories" className="text-lg font-medium hover:underline">
             Categorias
+          </Link>
+          <Link href="/admin/zones" className="text-lg font-medium hover:underline">
+            Zonas
           </Link>
           <Link href="/admin/metrics" className="text-lg font-medium hover:underline">
             Métricas

@@ -29,6 +29,7 @@ export type {
   PayoutRow,
   ProviderBadgeRow,
   ReportRow,
+  ServiceZoneRow,
 } from "./database";
 
 export type {

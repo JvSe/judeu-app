@@ -50,7 +50,7 @@ describe("mergeConfig", () => {
 describe("toPublicConfig", () => {
   it("expõe só as chaves públicas", () => {
     expect(Object.keys(toPublicConfig(DEFAULT_CONFIG)).sort()).toEqual(
-      ["feePayer", "offerTtlMs", "openRequestTtlMs", "platformFeeRate"].sort(),
+      ["feePayer", "offerTtlMs", "openRequestTtlMs", "platformFeeRate", "serviceAreaLabel"].sort(),
     );
   });
 });

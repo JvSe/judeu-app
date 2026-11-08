@@ -1,7 +1,22 @@
 import type { OpenRequestAvailability } from "@/lib/api";
+import { shortDateTime } from "@/lib/format";
 
 /** Texto da prévia "N pessoas perto" antes de publicar uma ajuda aberta. */
 export function availabilityLabel(a: OpenRequestAvailability): { title: string; detail: string } {
+  if (a.area?.status === "OUTSIDE") {
+    return {
+      title: "Ainda não atendemos esse endereço",
+      detail: "Estamos começando por algumas regiões. Use outro endereço ou tente mais tarde.",
+    };
+  }
+  if (a.area?.status === "CLOSED") {
+    return {
+      title: "Fora do horário de atendimento",
+      detail: a.area.nextOpenAt
+        ? `Agende o pedido. Próximo horário: ${shortDateTime(a.area.nextOpenAt)}.`
+        : "Agende o pedido para outro horário.",
+    };
+  }
   if (a.count === 0) {
     return {
       title: "Ninguém disponível perto agora",

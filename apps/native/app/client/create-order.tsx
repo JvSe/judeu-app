@@ -93,6 +93,7 @@ export default function ConfirmCall() {
     hasPrefs ? preferences : undefined,
   );
   const availabilityText = availability ? availabilityLabel(availability) : null;
+  const areaOpen = (availability?.area?.status ?? "OPEN") === "OPEN";
   const { data: suggested } = useSuggestedPrice(params.categoryId, isOpenRequest);
   const suggestedReais = suggested ? String(Math.round(suggested.priceCents / 100)) : null;
 
@@ -251,9 +252,11 @@ export default function ConfirmCall() {
           {availabilityText && (
             <View style={styles.availability}>
               <Ionicons
-                name={availability!.count > 0 ? "people" : "time-outline"}
+                name={availability!.count > 0 && areaOpen ? "people" : "time-outline"}
                 size={18}
-                color={availability!.count > 0 ? theme.colors.primary : theme.colors.mutedForeground}
+                color={
+                  availability!.count > 0 && areaOpen ? theme.colors.primary : theme.colors.mutedForeground
+                }
               />
               <View style={{ flex: 1 }}>
                 <Text style={styles.availabilityTitle}>{availabilityText.title}</Text>

@@ -811,3 +811,19 @@ model AppEvent {
   @@index([orderId])
   @@map("appevent")
 }
+
+// Zona de atendimento (Fase 6). Sem zona ativa, o app atende em qualquer lugar.
+// polygon = lista de [lat, lng]; horários em minutos do dia (Brasília).
+model ServiceZone {
+  id          String   @id @default(uuid())
+  name        String
+  polygon     Json
+  weekdays    Int[]    @default([0, 1, 2, 3, 4, 5, 6])
+  openMinute  Int      @default(0)
+  closeMinute Int      @default(1440)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now())
+
+  @@map("servicezone")
+}

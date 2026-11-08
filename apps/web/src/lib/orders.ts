@@ -17,6 +17,8 @@ import { completionWalletMovement, computeFees, feeRuleOf, resolveFeeRule } from
 import { supabase } from "./db";
 import { haversineKm, routeBetween } from "./geo";
 import { notifyUser } from "./notifications";
+import { areaDenial, type AreaStatus } from "./zones";
+import { checkArea } from "./zones-db";
 import { applyWalletMovement, refundIfPaid, syncOrderPaymentStatus } from "./payments";
 import { batchClientStats } from "./profile";
 
@@ -25,6 +27,8 @@ export const PLATFORM_FEE_RATE = 0.08;
 export const FALLBACK_LAT = -10.1841;
 export const FALLBACK_LNG = -48.3336;
 const ARRIVAL_RADIUS_KM = 0.15;
+/** Folga para o relógio do aparelho: "agendar para agora" não é recusado. */
+const SCHEDULE_PAST_TOLERANCE_MS = 5 * 60_000;
 export const OFFER_TTL_MS = 60_000;
 export const OPEN_REQUEST_TTL_MS = 4 * 60 * 60 * 1000;
 const OPEN_REQUEST_MIN_CHARS = 8;
@@ -561,12 +565,13 @@ export async function openRequestAvailability(
   point: LatLng,
   categoryId: string | null,
   preferences: OrderPreferences | null = null,
-): Promise<AvailabilitySummary & { etaMin: number | null }> {
-  const [{ rows, busyIds }, { data: category }] = await Promise.all([
+): Promise<AvailabilitySummary & { etaMin: number | null; area: AreaStatus }> {
+  const [{ rows, busyIds }, { data: category }, area] = await Promise.all([
     loadOpenRequestAudience(clientId),
     categoryId
       ? supabase.from("category").select("riskLevel").eq("id", categoryId).maybeSingle()
       : Promise.resolve({ data: null }),
+    checkArea(point),
   ]);
   const { nearest, ...summary } = summarizeAvailability(
     rows,
@@ -587,6 +592,7 @@ export async function openRequestAvailability(
     ...summary,
     nearestKm: summary.nearestKm == null ? null : Math.round(summary.nearestKm * 10) / 10,
     etaMin,
+    area,
   };
 }
 
@@ -662,6 +668,26 @@ export async function createOrder(
     return { error: "Endereço inválido", status: 400 };
   }
 
+  // Agendamento e zona de atendimento (Fase 6). Sem zona ativa, checkArea libera tudo.
+  const config = await getConfig();
+  const nowMs = Date.now();
+  const scheduledMs = input.scheduledAt ? new Date(input.scheduledAt).getTime() : null;
+  if (scheduledMs != null) {
+    if (scheduledMs < nowMs - SCHEDULE_PAST_TOLERANCE_MS) {
+      return { error: "Escolha uma data e hora futuras", status: 400 };
+    }
+    if (scheduledMs > nowMs + config.scheduleMaxDays * 24 * 60 * 60_000) {
+      return { error: `Dá para agendar até ${config.scheduleMaxDays} dias à frente`, status: 400 };
+    }
+  }
+  const scheduledLater = scheduledMs != null && scheduledMs > nowMs;
+  const area = await checkArea(
+    { lat: address.lat, lng: address.lng },
+    new Date(scheduledLater ? scheduledMs! : nowMs),
+  );
+  const denial = areaDenial(area, scheduledLater);
+  if (denial) return denial;
+
   let priceCents = 0;
   let serviceId: string | undefined;
   type ProviderPick = {
@@ -713,7 +739,6 @@ export async function createOrder(
   }
 
   // Snapshot da regra de cobrança: o pedido fica com ela até o fim.
-  const config = await getConfig();
   const riskCategoryId = input.categoryId ?? serviceCategoryId;
   const { data: category } = riskCategoryId
     ? await supabase

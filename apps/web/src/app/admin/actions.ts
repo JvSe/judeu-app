@@ -15,6 +15,8 @@ import { setProviderProfileStatus } from "@/lib/provider-profile";
 import type { BadgeType, RiskLevel } from "@/lib/risk";
 import { setCategoryRisk, setProviderBadge } from "@/lib/risk-admin";
 import { markReportReviewed, setUserBlocked } from "@/lib/moderation";
+import { createZone, deleteZone, updateZone } from "@/lib/zones-db";
+import { parseClock, parsePolygonInput } from "@/lib/zones";
 import { markSupportTicketInProgress, respondToSupportTicket as respondTicket } from "@/lib/support";
 
 export async function loginAdmin(formData: FormData): Promise<void> {
@@ -92,4 +94,39 @@ export async function reviewReport(reportId: string): Promise<void> {
   await requireAdminSession();
   await markReportReviewed(reportId);
   revalidatePath("/admin/reports");
+}
+
+export async function createServiceZone(formData: FormData): Promise<void> {
+  await requireAdminSession();
+  const name = String(formData.get("name") ?? "").trim();
+  const polygon = parsePolygonInput(String(formData.get("polygon") ?? ""));
+  const openMinute = parseClock(String(formData.get("open") ?? ""));
+  const closeMinute = parseClock(String(formData.get("close") ?? ""));
+  const weekdays = formData
+    .getAll("weekday")
+    .map(Number)
+    .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+  const fail = (msg: string) => redirect(`/admin/zones?error=${encodeURIComponent(msg)}`);
+  if (!name) fail("Dê um nome à zona.");
+  if (!polygon) fail("Polígono inválido: precisa de pelo menos 3 pontos.");
+  if (openMinute == null || closeMinute == null || openMinute >= 1440 || closeMinute === 0) {
+    fail("Horário inválido (use HH:MM).");
+  }
+  if (openMinute === closeMinute) fail("Abertura e fechamento não podem ser iguais.");
+  if (weekdays.length === 0) fail("Escolha pelo menos um dia.");
+  await createZone({ name, polygon: polygon!, weekdays, openMinute: openMinute!, closeMinute: closeMinute! });
+  revalidatePath("/admin/zones");
+  redirect("/admin/zones");
+}
+
+export async function toggleServiceZone(zoneId: string, active: boolean): Promise<void> {
+  await requireAdminSession();
+  await updateZone(zoneId, { active });
+  revalidatePath("/admin/zones");
+}
+
+export async function removeServiceZone(zoneId: string): Promise<void> {
+  await requireAdminSession();
+  await deleteZone(zoneId);
+  revalidatePath("/admin/zones");
 }

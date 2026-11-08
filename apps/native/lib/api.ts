@@ -342,6 +342,7 @@ export type AppConfig = {
   feePayer: "CLIENT" | "PROVIDER";
   openRequestTtlMs: number;
   offerTtlMs: number;
+  serviceAreaLabel: string;
 };
 
 /** Valores usados enquanto `/api/config` não respondeu — iguais aos padrões da API. */
@@ -350,6 +351,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   feePayer: "PROVIDER",
   openRequestTtlMs: 4 * 60 * 60 * 1000,
   offerTtlMs: 60_000,
+  serviceAreaLabel: "Palmas, Tocantins",
 };
 
 export const configApi = {
@@ -611,6 +613,11 @@ export type OpenRequestAvailability = {
   professionals: number;
   nearestKm: number | null;
   etaMin: number | null;
+  /** Zona de atendimento: OPEN = pode pedir agora; CLOSED = só agendando; OUTSIDE = não atende ali. */
+  area?:
+    | { status: "OPEN"; zoneName: string | null }
+    | { status: "CLOSED"; zoneName: string; nextOpenAt: string | null }
+    | { status: "OUTSIDE" };
 };
 
 export type SuggestedPrice = {

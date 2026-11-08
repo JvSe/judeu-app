@@ -381,6 +381,18 @@ export type ReportRow = {
   createdAt: string;
 };
 
+export type ServiceZoneRow = {
+  id: string;
+  name: string;
+  polygon: Json;
+  weekdays: number[];
+  openMinute: number;
+  closeMinute: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type TableDef<Row> = {
   Row: Row;
   Insert: Partial<Row> & Record<string, unknown>;
@@ -420,6 +432,7 @@ export type Database = {
       payout: TableDef<PayoutRow>;
       providerbadge: TableDef<ProviderBadgeRow>;
       report: TableDef<ReportRow>;
+      servicezone: TableDef<ServiceZoneRow>;
     };
     Views: Record<string, never>;
     Functions: {
