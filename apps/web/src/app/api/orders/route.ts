@@ -21,6 +21,8 @@ const createSchema = z
     pickupAddressId: z.string().min(1).optional(),
     priceCents: z.number().int().min(0).max(1_000_000).optional(),
     riskHint: z.number().int().min(1).max(4).optional(),
+    couponCode: z.string().max(40).optional(),
+    useCredits: z.boolean().optional(),
     preferences: z
       .object({
         minRating: z.number().min(1).max(5).nullable().optional(),

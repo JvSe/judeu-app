@@ -105,6 +105,15 @@ export function useOpenRequestAvailability(
 }
 
 // Valor inicial sugerido para ajuda aberta (mediana por categoria + horário).
+/** Saldo de crédito do cliente (0 se a API falhar). */
+export function useCreditBalance() {
+  return useQuery({
+    queryKey: ["credit-balance"],
+    queryFn: () => ordersApi.creditBalance(),
+    staleTime: 60_000,
+  });
+}
+
 export function useSuggestedPrice(categoryId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: ["suggested-price", categoryId ?? "all"],
@@ -164,6 +173,7 @@ export function useCreateOrder() {
     mutationFn: (input: CreateOrderInput) => ordersApi.create(input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["credit-balance"] });
       qc.invalidateQueries({ queryKey: ["providers-nearby"] });
     },
   });

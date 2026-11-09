@@ -1,0 +1,6 @@
+ALTER TABLE "order" DROP COLUMN IF EXISTS "couponId";
+ALTER TABLE "order" DROP COLUMN IF EXISTS "creditUsedCents";
+ALTER TABLE "order" DROP COLUMN IF EXISTS "discountCents";
+DROP TABLE IF EXISTS clientcredit;
+DROP TABLE IF EXISTS couponredemption;
+DROP TABLE IF EXISTS coupon;

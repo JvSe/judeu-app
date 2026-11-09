@@ -19,7 +19,7 @@ import { fonts } from "@/constants/fonts";
 import { catalogApi, jobsApi, type Category, type JobPosting, type ProviderListItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { contractTypeLabel, initialsOf, moneyFromCents, priceFromCents } from "@/lib/format";
-import { useAddresses, useCategories, useMyProviderProfile, useOrders } from "@/lib/hooks";
+import { useAddresses, useAppConfig, useCategories, useMyProviderProfile, useOrders } from "@/lib/hooks";
 import { toast } from "@/lib/toast";
 import {
   AI_MODEL,
@@ -75,6 +75,7 @@ export function AiAssistant() {
   const { data: categories = [] } = useCategories();
   const { user } = useAuth();
   const { data: addresses = [] } = useAddresses();
+  const appConfig = useAppConfig();
   const { data: orders = [] } = useOrders("client");
   const { data: providerProfile } = useMyProviderProfile();
   const canPublishJobs = providerProfile?.isCompany === true;
@@ -101,6 +102,9 @@ export function AiAssistant() {
   // Contexto do usuário (nome, cidade, categorias mais buscadas): sempre
   // re-derivado de dado real do backend, nunca persistido localmente.
   const personalizationRef = useRef<ClientPersonalization | undefined>(undefined);
+  // Região atendida vem da configuração da API (antes era "Palmas" fixo no prompt).
+  const areaLabelRef = useRef(appConfig.serviceAreaLabel);
+  areaLabelRef.current = appConfig.serviceAreaLabel;
   personalizationRef.current = useMemo(
     () => deriveClientPersonalization(user, addresses, orders, canPublishJobs),
     [user, addresses, orders, canPublishJobs],
@@ -214,7 +218,11 @@ export function AiAssistant() {
     (history: DisplayMessage[]): Message[] => [
       {
         role: "system",
-        content: buildSystemPrompt(categoriesRef.current, personalizationRef.current),
+        content: buildSystemPrompt(
+          categoriesRef.current,
+          personalizationRef.current,
+          areaLabelRef.current,
+        ),
       },
       ...history.slice(-CONTEXT_MESSAGES),
     ],

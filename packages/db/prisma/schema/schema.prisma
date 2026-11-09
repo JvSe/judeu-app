@@ -294,6 +294,8 @@ model ProviderProfile {
   jobPostings     JobPosting[]
 
   badges     ProviderBadge[]
+  anchorShifts AnchorShift[]
+
   @@index([status, isAvailable])
   @@map("providerprofile")
 }
@@ -417,6 +419,13 @@ model Order {
   prefMinCompleted Int?
   prefGender       String?
   couponCode      String?
+  // Escalonamento da ajuda aberta (Fase 6): 0 normal, 1 âncoras avisados, 2 raio ampliado.
+  escalationLevel Int       @default(0)
+  escalatedAt     DateTime?
+  // Cupom e crédito (Fase 6): o desconto sai da parte da plataforma.
+  discountCents   Int       @default(0)
+  creditUsedCents Int       @default(0)
+  couponId        String?
   cancelReason    String?
   acceptedAt      DateTime?
   completedAt     DateTime?
@@ -810,4 +819,88 @@ model AppEvent {
   @@index([userId])
   @@index([orderId])
   @@map("appevent")
+}
+
+// Zona de atendimento (Fase 6). Sem zona ativa, o app atende em qualquer lugar.
+// polygon = lista de [lat, lng]; horários em minutos do dia (Brasília).
+model ServiceZone {
+  id          String   @id @default(uuid())
+  name        String
+  polygon     Json
+  weekdays    Int[]    @default([0, 1, 2, 3, 4, 5, 6])
+  openMinute  Int      @default(0)
+  closeMinute Int      @default(1440)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now())
+
+  @@map("servicezone")
+}
+
+// Turno de âncora (Fase 6): piso por hora proporcional ao tempo disponível.
+model AnchorShift {
+  id               String    @id @default(uuid())
+  providerId       String
+  startsAt         DateTime
+  endsAt           DateTime
+  hourlyFloorCents Int
+  onlineMinutes    Int       @default(0)
+  lastPresenceAt   DateTime?
+  status           String    @default("SCHEDULED") // SCHEDULED | SETTLED | CANCELLED
+  earnedCents      Int?
+  subsidyCents     Int?
+  settledAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  provider ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([status, endsAt])
+  @@index([providerId])
+  @@map("anchorshift")
+}
+
+// Cupom de desconto (Fase 6). PERCENT: value = 1–100; FIXED: value em centavos.
+model Coupon {
+  id               String    @id @default(uuid())
+  code             String    @unique
+  kind             String // PERCENT | FIXED
+  value            Int
+  maxDiscountCents Int?
+  minPriceCents    Int?
+  maxRedemptions   Int?
+  perUserLimit     Int       @default(1)
+  firstOrderOnly   Boolean   @default(false)
+  startsAt         DateTime?
+  expiresAt        DateTime?
+  active           Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+
+  @@map("coupon")
+}
+
+model CouponRedemption {
+  id            String   @id @default(uuid())
+  couponId      String
+  userId        String
+  orderId       String   @unique
+  discountCents Int
+  createdAt     DateTime @default(now())
+
+  @@index([couponId])
+  @@index([userId])
+  @@map("couponredemption")
+}
+
+// Livro do crédito do cliente: GRANT/REFUND positivos, USE negativo. Saldo = soma.
+model ClientCredit {
+  id          String   @id @default(uuid())
+  userId      String
+  amountCents Int
+  kind        String // GRANT | USE | REFUND
+  reason      String?
+  orderId     String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@map("clientcredit")
 }

@@ -4,6 +4,7 @@ import { type AppConfig, getConfig } from "../config";
 import { ensureUtcIso } from "../dates";
 import { supabase } from "../db";
 import { notifyUser } from "../notifications";
+import { releaseOrderDiscounts } from "../discounts";
 import { refundIfPaid } from "../payments";
 import type { CronJob } from "./runner";
 
@@ -67,6 +68,9 @@ async function expireOne(
   });
   if (error) throw new Error(`expirar ${order.id}: ${error.message}`);
 
+  await releaseOrderDiscounts(order.id).catch((err) =>
+    console.error(`[cron] devolução de cupom/crédito do pedido ${order.id} falhou:`, err),
+  );
   await refundIfPaid(order.id).catch((err) =>
     console.error(`[cron] estorno do pedido ${order.id} falhou:`, err),
   );

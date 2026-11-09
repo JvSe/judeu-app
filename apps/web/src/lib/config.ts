@@ -56,6 +56,22 @@ export const configSchema = z.object({
    * já pode trocar de pessoa após offerTtlMs; aqui só limpamos o abandonado).
    */
   directOfferAbandonMs: z.number().int().positive().default(30 * 60_000),
+  /** Nome da região atendida, usado nos textos e no prompt da JudIA. */
+  serviceAreaLabel: z.string().min(2).max(80).default("Palmas, Tocantins"),
+  /** Até quantos dias à frente dá para agendar. */
+  scheduleMaxDays: z.number().int().min(1).max(365).default(30),
+  /** Piso por hora de plantão de um âncora (R$ 15/h). */
+  anchorHourlyFloorCents: z.number().int().min(0).default(1500),
+  /** Espera depois do fim do turno antes de fechar a conta (pedidos aceitos no turno ainda terminando). */
+  anchorSettleGraceMin: z.number().int().min(0).default(180),
+  /** Ajuda aberta sem aceite: depois disto avisa os âncoras de plantão (0 desliga). */
+  escalateAnchorsAfterMin: z.number().int().min(0).default(5),
+  /** Depois disto amplia o raio e avisa quem está mais longe (0 desliga). */
+  escalateRadiusAfterMin: z.number().int().min(0).default(10),
+  /** Quanto o raio de cada pessoa cresce no escalonamento. */
+  escalationRadiusMultiplier: z.number().min(1).max(5).default(2),
+  /** Ajuda agendada: o escalonamento começa a contar este tanto antes do horário. */
+  escalateScheduledLeadMin: z.number().int().min(0).default(120),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
@@ -69,6 +85,7 @@ export const PUBLIC_CONFIG_KEYS = [
   "feePayer",
   "openRequestTtlMs",
   "offerTtlMs",
+  "serviceAreaLabel",
 ] as const satisfies readonly ConfigKey[];
 
 export type PublicConfig = Pick<AppConfig, (typeof PUBLIC_CONFIG_KEYS)[number]>;

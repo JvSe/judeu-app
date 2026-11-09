@@ -29,6 +29,11 @@ export type {
   PayoutRow,
   ProviderBadgeRow,
   ReportRow,
+  ServiceZoneRow,
+  AnchorShiftRow,
+  CouponRow,
+  CouponRedemptionRow,
+  ClientCreditRow,
 } from "./database";
 
 export type {

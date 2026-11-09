@@ -236,6 +236,14 @@ export default function Payment() {
               <Text style={styles.breakdownValue}>{moneyFromCents(order.platformFeeCents)}</Text>
             </View>
           )}
+          {(order.discountCents ?? 0) > 0 && (
+            <View style={styles.breakdownRow}>
+              <Text style={styles.breakdownLabel}>
+                {order.couponCode ? `Desconto (${order.couponCode})` : "Desconto"}
+              </Text>
+              <Text style={styles.breakdownValue}>− {moneyFromCents(order.discountCents ?? 0)}</Text>
+            </View>
+          )}
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total</Text>
             <Text style={styles.totalValue}>{moneyFromCents(order.totalCents)}</Text>

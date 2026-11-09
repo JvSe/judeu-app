@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LEGACY_FEE_RULE, completionWalletMovement, computeFees, feeRuleOf, resolveFeeRule } from "./fees";
+import { LEGACY_FEE_RULE, MIN_TOTAL_AFTER_DISCOUNT_CENTS, completionWalletMovement, computeFees, feeRuleOf, resolveFeeRule } from "./fees";
 
 describe("computeFees", () => {
   it("regra legada (8% do cliente) reproduz o comportamento antigo", () => {
@@ -8,6 +8,7 @@ describe("computeFees", () => {
       platformFeeCents: 320,
       totalCents: 4320,
       providerNetCents: 4000,
+      discountCents: 0,
     });
   });
 
@@ -16,6 +17,7 @@ describe("computeFees", () => {
       platformFeeCents: 800,
       totalCents: 4000,
       providerNetCents: 3200,
+      discountCents: 0,
     });
   });
 
@@ -28,6 +30,7 @@ describe("computeFees", () => {
       platformFeeCents: 0,
       totalCents: 5000,
       providerNetCents: 5000,
+      discountCents: 0,
     });
   });
 });
@@ -88,5 +91,53 @@ describe("completionWalletMovement", () => {
   it("sem pagamento ou cartão não pago: nada", () => {
     expect(completionWalletMovement(provider, order, null)).toBeNull();
     expect(completionWalletMovement(provider, order, { method: "CARD", paid: false })).toBeNull();
+  });
+});
+
+describe("desconto (cupom + crédito)", () => {
+  const RULE = { rate: 0.2, payer: "PROVIDER" as const };
+
+  it("cliente paga menos, quem atende recebe o mesmo", () => {
+    expect(computeFees(4000, RULE, 1000)).toEqual({
+      platformFeeCents: 800,
+      totalCents: 3000,
+      providerNetCents: 3200,
+      discountCents: 1000,
+    });
+  });
+
+  it("nunca deixa o total abaixo de R$ 1", () => {
+    const r = computeFees(4000, RULE, 99_999);
+    expect(r.totalCents).toBe(MIN_TOTAL_AFTER_DISCOUNT_CENTS);
+    expect(r.discountCents).toBe(3900);
+  });
+
+  it("cartão: repasse igual ao de sem desconto", () => {
+    const order = { priceCents: 4000, platformFeeCents: 800, totalCents: 3000, discountCents: 1000 };
+    expect(completionWalletMovement(RULE, order, { method: "CARD", paid: true })).toEqual({
+      type: "CREDIT",
+      amountCents: 3200,
+      description: "Repasse de pedido concluído (já descontada a taxa)",
+    });
+  });
+
+  it("dinheiro, desconto maior que a taxa: a plataforma devolve a diferença", () => {
+    // Recebeu R$ 30 em mãos; o líquido dele é R$ 32 → crédito de R$ 2.
+    const order = { priceCents: 4000, platformFeeCents: 800, totalCents: 3000, discountCents: 1000 };
+    expect(completionWalletMovement(RULE, order, { method: "CASH", paid: false })).toEqual({
+      type: "CREDIT",
+      amountCents: 200,
+      description: "Reembolso do desconto dado ao cliente",
+    });
+  });
+
+  it("dinheiro, desconto menor que a taxa: deve só o resto da taxa", () => {
+    // Recebeu R$ 35; o líquido dele é R$ 32 → deve R$ 3.
+    const order = { priceCents: 4000, platformFeeCents: 800, totalCents: 3500, discountCents: 500 };
+    expect(completionWalletMovement(RULE, order, { method: "CASH", paid: false })).toEqual({
+      type: "DEBIT",
+      amountCents: 300,
+      description: "Taxa da plataforma (pedido recebido em dinheiro)",
+    });
   });
 });

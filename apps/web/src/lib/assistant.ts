@@ -3,6 +3,7 @@ import { env } from "@judeu/env/server";
 import { z } from "zod";
 
 import { type CategoryDTO, listCategories } from "./catalog";
+import { DEFAULT_CONFIG, getConfig } from "./config";
 import { supabase } from "./db";
 import { RISK_RUBRIC, normalizeRisk } from "./risk";
 
@@ -148,10 +149,15 @@ export function keywordAction(
 // Claude
 // ---------------------------------------------------------------------------
 
-export function buildSystemPrompt(categories: Pick<CategoryDTO, "slug" | "name">[]): string {
+const DEFAULT_AREA_LABEL = DEFAULT_CONFIG.serviceAreaLabel;
+
+export function buildSystemPrompt(
+  categories: Pick<CategoryDTO, "slug" | "name">[],
+  areaLabel = DEFAULT_AREA_LABEL,
+): string {
   const lista = categories.map((c) => `- ${c.slug}: ${c.name}`).join("\n");
   return [
-    "Você é o JudIA, assistente do Ajuda+ — app para chamar pessoas perto de você em Palmas, Tocantins.",
+    `Você é o JudIA, assistente do Ajuda+ — app para chamar pessoas perto de você em ${areaLabel}.`,
     "Classifique a intenção em UM destes casos e use a ferramenta correspondente:",
     "A) SERVIÇO CONVENCIONAL — ofício da lista de categorias (ex.: reparos, limpeza, frete/mudança, beleza) → buscar_prestadores.",
     "B) AJUDA DIFERENTE / RECADO — buscar e deixar algo, copiadora, compra, fila, favor, 'preciso de alguém' → pedir_ajuda.",
@@ -281,7 +287,13 @@ async function askClaude(
     model: CLOUD_MODEL,
     max_tokens: 4096,
     output_config: { effort: "low" },
-    system: [{ type: "text", text: buildSystemPrompt(categories), cache_control: { type: "ephemeral" } }],
+    system: [
+      {
+        type: "text",
+        text: buildSystemPrompt(categories, (await getConfig()).serviceAreaLabel),
+        cache_control: { type: "ephemeral" },
+      },
+    ],
     tools: buildTools(categories),
     tool_choice: { type: "auto", disable_parallel_tool_use: true },
     messages: [

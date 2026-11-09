@@ -17,6 +17,11 @@ import { completionWalletMovement, computeFees, feeRuleOf, resolveFeeRule } from
 import { supabase } from "./db";
 import { haversineKm, routeBetween } from "./geo";
 import { notifyUser } from "./notifications";
+import { onDutyAnchorIds } from "./anchors-admin";
+import { type EscalationLevel, escalationTarget, radiusScale } from "./escalation";
+import { releaseOrderDiscounts, recordDiscountUse, resolveDiscount } from "./discounts";
+import { areaDenial, type AreaStatus, formatBrasiliaDateTime } from "./zones";
+import { checkArea } from "./zones-db";
 import { applyWalletMovement, refundIfPaid, syncOrderPaymentStatus } from "./payments";
 import { batchClientStats } from "./profile";
 
@@ -25,11 +30,13 @@ export const PLATFORM_FEE_RATE = 0.08;
 export const FALLBACK_LAT = -10.1841;
 export const FALLBACK_LNG = -48.3336;
 const ARRIVAL_RADIUS_KM = 0.15;
+/** Folga para o relógio do aparelho: "agendar para agora" não é recusado. */
+const SCHEDULE_PAST_TOLERANCE_MS = 5 * 60_000;
 export const OFFER_TTL_MS = 60_000;
 export const OPEN_REQUEST_TTL_MS = 4 * 60 * 60 * 1000;
 const OPEN_REQUEST_MIN_CHARS = 8;
 const OPEN_NOTIFY_LIMIT = 100;
-const BUSY_ORDER_STATUSES = ["ACCEPTED", "EN_ROUTE", "IN_PROGRESS", "AWAITING_CONFIRMATION"] as const;
+export const BUSY_ORDER_STATUSES = ["ACCEPTED", "EN_ROUTE", "IN_PROGRESS", "AWAITING_CONFIRMATION"] as const;
 
 type LatLng = { lat: number; lng: number };
 
@@ -128,6 +135,10 @@ type OrderFull = {
   feePayer?: string | null;
   doorCode?: string | null;
   doorCodeAttempts?: number | null;
+  escalationLevel?: number | null;
+  discountCents?: number | null;
+  creditUsedCents?: number | null;
+  couponCode?: string | null;
   riskLevel?: number | null;
   prefMinRating?: number | null;
   prefMinCompleted?: number | null;
@@ -203,6 +214,9 @@ export type OrderDTO = {
   feeRate: number;
   /** O que quem atende recebe por este pedido. */
   providerNetCents: number;
+  /** Desconto (cupom + crédito) já abatido do total. A plataforma absorve. */
+  discountCents: number;
+  couponCode: string | null;
   /** Quem atende precisa digitar o código de chegada para iniciar (o código em si nunca vai no DTO). */
   requiresDoorCode: boolean;
   /** 1 livre · 2 selo de reparos · 3 profissional com credencial. */
@@ -258,6 +272,9 @@ function toDTO(o: OrderFull, unreadMessages = 0): OrderDTO {
   const dest = trackingDestination(o);
   const openWait = o.isOpenRequest && !o.providerId && o.status === "CREATED";
   const createdAtMs = new Date(ensureUtcIso(o.createdAt)).getTime();
+  // Ajuda aberta agendada só começa a expirar no horário marcado (mesma regra do cron).
+  const waitStartMs =
+    openWait && o.scheduledAt ? Math.max(createdAtMs, new Date(ensureUtcIso(o.scheduledAt)).getTime()) : createdAtMs;
   return {
     id: o.id,
     status: o.status,
@@ -270,13 +287,15 @@ function toDTO(o: OrderFull, unreadMessages = 0): OrderDTO {
     feeRate: feeRuleOf(o).rate,
     providerNetCents:
       feeRuleOf(o).payer === "PROVIDER" ? o.priceCents - o.platformFeeCents : o.priceCents,
+    discountCents: o.discountCents ?? 0,
+    couponCode: o.couponCode ?? null,
     requiresDoorCode: !!o.doorCode,
     riskLevel: normalizeRisk(o.riskLevel),
     preferences: orderPreferences(o),
     cancelReason: o.cancelReason,
     createdAt: o.createdAt,
     offerExpiresAt: new Date(
-      createdAtMs + (openWait ? OPEN_REQUEST_TTL_MS : OFFER_TTL_MS),
+      waitStartMs + (openWait ? OPEN_REQUEST_TTL_MS : OFFER_TTL_MS),
     ).toISOString(),
     isOpenRequest: o.isOpenRequest,
     detailsReady: o.detailsReady,
@@ -435,6 +454,10 @@ export type CreateOrderInput = {
   preferences?: OrderPreferences;
   /** Sugestão de risco da IA (1–4). Só sobe o nível da categoria, nunca baixa. */
   riskHint?: number;
+  /** Cupom digitado pelo cliente. */
+  couponCode?: string;
+  /** Abater o crédito do cliente. */
+  useCredits?: boolean;
 };
 
 /** Perfil elegível a push de ajuda aberta (modo atendimento ligado). */
@@ -464,7 +487,14 @@ export type OpenRequestAudienceProfile = {
  */
 export function matchesOpenRequestAudience(
   profile: OpenRequestAudienceProfile,
-  order: { categoryId: string | null; address: LatLng; riskLevel?: number; preferences?: OrderPreferences | null },
+  order: {
+    categoryId: string | null;
+    address: LatLng;
+    riskLevel?: number;
+    preferences?: OrderPreferences | null;
+    /** Escalonamento: multiplica o raio de cada pessoa (padrão 1). */
+    radiusScale?: number;
+  },
   busyIds: Set<string>,
 ): boolean {
   if (busyIds.has(profile.id)) return false;
@@ -472,7 +502,7 @@ export function matchesOpenRequestAudience(
   // Nível de tarefa: só quem tem a qualificação recebe/vê (pitch, rodada 3).
   if (!canTakeRisk(profile, normalizeRisk(order.riskLevel))) return false;
   const origin = effectiveProviderPosition(profile);
-  if (!isInsideServiceRadius(origin, profile.serviceRadiusKm, order.address)) return false;
+  if (!isInsideServiceRadius(origin, profile.serviceRadiusKm * (order.radiusScale ?? 1), order.address)) return false;
   if (profile.isHelper) return true;
   if (!order.categoryId) return true;
   return profile.categories.some((c) => c.categoryId === order.categoryId);
@@ -561,12 +591,13 @@ export async function openRequestAvailability(
   point: LatLng,
   categoryId: string | null,
   preferences: OrderPreferences | null = null,
-): Promise<AvailabilitySummary & { etaMin: number | null }> {
-  const [{ rows, busyIds }, { data: category }] = await Promise.all([
+): Promise<AvailabilitySummary & { etaMin: number | null; area: AreaStatus }> {
+  const [{ rows, busyIds }, { data: category }, area] = await Promise.all([
     loadOpenRequestAudience(clientId),
     categoryId
       ? supabase.from("category").select("riskLevel").eq("id", categoryId).maybeSingle()
       : Promise.resolve({ data: null }),
+    checkArea(point),
   ]);
   const { nearest, ...summary } = summarizeAvailability(
     rows,
@@ -587,6 +618,7 @@ export async function openRequestAvailability(
     ...summary,
     nearestKm: summary.nearestKm == null ? null : Math.round(summary.nearestKm * 10) / 10,
     etaMin,
+    area,
   };
 }
 
@@ -612,13 +644,127 @@ async function notifyAvailableProviders(order: OrderFull) {
       continue;
     }
     void notifyUser(p.userId, "ORDER", {
-      title: "Nova solicitação",
+      title: order.scheduledAt ? `Nova solicitação para ${formatBrasiliaDateTime(order.scheduledAt)}` : "Nova solicitação",
       body,
       data: { type: "order", orderId: order.id, role: "provider" },
     });
     sent += 1;
     if (sent >= OPEN_NOTIFY_LIMIT) break;
   }
+}
+
+type EscalationCandidate = {
+  id: string;
+  clientId: string;
+  description: string | null;
+  createdAt: string;
+  scheduledAt: string | null;
+  categoryId: string | null;
+  riskLevel: number | null;
+  escalationLevel: number | null;
+  prefMinRating: number | null;
+  prefMinCompleted: number | null;
+  prefGender: "F" | "M" | null;
+  address: { lat: number; lng: number } | { lat: number; lng: number }[] | null;
+  category: { name: string } | { name: string }[] | null;
+};
+
+/**
+ * Escalonamento (cron): ajuda aberta sem aceite sobe de nível com o tempo.
+ * Nível 1 avisa os âncoras de plantão; nível 2 amplia o raio e avisa quem passou
+ * a alcançar o pedido. Cada nível é gravado com trava (só sobe uma vez).
+ */
+export async function escalateOpenRequests(now = new Date()): Promise<{ anchors: number; widened: number; notified: number }> {
+  const config = await getConfig();
+  if (config.escalateAnchorsAfterMin <= 0 && config.escalateRadiusAfterMin <= 0) {
+    return { anchors: 0, widened: 0, notified: 0 };
+  }
+  const { data, error } = await supabase
+    .from("order")
+    .select(
+      "id, clientId, description, createdAt, scheduledAt, categoryId, riskLevel, escalationLevel, prefMinRating, prefMinCompleted, prefGender, address:address!order_addressId_fkey(lat, lng), category:category(name)",
+    )
+    .eq("status", "CREATED")
+    .eq("isOpenRequest", true)
+    .is("providerId", null)
+    .lt("escalationLevel", 2)
+    .order("createdAt", { ascending: true })
+    .limit(200);
+  if (error) throw new Error(error.message);
+
+  const due = ((data ?? []) as unknown as EscalationCandidate[])
+    .map((o) => ({ order: o, target: escalationTarget(o, config, now) }))
+    .filter(({ order, target }) => target > (order.escalationLevel ?? 0));
+  if (due.length === 0) return { anchors: 0, widened: 0, notified: 0 };
+
+  const anchorIds = await onDutyAnchorIds(now);
+  // O público é o mesmo para todos os pedidos de um cliente (só exclui ele mesmo).
+  const audienceByClient = new Map<string, Awaited<ReturnType<typeof loadOpenRequestAudience>>>();
+  let anchors = 0;
+  let widened = 0;
+  let notified = 0;
+  const mult = config.escalationRadiusMultiplier;
+
+  for (const { order, target } of due) {
+    const from = (order.escalationLevel ?? 0) as EscalationLevel;
+    const { data: claimed } = await supabase
+      .from("order")
+      .update({ escalationLevel: target, escalatedAt: now.toISOString() })
+      .eq("id", order.id)
+      .eq("status", "CREATED")
+      .eq("escalationLevel", from)
+      .select("id");
+    if (!claimed?.length) continue;
+
+    const address = Array.isArray(order.address) ? order.address[0] : order.address;
+    if (!address) continue;
+    const category = Array.isArray(order.category) ? order.category[0] : order.category;
+    let audience = audienceByClient.get(order.clientId);
+    if (!audience) {
+      audience = await loadOpenRequestAudience(order.clientId);
+      audienceByClient.set(order.clientId, audience);
+    }
+    const base = {
+      categoryId: order.categoryId,
+      address: { lat: address.lat, lng: address.lng },
+      riskLevel: order.riskLevel ?? 1,
+      preferences: orderPreferences(order),
+    };
+    const body = order.description?.trim() || category?.name || "Alguém precisa de ajuda";
+    const recipients = new Set<string>();
+    for (const p of audience.rows) {
+      const wide = matchesOpenRequestAudience(p, { ...base, radiusScale: mult }, audience.busyIds);
+      if (!wide) continue;
+      // Nível 1: âncoras de plantão, mesmo um pouco além do raio deles.
+      if (from < 1 && target >= 1 && anchorIds.has(p.id)) recipients.add(p.userId);
+      // Nível 2: quem só alcança o pedido com o raio ampliado (os outros já foram avisados).
+      if (from < 2 && target >= 2 && !matchesOpenRequestAudience(p, base, audience.busyIds)) recipients.add(p.userId);
+      if (recipients.size >= OPEN_NOTIFY_LIMIT) break;
+    }
+    for (const userId of recipients) {
+      void notifyUser(userId, "ORDER", {
+        title: "Ainda sem ninguém: ajuda perto de você",
+        body,
+        data: { type: "order", orderId: order.id, role: "provider" },
+      });
+    }
+    notified += recipients.size;
+    if (from < 1 && target >= 1) anchors += 1;
+    if (from < 2 && target >= 2) {
+      widened += 1;
+      void notifyUser(order.clientId, "ORDER", {
+        title: "Ampliamos a busca",
+        body: "Ninguém aceitou ainda, então avisamos mais gente um pouco mais longe.",
+        data: { type: "order", orderId: order.id, role: "client" },
+      });
+    }
+    void trackEvent({
+      type: "order.escalated",
+      userId: order.clientId,
+      props: { orderId: order.id, from, to: target, notified: recipients.size },
+    });
+  }
+  return { anchors, widened, notified };
 }
 
 export async function createOrder(
@@ -661,6 +807,26 @@ export async function createOrder(
   if (!address || address.userId !== clientId) {
     return { error: "Endereço inválido", status: 400 };
   }
+
+  // Agendamento e zona de atendimento (Fase 6). Sem zona ativa, checkArea libera tudo.
+  const config = await getConfig();
+  const nowMs = Date.now();
+  const scheduledMs = input.scheduledAt ? new Date(input.scheduledAt).getTime() : null;
+  if (scheduledMs != null) {
+    if (scheduledMs < nowMs - SCHEDULE_PAST_TOLERANCE_MS) {
+      return { error: "Escolha uma data e hora futuras", status: 400 };
+    }
+    if (scheduledMs > nowMs + config.scheduleMaxDays * 24 * 60 * 60_000) {
+      return { error: `Dá para agendar até ${config.scheduleMaxDays} dias à frente`, status: 400 };
+    }
+  }
+  const scheduledLater = scheduledMs != null && scheduledMs > nowMs;
+  const area = await checkArea(
+    { lat: address.lat, lng: address.lng },
+    new Date(scheduledLater ? scheduledMs! : nowMs),
+  );
+  const denial = areaDenial(area, scheduledLater);
+  if (denial) return denial;
 
   let priceCents = 0;
   let serviceId: string | undefined;
@@ -713,7 +879,6 @@ export async function createOrder(
   }
 
   // Snapshot da regra de cobrança: o pedido fica com ela até o fim.
-  const config = await getConfig();
   const riskCategoryId = input.categoryId ?? serviceCategoryId;
   const { data: category } = riskCategoryId
     ? await supabase
@@ -736,7 +901,15 @@ export async function createOrder(
     .eq("id", clientId)
     .maybeSingle();
   const shareToken = clientRow?.trustedContactEmail ? newShareToken() : null;
-  const { platformFeeCents, totalCents } = computeFees(priceCents, feeRule);
+  // Cupom e crédito: o desconto sai da parte da plataforma (quem atende recebe igual).
+  const discount = await resolveDiscount(clientId, {
+    couponCode: input.couponCode,
+    useCredits: input.useCredits,
+    priceCents,
+    grossTotalCents: computeFees(priceCents, feeRule).totalCents,
+  });
+  if ("error" in discount) return discount;
+  const { platformFeeCents, totalCents, discountCents } = computeFees(priceCents, feeRule, discount.totalCents);
   const orderId = randomUUID();
 
   const { data: created, error } = await supabase.rpc("create_order_with_event", {
@@ -775,8 +948,22 @@ export async function createOrder(
         : {}),
       riskLevel,
       expectedDurationMin: category?.expectedDurationMin ?? config.defaultExpectedDurationMin,
+      ...(discountCents > 0
+        ? {
+            discountCents,
+            creditUsedCents: discount.creditCents,
+            couponId: discount.couponCents > 0 ? discount.couponId : null,
+            couponCode: discount.couponCents > 0 ? discount.couponCode : null,
+          }
+        : {}),
     })
     .eq("id", (created as OrderRow).id);
+  if (discountCents > 0) {
+    await recordDiscountUse((created as OrderRow).id, clientId, {
+      ...discount,
+      couponId: discount.couponCents > 0 ? discount.couponId : null,
+    });
+  }
 
   const order = await fetchOrder((created as OrderRow).id);
   if (!order) return { error: "Pedido criado mas não encontrado", status: 500 };
@@ -842,7 +1029,9 @@ async function listNearbyOpenRequests(
 ): Promise<OrderFull[]> {
   const origin = effectiveProviderPosition(profile);
   if (!origin) return [];
-  const minCreatedAt = new Date(Date.now() - OPEN_REQUEST_TTL_MS).toISOString();
+  const config = await getConfig();
+  // Agendada conta a partir do horário marcado (mesma regra da expiração no cron).
+  const minStart = new Date(Date.now() - config.openRequestTtlMs).toISOString();
   const { data: rows } = await supabase
     .from("order")
     .select(ORDER_SELECT)
@@ -850,15 +1039,17 @@ async function listNearbyOpenRequests(
     .is("providerId", null)
     .eq("status", "CREATED")
     .neq("clientId", userId)
-    .gte("createdAt", minCreatedAt)
+    .or(`createdAt.gte.${minStart},scheduledAt.gte.${minStart}`)
     .order("createdAt", { ascending: false })
     .limit(200);
   return ((rows ?? []) as unknown as OrderFull[])
     .filter((row) =>
-      isInsideServiceRadius(origin, profile.serviceRadiusKm, {
-        lat: row.address.lat,
-        lng: row.address.lng,
-      }),
+      // Pedido escalonado aparece também para quem está mais longe (raio ampliado).
+      isInsideServiceRadius(
+        origin,
+        profile.serviceRadiusKm * radiusScale(row.escalationLevel, config.escalationRadiusMultiplier),
+        { lat: row.address.lat, lng: row.address.lng },
+      ),
     )
     .slice(0, 40);
 }
@@ -1237,6 +1428,7 @@ export async function transitionOrder(
   }
   if (rule.to === "CANCELLED") {
     await refundIfPaid(id);
+    await releaseOrderDiscounts(id);
   }
   if (action === "start_work") void recordEtaMeasurement(id);
   const familyEvents: Partial<Record<OrderAction, FamilyEvent>> = {

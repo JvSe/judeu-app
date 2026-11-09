@@ -161,6 +161,7 @@ function formatPersonalization(lines: string[]): string[] {
 export function buildSystemPrompt(
   categories: Category[],
   personalization?: ClientPersonalization,
+  areaLabel = "Palmas, Tocantins",
 ): string {
   const lista = categories.length
     ? categories.map((c) => `- ${c.slug}: ${c.name}`).join("\n")
@@ -174,7 +175,7 @@ export function buildSystemPrompt(
   }
   if (canPublish) contextLines.push("Perfil: empresa (pode publicar vagas)");
   return [
-    "Você é o JudIA, assistente do Judeu — app para chamar pessoas perto de você em Palmas, Tocantins.",
+    `Você é o JudIA, assistente do Judeu — app para chamar pessoas perto de você em ${areaLabel}.`,
     "Antes de agir, classifique a intenção em UM destes casos:",
     "A) SERVIÇO CONVENCIONAL — ofício da lista (reparos, limpeza, frete/mudança, beleza). Tool: buscar_prestadores.",
     "B) AJUDA DIFERENTE / RECADO — não é um ofício da lista: buscar e deixar algo, copiadora, compra, fila, favor, 'preciso de alguém' genérico, tarefa A→B. Tool: pedir_ajuda.",
