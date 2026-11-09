@@ -1,0 +1,22 @@
+appId: com.judeu.app
+---
+- tapOn: "Chamadas"
+- extendedWaitUntil:
+    visible: ".*Atendi.*|.*Em andamento.*"
+    timeout: 20000
+- tapOn:
+    text: ".*Atendi.*"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/helper-09-chamadas-atendi
+- tapOn:
+    text: ".*Concluídos.*"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/helper-10-chamadas-concluidos
+- tapOn: "Ganhos"
+- waitForAnimationToEnd
+- takeScreenshot: shots/helper-11-ganhos
+- tapOn: ".*Sacar.*"
+- waitForAnimationToEnd
+- takeScreenshot: shots/helper-12-ganhos-sacar

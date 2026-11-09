@@ -1,0 +1,499 @@
+## A1 register validations
+-- termos false
+{"error":"Dados inválidos"}
+HTTP 422 0.004962s
+-- senha curta
+{"error":"Dados inválidos"}
+HTTP 422 0.004612s
+-- email invalido
+{"error":"Dados inválidos"}
+HTTP 422 0.004975s
+-- nome curto
+{"error":"Dados inválidos"}
+HTTP 422 0.004353s
+-- OK
+{"user":{"id":"2afc39a0-e5ab-4af1-916e-c438e2d552f0","email":"qa-20261103-novo-cliente@teste.app","fullName":"Nina Cliente QA","phone":"63999990002","role":"CLIENT","avatarUrl":null,"emailVerified":false,"phoneVerified":false,"createdAt":"2026-11-03T15:49:11.322"},"accessToken":"eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiQ0xJRU5UIiwic3ViIjoiMmFmYzM5YTAtZTVhYi00YWYxLTkxNmUtYzQzOGUyZDU1MmYwIiwiaWF0IjoxNzkzNzIwOTUxLCJleHAiOjE3OTM3MjE4NTF9.c-kWOky3M3Ccb9CprJNp1UwzCa7shT1XzOfihQd9JQY","refreshToken":"72de3c97df15febe8dc28244a55804903bc193b23fbb181276888dce74cd052dc0501fbe2f2e9e8136e10b55185f3fea"}
+HTTP 201 0.809048s
+-- duplicado
+{"error":"E-mail já cadastrado"}
+HTTP 409 0.257701s
+-- duplicado com case diferente
+{"error":"E-mail já cadastrado"}
+HTTP 409 0.261877s
+## A1b login/refresh/logout
+-- login senha errada
+{"error":"E-mail ou senha incorretos"}
+HTTP 401 0.792948s
+-- login email inexistente
+{"error":"E-mail ou senha incorretos"}
+HTTP 401 0.248284s
+-- login ok (gera 2a sessao)
+HTTP 200 1.027953s
+-- refresh com RT2 (rotaciona)
+HTTP 200 1.494923s
+{"user":{"id":"2afc39a0-e5ab-4af1-916e-c438e2d552f0","email":"qa-20261103-novo-cliente@teste.app","fullName":"Nina Cliente QA","phone":"63999990002","role":"CLIENT","avatarUrl":null,"emailVerified":fa
+-- refresh de novo com RT2 já rotacionado (espera 401)
+{"error":"Sessão expirada"}
+HTTP 401 0.268669s
+-- refresh lixo
+{"error":"Sessão expirada"}
+HTTP 401 0.249208s
+-- logout RT3
+{"ok":true}
+HTTP 200 0.267427s
+-- refresh após logout (espera 401)
+{"error":"Sessão expirada"}
+HTTP 401 0.238567s
+-- logout sem body
+{"ok":true}
+HTTP 200 0.004652s
+-- GET /me sem token
+{"error":"Não autenticado"}
+HTTP 401 0.004526s
+-- GET /me token lixo
+{"error":"Não autenticado"}
+HTTP 401 0.003873s
+## A1c forgot/reset
+-- forgot email inexistente
+{"ok":true}
+HTTP 200 0.298000s
+-- reset SEM forgot antes, codigo 123456 (deve 400)
+{"error":"Código inválido ou expirado"}
+HTTP 400 0.516648s
+-- forgot meu email
+{"ok":true}
+HTTP 200 0.525474s
+-- reset codigo errado
+{"error":"Código inválido ou expirado"}
+HTTP 400 0.927335s
+-- reset 123456 (senha igual à atual)
+HTTP 200 1.679938s
+{"user":{"id":"2afc39a0-e5ab-4af1-916e-c438e2d552f0","email":"qa-20261103-novo-cliente@teste.app","fullName":"Nina Cliente QA","phone":"63999990002","role":"CLI
+-- reset reuso do mesmo codigo (deve 400)
+{"error":"Código inválido ou expirado"}
+HTTP 400 0.493472s
+-- meu RT original após reset (revokeAll → 401 esperado)
+{"error":"Sessão expirada"}
+HTTP 401 0.270901s
+## A1d me/stats/export
+-- GET /me
+{"user":{"id":"2afc39a0-e5ab-4af1-916e-c438e2d552f0","email":"qa-20261103-novo-cliente@teste.app","fullName":"Nina Cliente QA","phone":"63999990002","role":"CLIENT","avatarUrl":null,"emailVerified":false,"phoneVerified":false,"createdAt":"2026-11-03T15:49:11.322"}}
+HTTP 200 0.241224s
+-- PATCH /me nome+phone
+{"user":{"id":"2afc39a0-e5ab-4af1-916e-c438e2d552f0","email":"qa-20261103-novo-cliente@teste.app","fullName":"Nina Cliente QA","phone":"63999990002","role":"CLIENT","avatarUrl":null,"emailVerified":false,"phoneVerified":false,"createdAt":"2026-11-03T15:49:11.322"}}
+HTTP 200 0.272028s
+-- PATCH /me email (ignorado?)
+{"user":{"id":"2afc39a0-e5ab-4af1-916e-c438e2d552f0","email":"qa-20261103-novo-cliente@teste.app","fullName":"Nina Cliente QA","phone":"63999990002","role":"CLIENT","avatarUrl":null,"emailVerified":false,"phoneVerified":false,"createdAt":"2026-11-03T15:49:11.322"}}
+HTTP 200 0.264076s
+-- PATCH /me phone curto
+{"error":"Dados inválidos"}
+HTTP 422 0.003554s
+-- PATCH /me vazio
+{"user":{"id":"2afc39a0-e5ab-4af1-916e-c438e2d552f0","email":"qa-20261103-novo-cliente@teste.app","fullName":"Nina Cliente QA","phone":"63999990002","role":"CLIENT","avatarUrl":null,"emailVerified":false,"phoneVerified":false,"createdAt":"2026-11-03T15:49:11.322"}}
+HTTP 200 0.260723s
+-- GET /me/stats
+{"stats":{"completedOrders":0,"cancelledOrders":0,"totalOrders":0,"ratingAvg":null,"ratingCount":0}}
+HTTP 200 0.618967s
+-- GET /me/export
+HTTP 200 0.290545s
+     477
+id:string email:string fullName:string phone:string role:string createdAt:string termsAcceptedAt:string notifyOrders:boolean notifyMessages:boolean addresses:0 ordersAsClient:0 reviewsAuthored:0 reviewsReceived:0 messages:0 wallet:0 notifications:0 providerProfile:0
+13:export const FALLBACK_LAT = -10.1841;
+14:export const FALLBACK_LNG = -48.3336;
+## A2 enderecos
+-- POST sem lat/lng (geocode Palmas)
+{"address":{"id":"b99f5ada-1868-4e75-92df-cab307a31b67","label":"Casa","cep":"77006-016","street":"Quadra 104 Norte, Avenida LO 2","number":"12","complement":null,"neighborhood":"Plano Diretor Norte","city":"Palmas","state":"TO","lat":-10.1841,"lng":-48.3336,"isDefault":true}}
+HTTP 201 2.313345s
+-- POST com lat/lng + rua que geocodifica em outra cidade (override?)
+{"address":{"id":"427e453d-a655-4714-99a2-f11f722b446b","label":"Trabalho","cep":null,"street":"Avenida Paulista","number":"1000","complement":null,"neighborhood":"Bela Vista","city":"Palmas","state":"TO","lat":-10.2317,"lng":-48.3242,"isDefault":false}}
+HTTP 201 1.640041s
+-- POST 2o endereço real Palmas com lat/lng
+{"address":{"id":"1804198a-a93d-41c0-9001-b2d183428728","label":"Mãe","cep":"77020-000","street":"Quadra 204 Sul, Alameda 3","number":"5","complement":null,"neighborhood":"Plano Diretor Sul","city":"Palmas","state":"TO","lat":-10.195,"lng":-48.31,"isDefault":false}}
+HTTP 201 0.971821s
+-- validações: state 3 letras / sem city / rua curta
+{"error":"Dados inválidos"}
+HTTP 422 0.003461s
+{"error":"Dados inválidos"}
+HTTP 422 0.003165s
+{"error":"Dados inválidos"}
+HTTP 422 0.003086s
+-- GET lista
+{"addresses":[{"id":"b99f5ada-1868-4e75-92df-cab307a31b67","label":"Casa","cep":"77006-016","street":"Quadra 104 Norte, Avenida LO 2","number":"12","complement":null,"neighborhood":"Plano Diretor Norte","city":"Palmas","state":"TO","lat":-10.1841,"lng":-48.3336,"isDefault":true},{"id":"1804198a-a93d-41c0-9001-b2d183428728","label":"Mãe","cep":"77020-000","street":"Quadra 204 Sul, Alameda 3","number":"5","complement":null,"neighborhood":"Plano Diretor Sul","city":"Palmas","state":"TO","lat":-10.195,"lng":-48.31,"isDefault":false},{"id":"427e453d-a655-4714-99a2-f11f722b446b","label":"Trabalho","cep":null,"street":"Avenida Paulista","number":"1000","complement":null,"neighborhood":"Bela Vista","city":"Palmas","state":"TO","lat":-10.2317,"lng":-48.3242,"isDefault":false}]}
+HTTP 200 0.760424s
+ids: b99f5ada-1868-4e75-92df-cab307a31b67 427e453d-a655-4714-99a2-f11f722b446b 1804198a-a93d-41c0-9001-b2d183428728
+-- POST /default ID3
+
+HTTP 500 1.281346s
+-- PATCH ID1 label+number
+{"address":{"id":"b99f5ada-1868-4e75-92df-cab307a31b67","label":"Casa (editada)","cep":"77006-016","street":"Quadra 104 Norte, Avenida LO 2","number":"14","complement":null,"neighborhood":"Plano Diretor Norte","city":"Palmas","state":"TO","lat":-10.1841,"lng":-48.3336,"isDefault":true}}
+HTTP 200 2.148866s
+-- PATCH ID1 só lat/lng
+{"address":{"id":"b99f5ada-1868-4e75-92df-cab307a31b67","label":"Casa (editada)","cep":"77006-016","street":"Quadra 104 Norte, Avenida LO 2","number":"14","complement":null,"neighborhood":"Plano Diretor Norte","city":"Palmas","state":"TO","lat":-10.24,"lng":-48.33,"isDefault":true}}
+HTTP 200 0.504265s
+-- PATCH endereço de outro usuário
+other=d86209b9-bd82-4612-ada8-f9745cb96e2a
+{"error":"Endereço não encontrado"}
+HTTP 404 0.272798s
+{"error":"Endereço não encontrado"}
+HTTP 404 0.709825s
+{"error":"Endereço não encontrado"}
+HTTP 404 0.283259s
+-- DELETE ID2 (Trabalho)
+{"ok":true}
+HTTP 200 0.499904s
+-- DELETE ID3 (padrão) -> promove outro?
+{"ok":true}
+HTTP 200 0.490779s
+{"addresses":[{"id":"b99f5ada-1868-4e75-92df-cab307a31b67","label":"Casa (editada)","cep":"77006-016","street":"Quadra 104 Norte, Avenida LO 2","number":"14","complement":null,"neighborhood":"Plano Diretor Norte","city":"Palmas","state":"TO","lat":-10.24,"lng":-48.33,"isDefault":true}]}
+HTTP 200 0.269641s
+-- recria ID3 (Mãe) p/ usar depois
+{"address":{"id":"2a848488-1cab-41b8-b68e-72ab0fc4be67","label":"Mãe","cep":"77020-000","street":"Quadra 204 Sul, Alameda 3","number":"5","complement":null,"neighborhood":"Plano Diretor Sul","city":"Palmas","state":"TO","lat":-10.195,"lng":-48.31,"isDefault":false}}
+HTTP 201 0.689757s
+-- override test: Av Paulista SP com lat/lng de Palmas
+{"address":{"id":"ad63f63c-ee60-4dae-902e-20a91c70faf0","label":"OverrideTest","cep":null,"street":"Avenida Paulista","number":"1000","complement":null,"neighborhood":"Bela Vista","city":"São Paulo","state":"SP","lat":-23.5648865,"lng":-46.651918,"isDefault":false}}
+HTTP 201 1.586968s
+## A3 catalogo
+-- helpers e pendente no banco
+-- GET /categories
+{"categories":[{"id":"9001aafe-bb5c-4e26-90f6-67525eda4c4a","slug":"beleza","name":"Beleza","icon":"cut","count":2,"featured":false},{"id":"42c0f0bb-57e5-48fd-8666-9a9cc378b48e","slug":"frete","name":"Frete","icon":"cube","count":2,"featured":false},{"id":"d8594028-70d0-450a-a489-91676d7d33d8","slug":"limpeza","name":"Limpeza","icon":"sparkles","count":4,"featured":false},{"id":"11208bee-287f-4d21-982a-4ee1820ad8e5","slug":"reparos","name":"Reparos","icon":"flash","count":9,"featured":true}]}
+HTTP 200 0.523133s
+-- GET /providers?categoryId=reparos
+count 7 {"id":"8f55b048-3b27-4ad0-a405-179c3d16b523","name":"Anderson Ferreira","companyName":null,"role":"Eletricista","avatarUrl":null,"rating":0,"reviews":0,"yearsExperience":9,"priceFromCents":7000,"baseLat":-10.2290220351822,"baseLng":-48.324216,"lastLat":-10.2290220351822,"lastLng":-48.324216,"serviceRadiusKm":10,"isAvailable":true,"allowsNegotiation":false,"distanceKm":null,"etaMin":null}
+8f55b048-3b27-4ad0-a405-179c3d16b523   Anderson Ferreira
+d2148100-889c-470f-a5c0-9f740cb06f9a   Thiago Batista
+e912fb0c-a51f-4e8b-a194-c3d2547c4996   Rodrigo Almeida
+f69de9c7-0d8c-4c09-a7da-683144a9db01   Carlos Mendes
+2c182359-b543-4108-b330-e93cc13d9814   Rafael Souza
+9e8cc863-7e96-4ede-906e-2e4731f203e0   Construtora Horizonte Ltda
+cea14541-9eb7-48e0-b097-7dc4e8b031ea   Carla QA
+HTTP 200 0.543131s
+
+-- GET /providers sem categoria
+count 15
+HTTP 200 0.266834s
+
+-- GET /search?q=limp
+{"categories":[{"id":"d8594028-70d0-450a-a489-91676d7d33d8","slug":"limpeza","name":"Limpeza","icon":"sparkles","count":4,"featured":false}],"providers":[{"id":"264ef21f-2854-45e5-820a-9e76bfe555d0","name":"CleanPro Serviços de Limpeza Ltda","companyName":null,"role":"Empresa de Limpeza Profissional","avatarUrl":null,"rating":0,"reviews":0,"yearsExperience":7,"priceFromCents":30000,"baseLat":-10.2281406485225,"baseLng":-48.3319881808014,"lastLat":-10.2281406485225,"lastLng":-48.3319881808014,"serviceRadiusKm":10,"isAvailable":true,"allowsNegotiation":false,"distanceKm":null,"etaMin":null},{"id":"0172e595-0857-4b7e-94e7-9a29c4af2efb","name":"Camila Rocha","companyName":null,"role":"Diarista",
+HTTP 200 1.327389s
+-- GET /search?q= (vazio)
+{"categories":[],"providers":[]}
+HTTP 200 0.002889s
+-- GET /search?q=zzzz
+{"categories":[],"providers":[]}
+HTTP 200 0.543071s
+-- GET /providers/nearby
+count 14 {"id":"8f55b048-3b27-4ad0-a405-179c3d16b523","name":"Anderson Ferreira","companyName":null,"role":"Eletricista","avatarUrl":null,"rating":0,"reviews":0,"yearsExperience":9,"priceFromCents":7000,"baseLat":-10.2290220351822,"baseLng":-48.324216,"lastLat":-10.2290220351822,"lastLng":-48.324216,"serviceRadiusKm":10,"isAvailable":true,"allowsNegotiation":false,"distanceKm":0.2977812486148052,"etaMin":1}
+8f55b048-3b27-4ad0-a405-179c3d16b523  helper= avail=true Anderson Ferreira 0.2977812486148052
+0172e595-0857-4b7e-94e7-9a29c4af2efb  helper= avail=true Camila Rocha 0.5025375243181823
+d2148100-889c-470f-a5c0-9f740cb06f9a  helper= avail=true Thiago Batista 0.5873282754094877
+b5a40fe0-20e8-437f-9b3c-5e1080ef2c82  helper= avail=true Larissa Martins 0.6472578147291737
+cea14541-9eb7-48e0-b097-7dc4e8b031ea  helper= avail=true Carla QA 0.7021047273938515
+932f991e-f1f8-4af7-8651-df671ae5316f  helper= avail=true Eduardo Pires 0.7066413178858063
+27931343-592c-4c1c-84b9-755d58c5ad53  helper= avail=true Vanessa Duarte 0.7509160985663759
+e912fb0c-a51f-4e8b-a194-c3d2547c4996  helper= avail=true Rodrigo Almeida 0.7938655458276731
+aeb92e95-1290-4d77-afe2-b0b13316e798  helper= avail=true Sandra Teixeira 0.8372134224465464
+9e8cc863-7e96-4ede-906e-2e4731f203e0  helper= avail=true Construtora Horizonte Ltda 0.8688584977337935
+f69de9c7-0d8c-4c09-a7da-683144a9db01  helper= avail=true Carlos Mendes 0.9076087468951243
+264ef21f-2854-45e5-820a-9e76bfe555d0  helper= avail=true CleanPro Serviços de Limpeza Ltda 0.939656886055161
+fe879751-3873-4bf4-97f1-8510b6c7a8f2  helper= avail=true Marina Lopes 0.967864141951161
+2c182359-b543-4108-b330-e93cc13d9814  helper= avail=true Rafael Souza 1.0028020991887066
+HTTP 200 0.543722s
+
+-- GET /providers/nearby sem lat
+{"providers":[]}
+HTTP 200 0.494816s
+-- GET /providers/:id pendente
+{"provider":{"id":"40aabbf7-8d23-4738-baca-8eb6be2d7c24","name":"Pedro Pendente QA","companyName":null,"role":"Encanador","avatarUrl":null,"rating":0,"reviews":0,"yearsExperience":3,"priceFromCents":12000,"baseLat":-10.23,"baseLng":-48.325,"lastLat":-10.23,"lastLng":-48.325,"serviceRadiusKm":15,"isAvailable":false,"allowsNegotiation":false,"distanceKm":null,"etaMin":null,"bio":null,"services":[{"id":"576c4543-8750-4272-83bf-06ff13ae1308","name":"Desentupimento","priceCents":12000}]}}
+HTTP 200 0.823819s
+helper id=
+-- GET /providers/:id helper
+/api/providers
+HTTP 308 0.002705s
+-- GET /providers/:id empresa
+{"provider":{"id":"cea14541-9eb7-48e0-b097-7dc4e8b031ea","name":"Carla QA","companyName":"Construtora QA Ltda","role":"Construtora e reformas","avatarUrl":null,"rating":0,"reviews":0,"yearsExperience":10,"priceFromCents":18000,"baseLat":-10.229,"baseLng":-48.33,"lastLat":-10.229,"lastLng":-48.33,"serviceRadiusKm":30,"isAvailable":true,"allowsNegotiation":false,"distanceKm":null,"etaMin":null,"bio":"Empresa de apoio QA","services":[{"id":"c0434ba1-7bed-4abb-ac84-a6bd2ef30f55","name":"Pintura de cômodo","priceCents":18000},{"id":"cf55a17c-7c09-47f3-bb34-405f2131c88b","name":"Reforma pequena","priceCents":25000}]}}
+HTTP 200 0.258312s
+-- GET /providers/:id inexistente
+{"error":"Prestador não encontrado"}
+HTTP 404 0.250705s
+-- GET /providers/:id/reviews empresa
+{"reviews":[]}
+HTTP 200 0.741199s
+-- GET /providers/:id/reviews pendente
+{"reviews":[]}
+HTTP 200 0.255141s
+-- GET /categories sem token
+HTTP 401 0.002557s
+[
+ {
+  "id": "afbe0e29-d97f-4696-b4e7-1b72e56e8b24",
+  "userId": "138b6ac4-aa43-48ea-ad9f-0f493bdf42ec",
+  "status": "APPROVED",
+  "isHelper": true,
+  "isAvailable": true,
+  "allowsNegotiation": false
+ },
+ {
+  "id": "e2726ee9-5973-4a9b-a0f1-57bdabae6ac8",
+  "userId": "5878cb01-f19d-4cf8-af05-0751bd3ddf64",
+  "status": "APPROVED",
+  "isHelper": true,
+  "isAvailable": false,
+  "allowsNegotiation": false
+ },
+ {
+  "id": "40bfab90-f143-429b-9af1-5404e7bfa794",
+  "userId": "33432a5c-50c0-4efb-8c29-cf69988e53c0",
+  "status": "APPROVED",
+  "isHelper": true,
+  "isAvailable": false,
+  "allowsNegotiation": false
+ },
+ {
+  "id": "b4f06435-0b8d-4927-adbb-45626d84c77a",
+  "userId": "dee8df84-2479-4000-ada6-bac517b2a164",
+  "status": "APPROVED",
+  "isHelper": true,
+  "isAvailable": true,
+  "allowsNegotiation": false
+ }
+]
+[
+ {
+  "providerId": "40aabbf7-8d23-4738-baca-8eb6be2d7c24",
+  "categoryId": "11208bee-287f-4d21-982a-4ee1820ad8e5"
+ }
+]
+[
+ {
+  "id": "cea14541-9eb7-48e0-b097-7dc4e8b031ea",
+  "userId": "67108c38-c5f2-40cf-8a9f-119cec05263b",
+  "headline": "Construtora e reformas",
+  "bio": "Empresa de apoio QA",
+  "yearsExperience": 10,
+  "status": "APPROVED",
+  "isAvailable": true,
+  "isCompany": true,
+  "hiringEmployees": false,
+  "allowsNegotiation": false,
+  "ratingAvg": 0,
+  "ratingCount": 0,
+  "documentUrl": "qa/fake-kyc.jpg",
+  "baseLat": -10.229,
+  "baseLng": -48.33,
+  "serviceRadiusKm": 30,
+  "createdAt": "2026-11-03T15:30:22.712",
+  "updatedAt": "2026-11-03T15:30:32.677",
+  "companyName": "Construtora QA Ltda",
+  "responsibleName": "Carla QA",
+  "lastLat": null,
+  "lastLng": null,
+  "lastLocationAt": null,
+  "isHelper": false
+ }
+]
+helper id=afbe0e29-d97f-4696-b4e7-1b72e56e8b24
+-- GET /providers/:id helper
+{"provider":{"id":"afbe0e29-d97f-4696-b4e7-1b72e56e8b24","name":"Letlinda","companyName":null,"role":"Ajuda perto de você","avatarUrl":null,"rating":0,"reviews":0,"yearsExperience":0,"priceFromCents":null,"baseLat":-10.2357029013959,"baseLng":-48.3311297018609,"lastLat":-10.1862738184701,"lastLng":-48.3362095766583,"serviceRadiusKm":10,"isAvailable":true,"allowsNegotiation":false,"distanceKm":null,"etaMin":null,"bio":"Posso buscar documentos e dar carona","services":[]}}
+HTTP 200 0.306519s
+-- helper no nearby?
+-- providers?categoryId=reparos inclui pendente?
+0
+## A4 orders — erros
+-- sem endereço: apago os 2 e tento ajuda aberta e chamada direta
+HTTP 200 2.340995s
+HTTP 200 0.762840s
+{"error":"Cadastre um endereço no perfil para publicar o pedido"}
+HTTP 400 0.255680s
+{"error":"Dados inválidos"}
+HTTP 400 0.002863s
+-- recrio endereços
+HTTP 201 1.073635s
+HTTP 201 0.575160s
+addr1=23eda7b5-d46d-4740-9509-275f2f5f5918 addr2=90d1622b-5ef5-44d8-9426-80646afd0b91 (addr1 isDefault=true)
+-- chamada direta sem serviceId (preço?)
+HTTP 201 1.445819s
+id=066e037c-c5ac-4ad4-baf7-00f0f62bc211 price=0 total=0 service=null offerExpiresAt=2026-11-03T18:55:17.996Z createdAt=2026-11-03T15:54:17.996
+-- providerId = helper
+HTTP 201 1.271416s
+id=3151164b-6ee6-4097-9399-9102b150e5a6 price=0 provider={"id":"afbe0e29-d97f-4696-b4e7-1b72e56e8b24","name":"Letlinda","companyName":null,"headline":"Ajuda perto de você","avatarUrl":null,"ratingAvg":0,"allowsNegotiation":false}
+-- providerId = pendente
+{"error":"Essa pessoa não está disponível agora"}
+HTTP 400 0.500026s
+-- providerId inexistente
+{"error":"Essa pessoa não está disponível agora"}
+HTTP 400 0.949199s
+-- serviceId de outro prestador (Desentupimento do pendente) p/ empresa
+{"error":"Serviço não pertence ao prestador"}
+HTTP 400 0.756543s
+-- scheduledAt no passado
+HTTP 201 1.372131s
+id=bafb5b28-e044-4e50-8a35-43e00266d3b0 scheduledAt=2020-01-01T10:00:00
+-- scheduledAt ISO inválido
+{"error":"Dados inválidos"}
+HTTP 400 0.003199s
+-- scheduledAt sem timezone (2026-12-01T10:00:00)
+{"error":"Dados inválidos"}
+HTTP 400 0.002802s
+-- ajuda aberta descrição curta
+{"error":"Descreva o que você precisa"}
+HTTP 400 0.002667s
+-- ajuda aberta preço 50
+{"error":"Informe quanto você vai pagar"}
+HTTP 400 0.002760s
+-- ajuda aberta sem preço
+{"error":"Informe quanto você vai pagar"}
+HTTP 400 0.002702s
+-- ajuda aberta preço decimal 80.5
+{"error":"Dados inválidos"}
+HTTP 400 0.002832s
+-- ajuda aberta preço acima do máximo 1.000.001
+{"error":"Dados inválidos"}
+HTTP 400 0.003032s
+-- addressId de outro usuário
+{"error":"Endereço inválido"}
+HTTP 400 0.258144s
+-- priceCents em chamada direta (ignorado?)
+HTTP 201 1.294521s
+id=26b8cbb5-307c-40b9-95ea-92b06e5dd6de price=18000 fee=1440 total=19440 detailsReady=true
+-- GET /orders?as=client (quantos)
+4 CREATED,CREATED,CREATED,CREATED
+-- GET /orders?as=provider sendo cliente
+{"orders":[]}
+HTTP 200 0.262555s
+-- DELETE endereço vinculado a pedido
+{"error":"Não é possível excluir: endereço vinculado a um pedido"}
+HTTP 409 0.497834s
+## A4b chamada direta p/ empresa O_MAIN=26b8cbb5-307c-40b9-95ea-92b06e5dd6de
+-- GET payment antes de qualquer
+{"payment":null}
+HTTP 200 0.760638s
+-- POST payment CASH com pedido CREATED
+{"payment":{"id":"1d1b31ec-19e4-46b5-ba88-3a6c24eed297","orderId":"26b8cbb5-307c-40b9-95ea-92b06e5dd6de","method":"CASH","status":"PENDING","amountCents":19440,"createdAt":"2026-11-03T15:54:29.935"}}
+HTTP 201 1.281494s
+-- POST payment CARD depois de CASH (troca?)
+{"payment":{"id":"1d1b31ec-19e4-46b5-ba88-3a6c24eed297","orderId":"26b8cbb5-307c-40b9-95ea-92b06e5dd6de","method":"CASH","status":"PENDING","amountCents":19440,"createdAt":"2026-11-03T15:54:29.935"}}
+HTTP 201 0.249158s
+-- POST payment/confirm (CASH)
+{"payment":{"id":"1d1b31ec-19e4-46b5-ba88-3a6c24eed297","orderId":"26b8cbb5-307c-40b9-95ea-92b06e5dd6de","method":"CASH","status":"PENDING","amountCents":19440,"createdAt":"2026-11-03T15:54:29.935"}}
+HTTP 200 1.146139s
+-- chat em CREATED
+{"message":{"id":"0ac7d8b2-9fde-445f-953b-d809ad724272","orderId":"26b8cbb5-307c-40b9-95ea-92b06e5dd6de","senderId":"2afc39a0-e5ab-4af1-916e-c438e2d552f0","senderName":"Nina Cliente QA","body":"Olá, pode vir hoje?","readAt":null,"createdAt":"2026-11-03T15:54:33.317"}}
+HTTP 201 1.055964s
+-- review em CREATED
+{"error":"Só é possível avaliar pedidos concluídos"}
+HTTP 409 0.737356s
+-- cancel sem note
+HTTP 200 1.606820s
+status=CANCELLED cancelReason=Chamada cancelada payment={"status":"PENDING","method":"CASH"} events=["CREATED:Chamada enviada","CANCELLED:Chamada cancelada"]
+-- cancel de novo
+{"error":"Transição inválida a partir de CANCELLED"}
+HTTP 409 0.645212s
+-- accept como cliente
+{"error":"Ação permitida apenas ao prestador"}
+HTTP 403 0.636718s
+-- pagar cancelado
+{"error":"Pedido cancelado, não é possível pagar"}
+HTTP 409 0.259162s
+-- chat em cancelado
+{"message":{"id":"449fd08d-accc-4625-9033-1449455d171a","orderId":"26b8cbb5-307c-40b9-95ea-92b06e5dd6de","senderId":"2afc39a0-e5ab-4af1-916e-c438e2d552f0","senderName":"Nina Cliente QA","body":"ainda dá?","readAt":null,"createdAt":"2026-11-03T15:54:38.487"}}
+HTTP 201 0.534254s
+{"messages":[{"id":"0ac7d8b2-9fde-445f-953b-d809ad724272","orderId":"26b8cbb5-307c-40b9-95ea-92b06e5dd6de","senderId":"2afc39a0-e5ab-4af1-916e-c438e2d552f0","senderName":"Nina Cliente QA","body":"Olá, pode vir hoje?","readAt":null,"createdAt":"2026-11-03T15:54:33.317"},{"id":"449fd08d-accc-4625-9033
+HTTP 200 0.768827s
+-- review em cancelado
+{"error":"Só é possível avaliar pedidos concluídos"}
+HTTP 409 0.249603s
+-- GET payment do cancelado
+{"payment":{"id":"1d1b31ec-19e4-46b5-ba88-3a6c24eed297","orderId":"26b8cbb5-307c-40b9-95ea-92b06e5dd6de","method":"CASH","status":"PENDING","amountCents":19440,"createdAt":"2026-11-03T15:54:29.935"}}
+HTTP 200 0.261603s
+-- GET pedido de outro usuário
+other order=f6c04df1-d0dd-49a9-89b5-e34729516065
+{"error":"Pedido não encontrado"}
+HTTP 404 0.776243s
+{"error":"Ação permitida apenas ao cliente"}
+HTTP 403 0.287151s
+{"error":"Você não participou deste pedido"}
+HTTP 403 0.289339s
+{"error":"Ação permitida apenas ao cliente do pedido"}
+HTTP 403 0.250594s
+-- limpando: cancelo O_NOSVC, O_HLP, O_PAST
+HTTP 200 1.039521s
+HTTP 200 1.400184s
+HTTP 200 1.030946s
+## A5 suporte
+-- ticket subject curto
+{"error":"Dados inválidos"}
+HTTP 422 0.043944s
+-- ticket message curta
+{"error":"Dados inválidos"}
+HTTP 422 0.005311s
+-- ticket categoria inválida
+{"error":"Dados inválidos"}
+HTTP 422 0.002947s
+-- ticket orderId de outro usuário
+{"error":"Pedido não encontrado"}
+HTTP 404 0.513256s
+-- ticket orderId inexistente
+{"error":"Pedido não encontrado"}
+HTTP 404 0.670139s
+-- ticket OK sem pedido
+
+HTTP 500 0.700677s
+-- ticket OK com meu pedido cancelado
+HTTP 500 0.563430s
+-- GET lista
+{"tickets":[]}
+HTTP 200 0.245030s
+-- GET detalhe T1
+/api/support/tickets
+HTTP 308 0.001591s
+-- GET detalhe de ticket de outro (query db)
+other ticket=
+## A5b notificacoes
+-- GET notifications
+{"notifications":[],"unreadCount":0}
+HTTP 200 0.299158s
+-- GET preferences
+{"preferences":{"notifyOrders":true,"notifyMessages":true}}
+HTTP 200 0.267655s
+-- read de id inexistente
+{"error":"Notificação não encontrada"}
+HTTP 404 0.817995s
+-- read-all
+{"ok":true,"count":0}
+HTTP 200 0.272933s
+-- POST preferences notifyOrders=false
+{"preferences":{"notifyOrders":false,"notifyMessages":true}}
+HTTP 200 0.242825s
+-- POST preferences inválido
+{"error":"Dados inválidos"}
+HTTP 422 0.003024s
+## A1e exclusão de conta (descartável)
+HTTP 201 1.073281s
+HTTP 401 0.004616s
+-- DELETE /me
+
+HTTP 500 0.631182s
+-- GET /me com token antigo (ainda 15min válido?)
+{"user":{"id":"6e2d433f-b1ae-4098-8b31-58422917db5c","email":"qa-20261103-cli-descartavel@teste.app","fullName":"Descartável QA","phone":null,"role":"CLIENT","avatarUrl":null,"emailVerified":false,"phoneVerified":false,"createdAt":"2026-11-03T16:09:35.284"}}
+HTTP 200 0.257298s
+-- refresh após delete
+{"user":{"id":"6e2d433f-b1ae-4098-8b31-58422917db5c","email":"qa-20261103-cli-descartavel@teste.app","fullName":"Descartável QA","phone":null,"role":"CLIENT","avatarUrl":null,"emailVerified":false,"phoneVerified":false,"createdAt":"2026-11-03T16:09:35.284"},"accessToken":"eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiQ0xJRU5UIiwic3ViIjoiNmUyZDQzM2YtYjFhZS00MDk4LThiMzEtNTg0MjI5MTdkYjVjIiwiaWF0IjoxNzkzNzIyMTc3LCJleHAiOjE3OTM3MjMwNzd9.0r5SaWW_4S-7huXlebKQIH9EW6dwD6sMvsOaSnLVsvQ","refreshToken":"7af5cf73ac6651362c32cbf0fedce41d23d59549d399c585a103191831b656d5995461884f6a999f504a61e7f24b2277"}
+HTTP 200 1.069409s
+-- login após delete
+{"user":{"id":"6e2d433f-b1ae-4098-8b31-58422917db5c","email":"qa-20261103-cli-descartavel@teste.app","fullName":"Descartável QA","phone":null,"role":"CLIENT","avatarUrl":null,"emailVerified":false,"phoneVerified":false,"createdAt":"2026-11-03T16:09:35.284"},"accessToken":"eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiQ0xJRU5UIiwic3ViIjoiNmUyZDQzM2YtYjFhZS00MDk4LThiMzEtNTg0MjI5MTdkYjVjIiwiaWF0IjoxNzkzNzIyMTc4LCJleHAiOjE3OTM3MjMwNzh9.KqADGzOPaK1kbI8xF4A4a01mFN7PVUcyI9bvOs6fh4I","refreshToken":"52ffd9ea5d805e3b347298733fe141d29ed6ac3ac7f45dab1b818a0060e4d214253b65db0ece7ab835fa7f0501294a63"}
+HTTP 200 0.614143s
+-- registro de novo com o mesmo e-mail
+HTTP 409 0.245561s
+-- linha no banco
+[
+ {
+  "id": "6e2d433f-b1ae-4098-8b31-58422917db5c",
+  "email": "qa-20261103-cli-descartavel@teste.app",
+  "fullName": "Descartável QA",
+  "phone": null
+ }
+]
+{
+ "count": 0,
+ "error": null
+}

@@ -1,0 +1,21 @@
+appId: com.judeu.app
+---
+- launchApp
+- extendedWaitUntil:
+    visible: ".*Quero trabalhar.*"
+    timeout: 60000
+- tapOn: ".*Quero trabalhar.*"
+- extendedWaitUntil:
+    visible: ".*Criar sua conta.*"
+    timeout: 20000
+- takeScreenshot: shots/prestador-01-signup-vazio
+- tapOn: "Seu nome"
+- inputText: "Paulo UI"
+- tapOn: "seu@email.com"
+- inputText: "qa-20261103-ui-prestador@teste.app"
+- tapOn: "(11) 90000-0000"
+- inputText: "63999990022"
+- tapOn: "Mínimo 8 caracteres"
+- inputText: "Qa@123456"
+- hideKeyboard
+- takeScreenshot: shots/prestador-02-signup-preenchido

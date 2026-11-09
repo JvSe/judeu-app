@@ -1,0 +1,7 @@
+appId: com.judeu.app
+---
+- launchApp
+- extendedWaitUntil:
+    visible: ".*Quero contratar.*"
+    timeout: 60000
+- takeScreenshot: shots/smoke-onboarding

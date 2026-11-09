@@ -1,0 +1,14 @@
+appId: com.judeu.app
+---
+- tapOn: "Perfil"
+- extendedWaitUntil:
+    visible: ".*Sair da conta.*"
+    timeout: 20000
+- tapOn: ".*Sair da conta.*"
+- tapOn:
+    text: "Sair|Confirmar|Sim"
+    optional: true
+- extendedWaitUntil:
+    visible: ".*Quero contratar.*"
+    timeout: 20000
+- takeScreenshot: shots/helper-99-logout

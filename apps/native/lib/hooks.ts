@@ -22,7 +22,7 @@ import {
   supportApi,
   walletApi,
 } from "@/lib/api";
-import { INCOMING_HELP_CHANNEL, INCOMING_HELP_SOUND_FILE } from "@/lib/push";
+import { INCOMING_HELP_CHANNEL, INCOMING_HELP_SOUND_FILE, isIncomingHelp } from "@/lib/push";
 import { saveTokens } from "@/lib/tokens";
 import { useAuth } from "@/lib/auth-context";
 import type {
@@ -582,16 +582,16 @@ export function useNotifications(opts: { poll?: boolean } = {}) {
     for (const item of items) {
       if (seenIds.current.has(item.id)) continue;
       seenIds.current.add(item.id);
-      const isOrder = item.type === "ORDER" || item.data?.type === "order";
+      const incomingHelp = isIncomingHelp(item.data);
       notifee.displayNotification({
         title: item.title,
         body: item.body,
         data: (item.data ?? undefined) as Record<string, string | number | object> | undefined,
         android: {
-          channelId: isOrder ? INCOMING_HELP_CHANNEL : "default",
+          channelId: incomingHelp ? INCOMING_HELP_CHANNEL : "default",
           pressAction: { id: "default" },
         },
-        ios: { sound: isOrder ? INCOMING_HELP_SOUND_FILE : "default" },
+        ios: { sound: incomingHelp ? INCOMING_HELP_SOUND_FILE : "default" },
       });
     }
   }, [opts.poll, query.data]);

@@ -14,8 +14,8 @@ import { MapBackdrop } from "@/components/ui/map-backdrop";
 
 // OpenFreeMap: tiles vetoriais grátis, sem chave, uso ilimitado (MIT).
 // https://openfreemap.org — logo e botão de informação ficam fora da interface.
-const MAP_STYLE_DARK = "https://tiles.openfreemap.org/styles/dark";
-const MAP_STYLE_LIGHT = "https://tiles.openfreemap.org/styles/liberty";
+export const MAP_STYLE_DARK = "https://tiles.openfreemap.org/styles/dark";
+export const MAP_STYLE_LIGHT = "https://tiles.openfreemap.org/styles/liberty";
 
 // Centro de Palmas/TO — mesmo fallback usado no backend quando não há posição real.
 export const PALMAS_CENTER: [number, number] = [-48.3336, -10.1841];

@@ -1,0 +1,18 @@
+appId: com.judeu.app
+---
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: ".*Precisa de ajuda.*"
+    timeout: 60000
+- tapOn:
+    point: "9%,10%"
+- extendedWaitUntil:
+    visible: "Sair da conta"
+    timeout: 15000
+- tapOn: "Sair da conta"
+- takeScreenshot: shots/cliente-23-apos-sair
+- extendedWaitUntil:
+    visible: ".*Quero contratar.*"
+    timeout: 20000
+- takeScreenshot: shots/cliente-24-onboarding-apos-logout

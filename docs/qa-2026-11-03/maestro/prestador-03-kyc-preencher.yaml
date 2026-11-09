@@ -1,0 +1,16 @@
+appId: com.judeu.app
+---
+- scrollUntilVisible:
+    element: "Reparos"
+    direction: UP
+- tapOn: "Reparos"
+- tapOn: "Ex.: Eletricista"
+- inputText: "Eletricista"
+- hideKeyboard
+- tapOn: "Experiência, especialidades..."
+- inputText: "Eletricista residencial"
+- hideKeyboard
+- scrollUntilVisible:
+    element: "Raio de atuação (km)"
+    direction: DOWN
+- takeScreenshot: shots/prestador-07-kyc-campos

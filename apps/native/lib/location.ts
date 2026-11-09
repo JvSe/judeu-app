@@ -6,6 +6,7 @@ import {
   startOrderBackgroundTracking,
   stopOrderBackgroundTracking,
 } from "@/lib/background-location";
+import { clientHomeAddress, DEMO_HELPER_ID, demoUserId, helperStartPoint, isDemoActive } from "@/lib/demo";
 import { useUpdateOrderLocation, useUpdateProviderLocation } from "@/lib/hooks";
 
 export const FOREGROUND_LOCATION_WATCH = {
@@ -118,9 +119,18 @@ async function warmAndroidNetworkProvider() {
   }
 }
 
+// Modo Apresentação: posição fixa perto do endereço do cliente (o GPS real está
+// onde a apresentação acontece, não em Palmas). Quem atende sai a ~1 km.
+function demoPosition(): LatLng {
+  if (demoUserId() === DEMO_HELPER_ID) return helperStartPoint();
+  const home = clientHomeAddress();
+  return { lat: home.lat, lng: home.lng };
+}
+
 // Uma leitura só. Preferimos last-known fresco; senão pedimos fix atual e um
 // watch curto. Em __DEV__, se o emulador não entregar GPS, cai em Palmas/TO.
 export async function readForegroundPosition(): Promise<LatLng | null> {
+  if (isDemoActive()) return demoPosition();
   const known = await readLastKnown();
   try {
     const enabled = await Location.hasServicesEnabledAsync();
@@ -166,6 +176,8 @@ export function useWatchCurrentLocation(): { lat: number; lng: number } | null {
 
   useEffect(() => {
     let cancelled = false;
+    // Demo: as telas usam a posição simulada que vem no pedido (tracking).
+    if (isDemoActive()) return;
 
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -209,6 +221,8 @@ export function useShareLocationWhileEnRoute(orderId: string | undefined) {
       void stopOrderBackgroundTracking();
       return;
     }
+    // Demo: o trajeto é simulado; sem GPS real nem pedido de permissão "Sempre".
+    if (isDemoActive()) return;
     let cancelled = false;
     let lastSent: { point: LatLng; at: number } | null = null;
 
@@ -275,6 +289,11 @@ export function useCurrentLocation(): { lat: number; lng: number } | null {
   useEffect(() => {
     let cancelled = false;
 
+    if (isDemoActive()) {
+      setPosition(demoPosition());
+      return;
+    }
+
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (cancelled) return;
@@ -300,7 +319,7 @@ export function useShareIdleLocation(enabled: boolean) {
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || isDemoActive()) return;
     let cancelled = false;
 
     const report = (lat: number, lng: number) => {

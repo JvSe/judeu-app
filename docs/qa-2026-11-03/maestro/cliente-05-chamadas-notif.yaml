@@ -1,0 +1,24 @@
+appId: com.judeu.app
+---
+- tapOn:
+    point: "9%,10%"
+- extendedWaitUntil:
+    visible: "Sair da conta"
+    timeout: 15000
+- tapOn: "Chamadas"
+- extendedWaitUntil:
+    visible: ".*Minhas chamadas.*"
+    timeout: 15000
+- takeScreenshot: shots/cliente-17-chamadas-andamento
+- tapOn: "Concluídos"
+- takeScreenshot: shots/cliente-18-chamadas-concluidos
+- tapOn: "Início"
+- extendedWaitUntil:
+    visible: ".*Precisa de ajuda.*"
+    timeout: 15000
+- tapOn:
+    point: "90%,10%"
+- extendedWaitUntil:
+    visible: ".*Notificações.*"
+    timeout: 15000
+- takeScreenshot: shots/cliente-19-notificacoes

@@ -1,0 +1,7 @@
+appId: com.judeu.app
+---
+- tapOn:
+    point: "84%,44%"
+- takeScreenshot: shots/prestador-26-toggle-pending-t0
+- waitForAnimationToEnd
+- takeScreenshot: shots/prestador-27-toggle-pending-t1

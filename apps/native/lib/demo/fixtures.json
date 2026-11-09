@@ -1,0 +1,109 @@
+{
+  "snapshotAt": "2026-11-09T05:21:48.884Z",
+  "clientId": "9dcc79de-b284-4ef6-8953-c23f21a456c5",
+  "helperId": "f926a29f-a254-4aff-86c4-f53101971618",
+  "users": [
+    {
+      "id": "f926a29f-a254-4aff-86c4-f53101971618",
+      "email": "flaviomorato@icloud.com",
+      "fullName": "Flavio Morato",
+      "phone": "63984202121",
+      "role": "BOTH",
+      "avatarUrl": null,
+      "emailVerified": false,
+      "phoneVerified": false,
+      "gender": null,
+      "createdAt": "2026-09-09T18:43:59.433"
+    },
+    {
+      "id": "9dcc79de-b284-4ef6-8953-c23f21a456c5",
+      "email": "flaviocliente@test.com",
+      "fullName": "Flavio Cliente",
+      "phone": "639111111111",
+      "role": "CLIENT",
+      "avatarUrl": null,
+      "emailVerified": false,
+      "phoneVerified": false,
+      "gender": null,
+      "createdAt": "2026-11-06T19:05:11.381"
+    }
+  ],
+  "addresses": [
+    {
+      "id": "476cbda5-f128-41a3-9eb9-0d06363fc671",
+      "userId": "9dcc79de-b284-4ef6-8953-c23f21a456c5",
+      "label": "Trabalho",
+      "cep": "77006022",
+      "street": "Quadra ACNE 1 Avenida LO 2",
+      "number": "1",
+      "complement": null,
+      "neighborhood": "Plano Diretor Norte",
+      "city": "Palmas",
+      "state": "TO",
+      "lat": -10.1810280577806,
+      "lng": -48.327143251959,
+      "isDefault": true
+    },
+    {
+      "id": "650fb995-b9f2-427b-9e36-f3e58b43d001",
+      "userId": "f926a29f-a254-4aff-86c4-f53101971618",
+      "label": null,
+      "cep": "77006022",
+      "street": "Quadra ACNE 1 Avenida LO 2",
+      "number": "25",
+      "complement": null,
+      "neighborhood": "Plano Diretor Norte",
+      "city": "Palmas",
+      "state": "TO",
+      "lat": -10.1841,
+      "lng": -48.3336,
+      "isDefault": true
+    }
+  ],
+  "profiles": [
+    {
+      "id": "ac846bf0-7b50-409b-8640-d87771c0ee3b",
+      "userId": "f926a29f-a254-4aff-86c4-f53101971618",
+      "headline": "Ajuda perto de você",
+      "bio": null,
+      "yearsExperience": 0,
+      "status": "APPROVED",
+      "isHelper": true,
+      "ratingAvg": 0,
+      "ratingCount": 0,
+      "serviceRadiusKm": 10,
+      "baseLat": null,
+      "baseLng": null
+    }
+  ],
+  "categories": [
+    {
+      "id": "9001aafe-bb5c-4e26-90f6-67525eda4c4a",
+      "slug": "beleza",
+      "name": "Beleza",
+      "icon": "cut",
+      "riskLevel": 1
+    },
+    {
+      "id": "42c0f0bb-57e5-48fd-8666-9a9cc378b48e",
+      "slug": "frete",
+      "name": "Frete",
+      "icon": "cube",
+      "riskLevel": 1
+    },
+    {
+      "id": "d8594028-70d0-450a-a489-91676d7d33d8",
+      "slug": "limpeza",
+      "name": "Limpeza",
+      "icon": "sparkles",
+      "riskLevel": 1
+    },
+    {
+      "id": "11208bee-287f-4d21-982a-4ee1820ad8e5",
+      "slug": "reparos",
+      "name": "Reparos",
+      "icon": "flash",
+      "riskLevel": 2
+    }
+  ]
+}

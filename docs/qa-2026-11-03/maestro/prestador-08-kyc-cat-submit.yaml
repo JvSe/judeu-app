@@ -1,0 +1,11 @@
+appId: com.judeu.app
+---
+- tapOn: "Reparos"
+- takeScreenshot: shots/prestador-18-kyc-categoria-sel
+- tapOn: ".*Atualizar cadastro.*|.*Enviar para análise.*"
+- takeScreenshot: shots/prestador-19-kyc-submit-t0
+- extendedWaitUntil:
+    visible: ".*Erro.*|.*Não foi possível.*|.*Cadastro enviado.*"
+    timeout: 15000
+    optional: true
+- takeScreenshot: shots/prestador-20-kyc-submit-t1

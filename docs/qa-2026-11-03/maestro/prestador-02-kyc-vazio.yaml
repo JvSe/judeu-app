@@ -1,0 +1,10 @@
+appId: com.judeu.app
+---
+- tapOn:
+    text: "Not Now"
+    optional: true
+- tapOn: ".*Atualizar cadastro.*|.*Enviar para análise.*"
+- waitForAnimationToEnd
+- takeScreenshot: shots/prestador-05-kyc-validacao-vazio
+- scroll
+- takeScreenshot: shots/prestador-06-kyc-validacao-vazio-2

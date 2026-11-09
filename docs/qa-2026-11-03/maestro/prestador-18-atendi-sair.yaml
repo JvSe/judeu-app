@@ -1,0 +1,21 @@
+appId: com.judeu.app
+---
+- tapOn:
+    point: "37%,16%"
+- waitForAnimationToEnd
+- takeScreenshot: shots/prestador-42-atendi
+- tapOn:
+    point: "84%,93%"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: ".*Sair da conta.*"
+    direction: DOWN
+- takeScreenshot: shots/prestador-43-perfil-fim
+- tapOn: ".*Sair da conta.*"
+- tapOn:
+    text: "Sair|Confirmar|Sim"
+    optional: true
+- extendedWaitUntil:
+    visible: ".*Quero contratar.*"
+    timeout: 20000
+- takeScreenshot: shots/prestador-44-logout

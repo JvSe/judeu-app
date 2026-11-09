@@ -1,0 +1,7 @@
+appId: com.judeu.app
+---
+- tapOn:
+    text: ".*Início.*"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/prestador-32-home-online

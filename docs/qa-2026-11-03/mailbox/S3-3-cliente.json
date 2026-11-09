@@ -1,0 +1,7 @@
+{
+ "orderId": "ae282393-2cc3-487d-9bc5-e653ea766d2f",
+ "proposalId": null,
+ "status": "ACCEPTED",
+ "obs": "BLOQUEADO: POST proposals devolve 409 \"pagamento já foi iniciado\" mesmo sem pagamento (bug proposals.ts: payment:[] do PostgREST tratado como existente). Negociação pulada. Vou direto para arrange+pagamento.",
+ "at": "2026-11-03T16:04:01.047Z"
+}

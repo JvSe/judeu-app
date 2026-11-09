@@ -1,0 +1,12 @@
+{
+ "persona": "prestador",
+ "userId": "07b9e2e9-648e-45dc-98af-e1b6bb20597f",
+ "providerProfileId": "852f3a4a-bbd8-40c0-a93e-406787f27815",
+ "serviceIds": [
+  "78d7fc42-c8ad-46d0-b79a-bf087e2b84c7",
+  "b571015b-974b-4f15-a69b-4ae89432096c"
+ ],
+ "status": "APPROVED",
+ "isAvailable": true,
+ "at": "2026-11-03T15:57:49.871095Z"
+}

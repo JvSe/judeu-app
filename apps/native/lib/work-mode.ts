@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useMyProviderProfile, useSetAvailability, useUpdateProviderLocation } from "@/lib/hooks";
 import { ApiError } from "@/lib/api";
+import { isDemoActive } from "@/lib/demo";
 import { REVERIFY_STATUS } from "@/lib/device-id";
 import { readForegroundPosition } from "@/lib/location";
 import { errorMessage, toast } from "@/lib/toast";
@@ -71,6 +72,20 @@ export function useWorkMode() {
     }
 
     setArming(true);
+
+    // Modo Apresentação: posição simulada, sem diálogo de permissão nem GPS.
+    if (isDemoActive()) {
+      try {
+        const pos = await readForegroundPosition();
+        if (pos) await updateLocation.mutateAsync(pos);
+        await setAvailability.mutateAsync(true);
+        toast.success("Modo atendimento ligado");
+      } finally {
+        setArming(false);
+      }
+      return;
+    }
+
     const perm = await Location.requestForegroundPermissionsAsync();
     if (perm.status !== "granted") {
       setArming(false);

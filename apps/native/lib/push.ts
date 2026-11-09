@@ -13,6 +13,14 @@ export const INCOMING_HELP_CHANNEL = "incoming-help-judeu";
 export const INCOMING_HELP_SOUND = "judeu";
 export const INCOMING_HELP_SOUND_FILE = "judeu.wav";
 
+/** Valor de `data.alert` nos avisos de pedido novo para quem atende. */
+export const INCOMING_HELP_ALERT = "incoming_help";
+
+/** Só um pedido novo chegando para quem atende toca o som `judeu`. */
+export function isIncomingHelp(data: unknown): boolean {
+  return (data as { alert?: unknown } | null | undefined)?.alert === INCOMING_HELP_ALERT;
+}
+
 let channelsReady: Promise<void> | null = null;
 
 /** Cria canais Android (expo-notifications + notifee) — seguro chamar mais de uma vez. */

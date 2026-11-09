@@ -1,0 +1,8 @@
+appId: com.judeu.app
+---
+- tapOn:
+    point: "15%,94%"
+- extendedWaitUntil:
+    visible: ".*Nova chamada.*|.*Chamada para você.*|.*Troca de tomada.*"
+    timeout: 30000
+- takeScreenshot: shots/prestador-32-home-nova-chamada

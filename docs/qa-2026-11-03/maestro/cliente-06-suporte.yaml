@@ -1,0 +1,30 @@
+appId: com.judeu.app
+---
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: ".*Precisa de ajuda.*"
+    timeout: 60000
+- tapOn:
+    point: "9%,10%"
+- extendedWaitUntil:
+    visible: "Sair da conta"
+    timeout: 15000
+- tapOn: "Ajuda e suporte"
+- extendedWaitUntil:
+    visible: ".*Abrir um chamado.*"
+    timeout: 15000
+- takeScreenshot: shots/cliente-20-suporte
+- tapOn: ".*Abrir um chamado.*"
+- extendedWaitUntil:
+    visible: "Enviar chamado"
+    timeout: 15000
+- takeScreenshot: shots/cliente-21-chamado-form
+- tapOn: ".*Cobrança em duplicidade.*"
+- inputText: "Teste pela interface"
+- tapOn: ".*Descreva o que aconteceu.*"
+- inputText: "Mensagem de teste aberta pela interface do app."
+- hideKeyboard
+- tapOn: "Enviar chamado"
+- waitForAnimationToEnd
+- takeScreenshot: shots/cliente-22-chamado-enviado

@@ -1,0 +1,15 @@
+appId: com.judeu.app
+---
+- tapOn: "Perfil"
+- extendedWaitUntil:
+    visible: ".*Sair da conta.*"
+    timeout: 20000
+- takeScreenshot: shots/helper-05-perfil
+- tapOn: ".*Como você atende.*"
+- extendedWaitUntil:
+    visible: ".*Raio de atendimento.*"
+    timeout: 20000
+- takeScreenshot: shots/helper-06-como-atende
+- back
+- tapOn: "Início"
+- waitForAnimationToEnd

@@ -1,0 +1,24 @@
+appId: com.judeu.app
+---
+- launchApp
+- extendedWaitUntil:
+    visible: ".*Quero contratar.*"
+    timeout: 60000
+- takeScreenshot: shots/cliente-01-onboarding
+- tapOn: ".*Quero contratar.*"
+- extendedWaitUntil:
+    visible: ".*Criar sua conta.*"
+    timeout: 15000
+- takeScreenshot: shots/cliente-02-signup-vazio
+- tapOn: "Seu nome"
+- inputText: "Nina UI"
+- tapOn: "seu@email.com"
+- inputText: "qa-20261103-ui-cliente@teste.app"
+- tapOn: "Mínimo 8 caracteres"
+- inputText: "Qa@123456"
+- hideKeyboard
+- tapOn: ".*Criar conta.*"
+- extendedWaitUntil:
+    visible: ".*Aceite os termos.*"
+    timeout: 10000
+- takeScreenshot: shots/cliente-03-signup-termos-erro

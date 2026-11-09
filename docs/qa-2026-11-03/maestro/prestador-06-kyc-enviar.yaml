@@ -1,0 +1,13 @@
+appId: com.judeu.app
+---
+- tapOn:
+    point: "16%,23%"
+- extendedWaitUntil:
+    visible: ".*Documento enviado.*|.*Substituir.*"
+    timeout: 20000
+- takeScreenshot: shots/prestador-13-kyc-doc-anexado
+- tapOn: ".*Atualizar cadastro.*|.*Enviar para análise.*"
+- extendedWaitUntil:
+    visible: ".*Erro.*|.*Não foi possível.*|.*enviado.*"
+    timeout: 20000
+- takeScreenshot: shots/prestador-14-kyc-erro-500

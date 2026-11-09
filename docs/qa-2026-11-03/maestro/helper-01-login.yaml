@@ -1,0 +1,25 @@
+appId: com.judeu.app
+---
+- launchApp
+- extendedWaitUntil:
+    visible: ".*Quero contratar.*"
+    timeout: 60000
+- tapOn: ".*Entrar.*"
+- extendedWaitUntil:
+    visible: ".*E-mail.*"
+    timeout: 20000
+- tapOn: "seu@email.com"
+- inputText: "qa-20261103-novo-helper@teste.app"
+- tapOn: "••••••••"
+- inputText: "Qa@123456"
+- hideKeyboard
+- takeScreenshot: shots/helper-01-login-preenchido
+- tapOn: ".*Entrar.*"
+- extendedWaitUntil:
+    visible: ".*Pronto para ajudar.*|.*Quero atender.*|.*Precisa de ajuda.*"
+    timeout: 45000
+- tapOn:
+    text: "Allow.*|Permitir.*"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/helper-02-home

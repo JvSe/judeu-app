@@ -1,0 +1,10 @@
+appId: com.judeu.app
+---
+- tapOn: ".*Aceitar chamada.*"
+- waitForAnimationToEnd
+- takeScreenshot: shots/prestador-35-attend-t0
+- extendedWaitUntil:
+    visible: ".*Iniciar.*|.*trajeto.*|.*pagamento.*|.*Aguardando.*"
+    timeout: 20000
+    optional: true
+- takeScreenshot: shots/prestador-36-attend

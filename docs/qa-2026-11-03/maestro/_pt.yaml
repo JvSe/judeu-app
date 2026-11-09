@@ -1,0 +1,6 @@
+appId: com.judeu.app
+---
+- tapOn:
+    point: "68%,54%"
+- waitForAnimationToEnd
+- takeScreenshot: shots/cliente-19-notificacoes

@@ -1,0 +1,17 @@
+appId: com.judeu.app
+---
+- tapOn:
+    point: "50%,60%"
+- inputText: "Qa@123456"
+- hideKeyboard
+- tapOn:
+    point: "8%,67%"
+- takeScreenshot: shots/prestador-03-signup-pronto
+- tapOn: ".*Criar conta.*"
+- extendedWaitUntil:
+    visible: ".*Cadastro profissional.*"
+    timeout: 30000
+- tapOn:
+    text: "Allow.*|Permitir.*"
+    optional: true
+- takeScreenshot: shots/prestador-04-kyc-topo

@@ -1,0 +1,22 @@
+appId: com.judeu.app
+---
+- scrollUntilVisible:
+    element: ".*Permitir negociar valor.*"
+    direction: DOWN
+- takeScreenshot: shots/prestador-10-kyc-erro-preco
+- tapOn: "0,50"
+- eraseText
+- inputText: "80"
+- hideKeyboard
+- tapOn:
+    point: "85%,43%"
+- scrollUntilVisible:
+    element: ".*Escolher foto.*"
+    direction: DOWN
+- takeScreenshot: shots/prestador-11-kyc-negociacao
+- tapOn: ".*Escolher foto.*"
+- tapOn:
+    text: "Allow Full Access|Allow Access to All Photos|Allow.*|Permitir.*"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/prestador-12-galeria
