@@ -1,8 +1,8 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
@@ -19,6 +19,8 @@ import {
   useProvider,
   useSuggestedPrice,
 } from "@/lib/hooks";
+import { useCurrentLocation } from "@/lib/location";
+import { isFarFromAddress, reverseGeocodeForAddressForm } from "@/lib/order-location";
 import { errorMessage, toast } from "@/lib/toast";
 
 function parseScheduledAt(date: string, time: string): Date | null {
@@ -83,10 +85,10 @@ export default function ConfirmCall() {
     gender: prefWomen ? ("F" as const) : null,
   };
   const hasPrefs = prefRating || prefExperienced || prefWomen;
-  // Ajuda aberta sai no endereço padrão (mesma regra da API ao publicar).
-  const openAddress = isOpenRequest
-    ? (addresses?.find((a) => a.isDefault) ?? addresses?.[0] ?? null)
-    : null;
+  const defaultAddress = addresses?.find((a) => a.isDefault) ?? addresses?.[0] ?? null;
+  const selectedAddress = addresses?.find((a) => a.id === selectedAddressId);
+  // Ajuda aberta sai no endereço escolhido; até a seleção inicial, vale o padrão.
+  const openAddress = isOpenRequest ? (selectedAddress ?? defaultAddress) : null;
   const { data: availability } = useOpenRequestAvailability(
     openAddress ? { lat: openAddress.lat, lng: openAddress.lng } : null,
     params.categoryId,
@@ -97,12 +99,48 @@ export default function ConfirmCall() {
   const suggestedReais = suggested ? String(Math.round(suggested.priceCents / 100)) : null;
 
   useEffect(() => {
-    if (isOpenRequest || !addresses?.length) return;
+    if (!addresses?.length) return;
     setSelectedAddressId((current) => {
       if (current && addresses.some((a) => a.id === current)) return current;
       return addresses.find((a) => a.isDefault)?.id ?? addresses[0].id;
     });
-  }, [addresses, isOpenRequest]);
+  }, [addresses]);
+
+  // Longe do endereço padrão: pergunta uma vez qual local usar neste pedido.
+  const deviceLocation = useCurrentLocation();
+  const locationPromptedRef = useRef(false);
+  const addressIdsBeforeFormRef = useRef<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (locationPromptedRef.current || !deviceLocation || !defaultAddress || !addresses) return;
+    locationPromptedRef.current = true;
+    const pickedAnother = selectedAddressId && selectedAddressId !== defaultAddress.id;
+    if (pickedAnother || !isFarFromAddress(deviceLocation, defaultAddress)) return;
+
+    const openFormAtCurrentLocation = async () => {
+      addressIdsBeforeFormRef.current = new Set(addresses.map((a) => a.id));
+      const prefill = await reverseGeocodeForAddressForm(deviceLocation);
+      router.push({ pathname: "/client/address-form", params: prefill });
+    };
+    Alert.alert(
+      "Você não está no endereço salvo",
+      `Quer usar sua localização atual neste pedido ou manter ${formatAddressLine(defaultAddress)}?`,
+      [
+        { text: "Manter endereço salvo", style: "cancel" },
+        { text: "Usar localização atual", onPress: () => void openFormAtCurrentLocation() },
+      ],
+      { cancelable: false },
+    );
+  }, [addresses, defaultAddress, deviceLocation, selectedAddressId]);
+
+  // Voltou do formulário com um endereço novo: é ele que vale para o pedido.
+  useEffect(() => {
+    const before = addressIdsBeforeFormRef.current;
+    const created = before && addresses?.find((a) => !before.has(a.id));
+    if (!created) return;
+    addressIdsBeforeFormRef.current = null;
+    setSelectedAddressId(created.id);
+  }, [addresses]);
 
   useEffect(() => {
     if (isOpenRequest || !services?.length) return;
@@ -124,7 +162,6 @@ export default function ConfirmCall() {
   const { totalCents } = previewOrderTotals(priceCents, appConfig);
   const totalLabel = appConfig.feePayer === "CLIENT" ? "Total com taxa" : "Total";
   const providerName = provider?.name ?? params.providerName ?? "Pessoa";
-  const selectedAddress = addresses?.find((a) => a.id === selectedAddressId);
   const scheduled = when === "agendar";
   const canNegotiate =
     scheduled && (provider?.allowsNegotiation || params.allowsNegotiation === "true");
@@ -149,6 +186,7 @@ export default function ConfirmCall() {
           categoryId: params.categoryId,
           description: note.trim(),
           priceCents: offeredCents,
+          ...(selectedAddress ? { addressId: selectedAddress.id } : {}),
           ...(hasPrefs ? { preferences } : {}),
           ...(riskHint ? { riskHint } : {}),
         });
@@ -207,6 +245,41 @@ export default function ConfirmCall() {
     }
   };
 
+  const addressSection = (
+    <>
+      <Text style={styles.label}>Onde</Text>
+      {addressesLoading ? (
+        <ActivityIndicator color={theme.colors.primary} />
+      ) : !addresses?.length ? (
+        <Pressable style={styles.choice} onPress={() => router.push("/client/address-form")}>
+          <Text style={styles.choiceLabel}>Adicionar endereço</Text>
+        </Pressable>
+      ) : (
+        <View style={{ gap: 8 }}>
+          {addresses.map((address) => {
+            const selected = address.id === selectedAddressId;
+            return (
+              <Pressable
+                key={address.id}
+                style={[styles.choice, selected && styles.choiceOn]}
+                onPress={() => setSelectedAddressId(address.id)}
+              >
+                <Text style={styles.choiceLabel}>{formatAddressLine(address)}</Text>
+                <Text style={styles.muted}>
+                  {address.street}
+                  {address.number ? `, ${address.number}` : ""}
+                </Text>
+              </Pressable>
+            );
+          })}
+          <Pressable onPress={() => router.push("/client/address-form")}>
+            <Text style={styles.link}>Adicionar outro endereço</Text>
+          </Pressable>
+        </View>
+      )}
+    </>
+  );
+
   if (isOpenRequest) {
     return (
       <Screen>
@@ -226,7 +299,7 @@ export default function ConfirmCall() {
             <Text style={styles.kicker}>SOLICITAÇÃO ABERTA</Text>
             <Text style={styles.name}>Descreva e publique</Text>
             <Text style={styles.muted}>
-              Qualquer pessoa disponível pode atender. Locais e detalhes você combina depois do aceite.
+              Qualquer pessoa disponível pode atender. Os demais detalhes você combina depois do aceite.
             </Text>
           </View>
 
@@ -293,6 +366,8 @@ export default function ConfirmCall() {
               </Text>
             </Pressable>
           )}
+
+          {addressSection}
 
           <Text style={styles.label}>Quem pode atender (opcional)</Text>
           {[
@@ -396,36 +471,7 @@ export default function ConfirmCall() {
           multiline
         />
 
-        <Text style={styles.label}>Onde</Text>
-        {addressesLoading ? (
-          <ActivityIndicator color={theme.colors.primary} />
-        ) : !addresses?.length ? (
-          <Pressable style={styles.choice} onPress={() => router.push("/client/address-form")}>
-            <Text style={styles.choiceLabel}>Adicionar endereço</Text>
-          </Pressable>
-        ) : (
-          <View style={{ gap: 8 }}>
-            {addresses.map((address) => {
-              const selected = address.id === selectedAddressId;
-              return (
-                <Pressable
-                  key={address.id}
-                  style={[styles.choice, selected && styles.choiceOn]}
-                  onPress={() => setSelectedAddressId(address.id)}
-                >
-                  <Text style={styles.choiceLabel}>{formatAddressLine(address)}</Text>
-                  <Text style={styles.muted}>
-                    {address.street}
-                    {address.number ? `, ${address.number}` : ""}
-                  </Text>
-                </Pressable>
-              );
-            })}
-            <Pressable onPress={() => router.push("/client/address-form")}>
-              <Text style={styles.link}>Adicionar outro endereço</Text>
-            </Pressable>
-          </View>
-        )}
+        {addressSection}
 
         <Text style={styles.label}>Quando</Text>
         <View style={styles.whenRow}>

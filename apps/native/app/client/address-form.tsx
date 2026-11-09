@@ -18,6 +18,7 @@ import { useCepAutofill } from "@/lib/cep";
 import { formatZipCode } from "@/lib/formatters/format-zipcode.helper";
 import { useAddresses, useCreateAddress, useUpdateAddress } from "@/lib/hooks";
 import { useCurrentLocation } from "@/lib/location";
+import type { AddressFormPrefill } from "@/lib/order-location";
 import { errorMessage, toast } from "@/lib/toast";
 
 const addressErrorMessage = "Preencha rua, cidade e estado (UF).";
@@ -75,8 +76,13 @@ const fields: {
 export default function AddressForm() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id, ...prefill } = useLocalSearchParams<{ id?: string } & Partial<AddressFormPrefill>>();
   const isEditing = !!id;
+  // Veio da pergunta "usar localização atual": o GPS é a coordenada do endereço.
+  const prefillCoords =
+    !isEditing && prefill.lat && prefill.lng
+      ? { lat: Number(prefill.lat), lng: Number(prefill.lng) }
+      : null;
 
   const { data: addresses } = useAddresses();
   const existing = addresses?.find((a) => a.id === id);
@@ -119,6 +125,23 @@ export default function AddressForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existing?.id]);
 
+  // Cidade e UF ficam vazias se o GPS não as trouxer: o padrão "Palmas" estaria errado aqui.
+  useEffect(() => {
+    if (!prefillCoords) return;
+    reset({
+      label: "",
+      cep: prefill.cep ?? "",
+      street: prefill.street ?? "",
+      number: prefill.number ?? "",
+      complement: "",
+      neighborhood: prefill.neighborhood ?? "",
+      city: prefill.city ?? "",
+      uf: prefill.uf ?? "",
+      isDefault: false,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const { loading: cepLoading, handleCepChange: resolveCep } = useCepAutofill((resolved) => {
     if (resolved.street) setValue("street", resolved.street);
     if (resolved.neighborhood) setValue("neighborhood", resolved.neighborhood);
@@ -130,6 +153,7 @@ export default function AddressForm() {
 
   const onValid = handleSubmit(async (data) => {
     setSubmitError(null);
+    const coords = prefillCoords ?? deviceLocation;
     const input = {
       label: data.label.trim() || undefined,
       cep: data.cep.trim() || undefined,
@@ -139,13 +163,19 @@ export default function AddressForm() {
       neighborhood: data.neighborhood.trim() || undefined,
       city: data.city,
       state: data.uf,
-      ...(deviceLocation ? { lat: deviceLocation.lat, lng: deviceLocation.lng } : {}),
+      ...(coords ? { lat: coords.lat, lng: coords.lng } : {}),
     };
     try {
       if (isEditing && id) {
         await updateAddress.mutateAsync({ id, input });
       } else {
-        await createAddress.mutateAsync({ ...input, isDefault: data.isDefault });
+        const created = await createAddress.mutateAsync({ ...input, isDefault: data.isDefault });
+        // O cadastro prioriza o geocode do texto; só a edição grava a coordenada enviada.
+        if (prefillCoords) {
+          await updateAddress
+            .mutateAsync({ id: created.id, input })
+            .catch((err) => console.warn("[address-form] coordenada do GPS não gravada:", err));
+        }
       }
       toast.success(isEditing ? "Endereço atualizado" : "Endereço salvo");
       router.back();
@@ -170,6 +200,12 @@ export default function AddressForm() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {prefillCoords && (
+          <Text style={styles.prefillHint}>
+            Preenchemos pela sua localização. Confira a rua e o número antes de salvar.
+          </Text>
+        )}
+
         <FormTextField
           control={control}
           name="label"
@@ -255,6 +291,12 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: 24,
     paddingTop: 22,
     paddingBottom: 40,
+  },
+  prefillHint: {
+    fontSize: 13.5,
+    fontFamily: fonts.semiBold,
+    color: theme.colors.primary,
+    marginBottom: 16,
   },
   defaultSpacing: {
     marginTop: 6,
