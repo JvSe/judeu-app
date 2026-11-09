@@ -1,5 +1,7 @@
 // Backend local do Modo Apresentação: responde às mesmas rotas da API (apps/web),
 // no mesmo formato, sem rede. Só é usado quando um dos dois usuários demo está logado.
+import bcrypt from "bcryptjs";
+
 import type {
   CloudAssistantReply,
   CreateOrderInput,
@@ -97,11 +99,28 @@ function assistantReply(message: string): CloudAssistantReply {
   };
 }
 
-/** Descobre se a chamada é da demo. Login com e-mail demo também entra aqui. */
+/**
+ * Hash bcrypt copiado da conta real (scripts/demo-credentials.mjs). Acesso estático:
+ * o Expo só embute `process.env.EXPO_PUBLIC_*` escrito por extenso.
+ */
+function demoPasswordHash(userId: string): string | null {
+  const stored =
+    userId === DEMO_HELPER_ID ? process.env.EXPO_PUBLIC_DEMO_HASH_HELPER : process.env.EXPO_PUBLIC_DEMO_HASH_CLIENT;
+  return stored ? stored.replaceAll("_", "$") : null;
+}
+
+/**
+ * Descobre se a chamada é da demo. O login só entra na demo com e-mail demo E a senha
+ * dessa conta; sem isso segue para a API real, que valida a conta de verdade.
+ */
 async function resolveDemoUser(path: string, body: unknown): Promise<string | null> {
   if (path === "/api/auth/login") {
-    const email = (body as { email?: string } | undefined)?.email ?? "";
-    return demoUserByEmail(email)?.id ?? null;
+    const { email = "", password } = (body ?? {}) as { email?: string; password?: string };
+    const userId = demoUserByEmail(email)?.id;
+    if (!userId || !password) return null;
+    const hash = demoPasswordHash(userId);
+    if (!hash || !(await bcrypt.compare(password, hash))) return null;
+    return userId;
   }
   const cached = demoUserId();
   if (cached) return cached;

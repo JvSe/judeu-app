@@ -11,7 +11,8 @@ Branch: `demo/apresentacao`. Funciona só para os dois usuários abaixo. Qualque
 - Quando um desses dois usuários faz login, o app responde tudo **localmente** (`apps/native/lib/demo/`). Não há rede nem banco envolvidos, e nada é gravado no Supabase.
 - O iPhone e o iPad conversam **direto**, via Multipeer Connectivity (o mesmo mecanismo do AirDrop). Basta Wi-Fi ligado; não é preciso estar conectado a nenhuma rede.
 - Quando o outro aparelho não está conectado há mais de 5s, o app entra no **modo roteiro** e simula o outro lado sozinho. A apresentação nunca trava.
-- Na demo, a senha não é conferida: qualquer senha entra com os e-mails desses dois usuários.
+- Para entrar na demo, use o e-mail e a senha reais de um desses dois usuários. A senha é conferida no aparelho, sem internet, contra o hash bcrypt copiado da conta por `node scripts/demo-credentials.mjs` para `apps/native/.env`. Com outra senha, o login segue para a API real. Sem os hashes, a demo não abre.
+- Os hashes entram no build: rode o script antes de compilar e de novo se alguém trocar a senha. Instale este build só nos aparelhos da apresentação, por cabo, nunca em TestFlight ou loja.
 
 ## Uma vez só (com internet)
 1. **Dados reais dos usuários.** Na raiz do repo, rode `node scripts/demo-snapshot.mjs`.

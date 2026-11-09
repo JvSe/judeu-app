@@ -4,6 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.hoisted(() => {
   (globalThis as { __DEV__?: boolean }).__DEV__ = true;
+  // bcrypt de "senha-demo-teste", no formato gravado no .env.
+  const hash = "_2a_04_kIiAcASC89963Vg98WiYf.uaRBt1hs86kGQ1H4pbrUei7B2hInKu6";
+  process.env.EXPO_PUBLIC_DEMO_HASH_CLIENT = hash;
+  process.env.EXPO_PUBLIC_DEMO_HASH_HELPER = hash;
 });
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
 vi.mock("@/lib/device-id", () => ({ getDeviceId: async () => null }));
@@ -37,7 +41,7 @@ async function bootDevice(email: string): Promise<Device> {
     if (!res) throw new Error(`não tratado pela demo: ${method} ${path}`);
     return res.value as T;
   };
-  await call("POST", "/api/auth/login", { email, password: "qualquer" });
+  await call("POST", "/api/auth/login", { email, password: "senha-demo-teste" });
   return { call, store, script };
 }
 
@@ -66,7 +70,8 @@ const advance = (ms: number) => {
 };
 
 beforeEach(() => {
-  vi.useFakeTimers();
+  // Só o relógio: o bcrypt precisa do setImmediate de verdade.
+  vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(now);
 });
 afterEach(() => {
@@ -269,5 +274,30 @@ describe("modo apresentação — fluxo perfeito entre dois aparelhos", () => {
     const routes = await import("./routes");
     expect(await routes.demoHandle("/api/auth/login", { method: "POST", body: { email: "outra@pessoa.com" } })).toBeNull();
     expect(await routes.demoHandle("/api/orders", { method: "GET" })).toBeNull();
+  });
+
+  it("e-mail demo com senha errada não entra na demo e segue para a API real", async () => {
+    const { helper } = await fixtureEmails();
+    vi.resetModules();
+    const routes = await import("./routes");
+    const login = (password?: string) =>
+      routes.demoHandle("/api/auth/login", { method: "POST", body: { email: helper, password } });
+    expect(await login("senha-errada")).toBeNull();
+    expect(await login(undefined)).toBeNull();
+    expect(await routes.demoHandle("/api/orders", { method: "GET" })).toBeNull();
+    expect(await login("senha-demo-teste")).not.toBeNull();
+  });
+
+  it("sem o hash copiado da conta, ninguém entra na demo", async () => {
+    const { helper } = await fixtureEmails();
+    vi.stubEnv("EXPO_PUBLIC_DEMO_HASH_HELPER", "");
+    vi.resetModules();
+    const routes = await import("./routes");
+    const res = await routes.demoHandle("/api/auth/login", {
+      method: "POST",
+      body: { email: helper, password: "senha-demo-teste" },
+    });
+    vi.unstubAllEnvs();
+    expect(res).toBeNull();
   });
 });

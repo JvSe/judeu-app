@@ -100,6 +100,9 @@ importers:
       babel-preset-expo:
         specifier: ~58.0.19
         version: 58.0.19(@babel/core@7.29.7)(@babel/runtime@7.29.7)(expo@58.0.17)(react-refresh@0.14.2)
+      bcryptjs:
+        specifier: ^2.4.3
+        version: 2.4.3
       dotenv:
         specifier: 'catalog:'
         version: 17.4.2
@@ -242,6 +245,9 @@ importers:
       '@judeu/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@types/bcryptjs':
+        specifier: ^2.4.6
+        version: 2.4.6
       '@types/react':
         specifier: ~19.3.0
         version: 19.3.0

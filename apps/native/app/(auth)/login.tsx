@@ -9,7 +9,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { z } from "zod";
 
-import { FormErrorText } from "@/components/form/error-text";
 import { FormTextField } from "@/components/form/text-field";
 import { JudeuLogoBadge } from "@/components/ui/judeu-logo";
 import { Screen } from "@/components/ui/screen";
@@ -29,7 +28,6 @@ export default function Login() {
   const insets = useSafeAreaInsets();
   const { signIn } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const { control, handleSubmit, formState } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -39,15 +37,12 @@ export default function Login() {
   });
 
   const onValid = handleSubmit(async (data) => {
-    setSubmitError(null);
     try {
       await signIn(data);
       toast.success("Login feito");
       router.replace("/client");
     } catch (e) {
-      const message = errorMessage(e, "Não foi possível entrar");
-      setSubmitError(message);
-      toast.error(message);
+      toast.error(errorMessage(e, "Não foi possível entrar"));
     }
   });
 
@@ -101,8 +96,6 @@ export default function Login() {
         <Pressable onPress={() => router.push("/(auth)/forgot-password" as never)}>
           <Text style={styles.forgot}>Esqueci minha senha</Text>
         </Pressable>
-
-        {submitError && <FormErrorText style={styles.submitError}>{submitError}</FormErrorText>}
 
         <Pressable
           style={({ pressed }) => [
@@ -197,10 +190,6 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.primary,
     marginTop: 12,
     marginBottom: 26,
-  },
-  submitError: {
-    marginTop: 0,
-    marginBottom: 14,
   },
   submit: {
     backgroundColor: theme.colors.primary,
