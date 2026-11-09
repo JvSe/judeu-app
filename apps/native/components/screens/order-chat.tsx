@@ -92,6 +92,14 @@ export function OrderChatScreen({ proposePathname }: OrderChatScreenProps) {
           <View style={{ flex: 1 }}>
             <Text style={styles.name}>{counterpartName}</Text>
           </View>
+          {isClient && (
+            <Pressable
+              onPress={() => router.push({ pathname: "/client/order/[id]", params: { id: order.id } })}
+              hitSlop={10}
+            >
+              <Text style={styles.detailsLink}>Ver detalhes</Text>
+            </Pressable>
+          )}
         </View>
 
         <ChatPricePanel
@@ -174,6 +182,11 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 16,
     fontFamily: fonts.bold,
     color: "#fff",
+  },
+  detailsLink: {
+    fontSize: 13.5,
+    fontFamily: fonts.bold,
+    color: theme.colors.primary,
   },
   messages: {
     padding: 16,
