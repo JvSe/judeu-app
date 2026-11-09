@@ -1,0 +1,6 @@
+{
+ "orderId": "ae282393-2cc3-487d-9bc5-e653ea766d2f",
+ "status": "ACCEPTED",
+ "obs": "arrange feito (pickup=endereço Mãe, detailsReady=true → notificação Pode iniciar o trajeto). Pagamento: PIX criado no Stripe e depois CASH (ver log). Pode iniciar trajeto, ir ao pickup, começar e concluir; grave S3-8-helper.json.",
+ "at": "2026-11-03T16:04:01.047Z"
+}

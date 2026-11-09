@@ -1,0 +1,14 @@
+appId: com.judeu.app
+---
+- tapOn: ".*Atualizar cadastro.*|.*Enviar para análise.*"
+- takeScreenshot: shots/prestador-15-kyc-submit-t0
+- extendedWaitUntil:
+    visible: ".*Erro.*|.*Não foi possível.*|.*Cadastro enviado.*"
+    timeout: 15000
+    optional: true
+- takeScreenshot: shots/prestador-16-kyc-submit-t1
+- scrollUntilVisible:
+    element: "Categoria"
+    direction: UP
+    optional: true
+- takeScreenshot: shots/prestador-17-kyc-topo-apos

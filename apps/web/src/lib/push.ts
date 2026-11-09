@@ -8,6 +8,9 @@ export const INCOMING_HELP_CHANNEL = "incoming-help-judeu";
 /** Arquivo registrado no plugin `expo-notifications` (`assets/sounds/judeu.wav`). */
 export const INCOMING_HELP_SOUND = "judeu.wav";
 
+/** Valor de `data.alert` nos avisos de pedido novo para quem atende — únicos com o som `judeu`. */
+export const INCOMING_HELP_ALERT = "incoming_help";
+
 export type PushPayload = {
   title: string;
   body: string;
@@ -28,6 +31,7 @@ export async function sendPushNotification(userId: string, payload: PushPayload)
     if (!user?.pushToken) return;
 
     const isOrder = payload.data?.type === "order";
+    const isIncomingHelp = payload.data?.alert === INCOMING_HELP_ALERT;
     await fetch(EXPO_PUSH_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -36,8 +40,8 @@ export async function sendPushNotification(userId: string, payload: PushPayload)
         title: payload.title,
         body: payload.body,
         data: payload.data ?? {},
-        sound: payload.sound ?? (isOrder ? INCOMING_HELP_SOUND : "default"),
-        channelId: payload.channelId ?? (isOrder ? INCOMING_HELP_CHANNEL : "default"),
+        sound: payload.sound ?? (isIncomingHelp ? INCOMING_HELP_SOUND : "default"),
+        channelId: payload.channelId ?? (isIncomingHelp ? INCOMING_HELP_CHANNEL : "default"),
         priority: payload.priority ?? (isOrder ? "high" : "default"),
       }),
     });

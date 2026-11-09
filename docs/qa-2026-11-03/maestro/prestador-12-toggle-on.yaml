@@ -1,0 +1,13 @@
+appId: com.judeu.app
+---
+- tapOn:
+    point: "84%,44%"
+- tapOn:
+    text: "Allow While Using App|Allow Once|Allow.*|Permitir.*"
+    optional: true
+- takeScreenshot: shots/prestador-29-toggle-on-t0
+- waitForAnimationToEnd
+- takeScreenshot: shots/prestador-30-toggle-on-t1
+- tapOn: "Início"
+- waitForAnimationToEnd
+- takeScreenshot: shots/prestador-31-home-online

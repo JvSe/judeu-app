@@ -18,6 +18,16 @@
         "APP_VARIANT": "staging"
       }
     },
+    "demo": {
+      "distribution": "internal",
+      "channel": "demo",
+      "ios": {
+        "buildConfiguration": "Release"
+      },
+      "env": {
+        "APP_VARIANT": "demo"
+      }
+    },
     "production": {
       "autoIncrement": true,
       "channel": "production",

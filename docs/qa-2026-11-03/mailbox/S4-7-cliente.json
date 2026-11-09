@@ -1,0 +1,9 @@
+{
+ "orderIds": [
+  "2b8cc6f7-d4e8-4205-951c-07f819af10dd",
+  "894a1cca-73c6-4228-9938-22a14bab3e94"
+ ],
+ "status": "CREATED",
+ "obs": "S4(e): tente aceitar AS DUAS (transition accept) e grave S4-8-prestador.json com o resultado de cada.",
+ "at": "2026-11-03T16:16:29.064Z"
+}

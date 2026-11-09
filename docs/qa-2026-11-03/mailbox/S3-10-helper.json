@@ -1,0 +1,1 @@
+{"orderId":"ae282393-2cc3-487d-9bc5-e653ea766d2f","status":"COMPLETED","obs":"helper: GET /wallet após confirmação → ver log (crédito esperado = priceCents 8000); POST review do cliente → ver log; segunda review → esperado 409. S3 concluído do lado do helper.","at":"2026-11-03T16:07:41Z"}

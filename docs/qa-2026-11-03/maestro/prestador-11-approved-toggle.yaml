@@ -1,0 +1,18 @@
+appId: com.judeu.app
+---
+- extendedWaitUntil:
+    visible: ".*Precisa de ajuda.*"
+    timeout: 40000
+- tapOn:
+    point: "9%,10%"
+- extendedWaitUntil:
+    visible: ".*Sair da conta.*"
+    timeout: 15000
+- takeScreenshot: shots/prestador-28-perfil-approved
+- tapOn:
+    point: "84%,44%"
+- tapOn:
+    text: "Allow While Using App|Allow Once|Allow.*|Permitir.*"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/prestador-29-toggle-on

@@ -1,0 +1,33 @@
+appId: com.judeu.app
+---
+- tapOn:
+    point: "9%,10%"
+- extendedWaitUntil:
+    visible: "Sair da conta"
+    timeout: 15000
+- takeScreenshot: shots/cliente-06-perfil-zerado
+- tapOn: "Meus endereços"
+- extendedWaitUntil:
+    visible: ".*Novo endereço.*"
+    timeout: 15000
+- takeScreenshot: shots/cliente-07-enderecos-vazio
+- tapOn: ".*Novo endereço.*"
+- extendedWaitUntil:
+    visible: "Salvar endereço"
+    timeout: 15000
+- tapOn: "00000-000"
+- inputText: "77020000"
+- waitForAnimationToEnd
+- hideKeyboard
+- takeScreenshot: shots/cliente-08-endereco-autofill-cep
+- tapOn: "Casa, Trabalho..."
+- inputText: "Mãe"
+- hideKeyboard
+- tapOn: "123"
+- inputText: "5"
+- hideKeyboard
+- tapOn: "Salvar endereço"
+- extendedWaitUntil:
+    visible: ".*Padrão.*"
+    timeout: 15000
+- takeScreenshot: shots/cliente-09-enderecos-com-um

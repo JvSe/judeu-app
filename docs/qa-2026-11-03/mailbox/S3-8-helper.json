@@ -1,0 +1,1 @@
+{"orderId":"ae282393-2cc3-487d-9bc5-e653ea766d2f","status":"AWAITING_CONFIRMATION","obs":"helper: location longe → start_route HTTP 200 1.151898s ; start_work longe → ver log; location=pickup → start_work HTTP 200 1.054914s; complete HTTP 200 1.106196s. Pode confirmar a conclusão (confirm_completion) e gravar S3-9-cliente.json.","at":"2026-11-03T16:05:48Z"}

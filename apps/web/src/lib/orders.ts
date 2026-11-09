@@ -17,6 +17,7 @@ import { completionWalletMovement, computeFees, feeRuleOf, resolveFeeRule } from
 import { supabase } from "./db";
 import { haversineKm, routeBetween } from "./geo";
 import { notifyUser } from "./notifications";
+import { INCOMING_HELP_ALERT } from "./push";
 import { onDutyAnchorIds } from "./anchors-admin";
 import { type EscalationLevel, escalationTarget, radiusScale } from "./escalation";
 import { releaseOrderDiscounts, recordDiscountUse, resolveDiscount } from "./discounts";
@@ -646,7 +647,7 @@ async function notifyAvailableProviders(order: OrderFull) {
     void notifyUser(p.userId, "ORDER", {
       title: order.scheduledAt ? `Nova solicitação para ${formatBrasiliaDateTime(order.scheduledAt)}` : "Nova solicitação",
       body,
-      data: { type: "order", orderId: order.id, role: "provider" },
+      data: { type: "order", alert: INCOMING_HELP_ALERT, orderId: order.id, role: "provider" },
     });
     sent += 1;
     if (sent >= OPEN_NOTIFY_LIMIT) break;
@@ -745,7 +746,7 @@ export async function escalateOpenRequests(now = new Date()): Promise<{ anchors:
       void notifyUser(userId, "ORDER", {
         title: "Ainda sem ninguém: ajuda perto de você",
         body,
-        data: { type: "order", orderId: order.id, role: "provider" },
+        data: { type: "order", alert: INCOMING_HELP_ALERT, orderId: order.id, role: "provider" },
       });
     }
     notified += recipients.size;
@@ -972,7 +973,7 @@ export async function createOrder(
     void notifyUser(provider.userId, "ORDER", {
       title: order.scheduledAt ? "Nova chamada agendada" : "Nova chamada",
       body: order.service?.name ?? order.category?.name ?? "Alguém está te chamando",
-      data: { type: "order", orderId: order.id, role: "provider" },
+      data: { type: "order", alert: INCOMING_HELP_ALERT, orderId: order.id, role: "provider" },
     });
   } else {
     void notifyAvailableProviders(order);
@@ -1598,7 +1599,7 @@ export async function reassignOrder(
   void notifyUser(provider.userId, "ORDER", {
     title: "Nova chamada",
     body: updated.service?.name ?? updated.category?.name ?? "Alguém está te chamando",
-    data: { type: "order", orderId: id, role: "provider" },
+    data: { type: "order", alert: INCOMING_HELP_ALERT, orderId: id, role: "provider" },
   });
 
   return toDTO(updated);

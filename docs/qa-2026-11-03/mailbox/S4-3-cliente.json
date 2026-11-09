@@ -1,0 +1,7 @@
+{
+ "orderId": "88f69fb5-8aeb-4a44-b29b-6d8beaabdc1e",
+ "status": "CREATED",
+ "createdAt": "2026-11-03T16:16:30.238",
+ "obs": "S4(b): espere >= 70 s desde createdAt e então aceite; grave S4-4-prestador.json com o resultado. (Atenção: S4-1 = recusar; S4-7 = aceitar as duas; S2-1 = proposta.)",
+ "at": "2026-11-03T16:16:30.673Z"
+}

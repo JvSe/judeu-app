@@ -1,0 +1,22 @@
+appId: com.judeu.app
+---
+- tapOn:
+    point: "8%,9%"
+- extendedWaitUntil:
+    visible: ".*Criar sua conta.*"
+    timeout: 10000
+- tapOn:
+    point: "9%,67%"
+- takeScreenshot: shots/cliente-04-signup-termos-marcado
+- tapOn: ".*Criar conta.*"
+- tapOn:
+    text: "Allow While Using App|Allow Once|Allow.*|Permitir.*"
+    optional: true
+- extendedWaitUntil:
+    visible: ".*Precisa de ajuda.*"
+    timeout: 45000
+- tapOn:
+    text: "Allow While Using App|Allow Once|Allow.*|Permitir.*"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/cliente-05-home-primeiro-acesso

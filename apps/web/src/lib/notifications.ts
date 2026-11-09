@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Json, NotificationType } from "@judeu/db";
 
 import { supabase } from "./db";
-import { INCOMING_HELP_CHANNEL, INCOMING_HELP_SOUND, sendPushNotification } from "./push";
+import { sendPushNotification } from "./push";
 
 export type NotificationDTO = {
   id: string;
@@ -59,15 +59,10 @@ export async function notifyUser(
       body: payload.body,
       data: (payload.data as Json | undefined) ?? null,
     });
+    // Som e canal saem de `data.alert` em sendPushNotification.
     void sendPushNotification(userId, {
       ...payload,
-      ...(type === "ORDER"
-        ? {
-            sound: INCOMING_HELP_SOUND,
-            channelId: INCOMING_HELP_CHANNEL,
-            priority: "high" as const,
-          }
-        : { sound: "default" }),
+      ...(type === "ORDER" ? { priority: "high" as const } : {}),
     });
   } catch {
     // Best-effort

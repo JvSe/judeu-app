@@ -1,0 +1,33 @@
+appId: com.judeu.app
+---
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: ".*Precisa de ajuda.*"
+    timeout: 60000
+- takeScreenshot: shots/cliente-10-home-com-endereco
+- tapOn: ".*Precisa de ajuda.*"
+- extendedWaitUntil:
+    visible: ".*Pedir ajuda.*"
+    timeout: 15000
+- takeScreenshot: shots/cliente-11-pedir-ajuda-vazio
+- tapOn: "Publicar"
+- takeScreenshot: shots/cliente-12-pedir-ajuda-erro-vazio
+- tapOn: ".*buscar documentos.*"
+- inputText: "Buscar um envelope na copiadora e deixar em casa"
+- tapOn: "Ex.: 30"
+- inputText: "40"
+- hideKeyboard
+- takeScreenshot: shots/cliente-13-pedir-ajuda-preenchido
+- tapOn: "Publicar"
+- extendedWaitUntil:
+    visible: ".*Aguardando alguém.*"
+    timeout: 20000
+- takeScreenshot: shots/cliente-14-espera-ajuda-aberta
+- tapOn: "Cancelar solicitação"
+- takeScreenshot: shots/cliente-15-cancelar-confirmacao
+- tapOn: "Cancelar"
+- extendedWaitUntil:
+    visible: ".*Precisa de ajuda.*"
+    timeout: 20000
+- takeScreenshot: shots/cliente-16-home-apos-cancelar

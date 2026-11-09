@@ -1,0 +1,11 @@
+appId: com.judeu.app
+---
+- tapOn:
+    point: "38%,93%"
+- waitForAnimationToEnd
+- takeScreenshot: shots/prestador-40-chamadas-pedi
+- tapOn:
+    text: "Atendi"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/prestador-41-chamadas-atendi

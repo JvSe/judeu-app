@@ -56,6 +56,8 @@ async function parse<T>(res: Response): Promise<T> {
 async function tryRefresh(): Promise<string | null> {
   const tokens = await getTokens();
   if (!tokens) return null;
+  // Modo Apresentação: o token local não expira nem vai ao servidor.
+  if (tokens.accessToken.startsWith("demo.")) return tokens.accessToken;
   try {
     const res = await fetch(url("/api/auth/refresh"), {
       method: "POST",
@@ -81,6 +83,12 @@ type RequestOptions = {
 // Request autenticada com refresh automático em 401 (uma tentativa).
 export async function apiFetch<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, auth = true } = opts;
+
+  // Modo Apresentação: os dois usuários demo são atendidos localmente, sem rede.
+  // Import preguiçoso — a demo importa tipos/erros daqui (evita ciclo no boot).
+  const { demoHandle } = await import("@/lib/demo");
+  const demo = await demoHandle(path, { method, body });
+  if (demo) return demo.value as T;
 
   const send = async (accessToken?: string) => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -946,6 +954,7 @@ export type NotificationItem = {
   body: string;
   data: {
     type?: "order" | "chat" | "support" | "job";
+    alert?: "incoming_help";
     orderId?: string;
     role?: "client" | "provider" | "candidate";
     ticketId?: string;

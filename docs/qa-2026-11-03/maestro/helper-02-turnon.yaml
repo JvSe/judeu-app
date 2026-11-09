@@ -1,0 +1,8 @@
+appId: com.judeu.app
+---
+- extendedWaitUntil:
+    visible: ".*Pronto para ajudar.*|.*Quero atender.*"
+    timeout: 30000
+- tapOn: ".*Pronto para ajudar.*|.*Quero atender.*"
+- waitForAnimationToEnd
+- takeScreenshot: shots/helper-03-painel-atender

@@ -1,0 +1,34 @@
+[
+ {
+  "id": "afbe0e29-d97f-4696-b4e7-1b72e56e8b24",
+  "userId": "138b6ac4-aa43-48ea-ad9f-0f493bdf42ec",
+  "status": "APPROVED",
+  "isHelper": true,
+  "isAvailable": true,
+  "allowsNegotiation": false
+ },
+ {
+  "id": "e2726ee9-5973-4a9b-a0f1-57bdabae6ac8",
+  "userId": "5878cb01-f19d-4cf8-af05-0751bd3ddf64",
+  "status": "APPROVED",
+  "isHelper": true,
+  "isAvailable": false,
+  "allowsNegotiation": false
+ },
+ {
+  "id": "40bfab90-f143-429b-9af1-5404e7bfa794",
+  "userId": "33432a5c-50c0-4efb-8c29-cf69988e53c0",
+  "status": "APPROVED",
+  "isHelper": true,
+  "isAvailable": false,
+  "allowsNegotiation": false
+ },
+ {
+  "id": "b4f06435-0b8d-4927-adbb-45626d84c77a",
+  "userId": "dee8df84-2479-4000-ada6-bac517b2a164",
+  "status": "APPROVED",
+  "isHelper": true,
+  "isAvailable": true,
+  "allowsNegotiation": false
+ }
+]

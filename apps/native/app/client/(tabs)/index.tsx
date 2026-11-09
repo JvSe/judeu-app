@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { AttendRadar } from "@/components/attend-radar";
+import { DemoPanel } from "@/components/demo/demo-panel";
 import { AttendTurnOn } from "@/components/attend-turn-on";
 import { HelpAskButton } from "@/components/help-ask-button";
 import { HelpSheet } from "@/components/help-sheet";
@@ -25,6 +26,7 @@ import { fonts } from "@/constants/fonts";
 import type { Order, OrderAction, OrderStatus } from "@/lib/api";
 import { useAttendButtonVisibility } from "@/lib/attend-button";
 import { useAuth } from "@/lib/auth-context";
+import { isDemoActive } from "@/lib/demo";
 import {
   formatAddressLine,
   initialsOf,
@@ -221,6 +223,7 @@ export default function ClientHome() {
     lng: number;
   } | null>(null);
   const [radarReady, setRadarReady] = useState(false);
+  const [demoPanelOpen, setDemoPanelOpen] = useState(false);
   const mapRef = useRef<RealMapHandle>(null);
   const helpSheetRef = useRef<BottomSheetMethods>(null);
   const wasAttendingRef = useRef(false);
@@ -529,7 +532,12 @@ export default function ClientHome() {
         pointerEvents="box-none"
       >
         <View style={styles.headerRow}>
-          <Pressable onPress={() => router.push("/client/profile" as never)}>
+          <Pressable
+            onPress={() => router.push("/client/profile" as never)}
+            // Modo Apresentação: toque longo abre o painel do apresentador.
+            onLongPress={isDemoActive() ? () => setDemoPanelOpen(true) : undefined}
+            delayLongPress={600}
+          >
             <Avatar
               initials={initialsOf(user?.fullName ?? "?")}
               imageUri={user?.avatarUrl}
@@ -682,6 +690,10 @@ export default function ClientHome() {
         onPropose={proposeHelp}
         onClose={() => setSelectedHelpId(null)}
       />
+
+      {isDemoActive() ? (
+        <DemoPanel visible={demoPanelOpen} onClose={() => setDemoPanelOpen(false)} />
+      ) : null}
     </Screen>
   );
 }

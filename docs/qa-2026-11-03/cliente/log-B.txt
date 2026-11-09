@@ -1,0 +1,369 @@
+## S3-1 publicar ajuda aberta (sem addressId)
+HTTP 201 1.327805s
+id=d0c687f6-df70-43c3-800a-1bffb4fae31f status=CREATED open=true price=8000 fee=640 total=8640 addr=Casa detailsReady=false createdAt=2026-11-03T15:56:15.876 offerExpiresAt=2026-11-03T22:56:15.876Z provider=null
+## S1-1 chamada direta p/ prestador
+-- perfil do prestador (GET /providers/:id)
+{"provider":{"id":"852f3a4a-bbd8-40c0-a93e-406787f27815","name":"Paulo Prestador QA","companyName":null,"role":"Eletricista","avatarUrl":null,"rating":0,"reviews":0,"yearsExperience":5,"priceFromCents":8000,"baseLat":-10.2317,"baseLng":-48.3242,"lastLat":-10.2317,"lastLng":-48.3242,"serviceRadiusKm":20,"isAvailable":true,"allowsNegotiation":false,"distanceKm":null,"etaMin":null,"bio":"Eletricista residencial com 5 anos de experiência","services":[{"id":"78d7fc42-c8ad-46d0-b79a-bf087e2b84c7","name":"Troca de tomada","priceCents":8000},{"id":"b571015b-974b-4f15-a69b-4ae89432096c","name":"Instala
+HTTP 200 0.331447s
+HTTP 201 1.742066s
+id=243bf5f8-1a27-427d-80b6-e79456316940 status=CREATED price=8000 fee=640 total=8640 service=Troca de tomada provider=Paulo Prestador QA createdAt=2026-11-03T15:58:13.406 offerExpiresAt=2026-11-03T18:59:13.406Z
+{"orderId":"d0c687f6-df70-43c3-800a-1bffb4fae31f","status":"ACCEPTED","resultado":"PRESTADOR GANHOU a corrida: accept 200 (ACCEPTED, providerId=852f3a4a-bbd8-40c0-a93e-406787f27815) ~2 min após publicação; helper ainda não tinha aceitado. API não checa categoria (ajuda de Frete aceita por profissional de Reparos).","pedido":"CLIENTE: por favor cancele d0c687f6 (POST transition cancel) para me liberar de 'ocupado' — senão suas próximas chamadas diretas para mim dão 409 'Essa pessoa já está em uma chamada'. HELPER: use plano B. Prestador NÃO consegue cancelar/devolver (gap).","at":"2026-11-03T15:59:34Z"}
+-- GET S3 order
+status=ACCEPTED provider={"id":"852f3a4a-bbd8-40c0-a93e-406787f27815","name":"Paulo Prestador QA","companyName":null,"headline":"Eletricista","avatarUrl":null,"ratingAvg":0,"allowsNegotiation":false} events=["CREATED:Solicitação publicada@2026-11-03T15:56:15.876","ACCEPTED:Solicitação atendida@2026-11-03T15:58:26.39"] detailsReady=false
+-- notificações minhas
+1 [{"type":"ORDER","title":"Frete","body":"Solicitação atendida","data":{"role":"client","type":"order","orderId":"d0c687f6-df70-43c3-800a-1bffb4fae31f"},"createdAt":"2026-11-03T15:58:27.483"}]
+## S4(d) prestador ocupado (ACCEPTED em d0c687f6-df70-43c3-800a-1bffb4fae31f) → nova chamada direta
+{"error":"Essa pessoa já está em uma chamada"}
+HTTP 409 0.750953s
+-- GET /providers/nearby mostra o prestador ocupado como disponível?
+[]
+## S3 cancelar (ACCEPTED, sem pagamento) a pedido do prestador
+HTTP 200 1.457557s
+status=CANCELLED cancelReason=QA: ajuda aberta pega por prestador de outra categoria; republicando payment=null
+## S3 republicar ajuda aberta
+HTTP 201 2.273355s
+novo S3=ae282393-2cc3-487d-9bc5-e653ea766d2f
+## S1-3 (após aceite)
+-- GET order
+status=ACCEPTED payment=null events=["CREATED:Chamada enviada","ACCEPTED:Chamada aceita"] tracking={"providerLat":null,"providerLng":null,"updatedAt":null,"distanceKm":null,"etaMin":null,"route":null,"arrived":false}
+-- notificações (todas)
+unread=2 [{"type":"ORDER","title":"Troca de tomada","body":"Chamada aceita","data":{"role":"client","type":"order","orderId":"243bf5f8-1a27-427d-80b6-e79456316940"},"readAt":null},{"type":"ORDER","title":"Frete","body":"Solicitação atendida","data":{"role":"client","type":"order","orderId":"d0c687f6-df70-43c3-800a-1bffb4fae31f"},"readAt":null}]
+-- pagar CASH
+{"payment":{"id":"ff665b72-88d9-4d75-9fc5-cb751625a563","orderId":"243bf5f8-1a27-427d-80b6-e79456316940","method":"CASH","status":"PENDING","amountCents":8640,"createdAt":"2026-11-03T16:01:00.594"}}
+HTTP 201 1.404294s
+-- chat 2 msgs
+HTTP 201 0.526482s
+HTTP 201 0.508897s
+-- GET messages
+[{"from":"Nina Cliente QA","body":"Oi Paulo! O interfone é o 12, ","readAt":null,"createdAt":"2026-11-03T16:01:01.932"},{"from":"Nina Cliente QA","body":"A tomada é a da bancada, perto","readAt":null,"createdAt":"2026-11-03T16:01:02.54"}]
+-- chat vazio / muito longo
+{"error":"Mensagem inválida"}
+HTTP 400 0.005026s
+HTTP 400 0.003328s
+## S7 vagas
+{"jobId":"9d80ab7b-f5b5-47c5-b591-4a0e1fc16c59","status":"OPEN","obs":"vaga 'Ajudante de obra' CLT 2 turnos publicada pela conta de apoio empresa (qa-20261103-empresa). Candidatem-se com POST /api/jobs/9d80ab7b-f5b5-47c5-b591-4a0e1fc16c59/apply e gravem S7-2-<quem>.json","at":"2026-11-03T16:00:53Z"}
+-- GET /jobs
+count=1 [{"id":"9d80ab7b-f5b5-47c5-b591-4a0e1fc16c59","title":"Ajudante de obra","description":"Ajudante para obra residencial em Palmas, 2 turnos","contractType":"CLT","salaryCents":180000,"status":"OPEN","category":{"id":"11208bee-287f-4d21-982a-4ee1820ad8e5","name":"Reparos"},"providerCompany":{"id":"cea14541-9eb7-48e0-b097-7dc4e8b031ea","name":"Carla QA","companyName":"Construtora QA Ltda"},"shifts":[{"weekday":"MONDAY","startTime":"08:00","endTime":"12:00"},{"weekday":"MONDAY","startTime":"13:00","endTime":"17:00"}],"applicantCount":0,"myApplication":null,"createdAt":"2026-11-03T16:00:45.366"}]
+-- GET /jobs/:id
+{"job":{"id":"9d80ab7b-f5b5-47c5-b591-4a0e1fc16c59","title":"Ajudante de obra","description":"Ajudante para obra residencial em Palmas, 2 turnos","contractType":"CLT","salaryCents":180000,"status":"OPEN","category":{"id":"11208bee-287f-4d21-982a-4ee1820ad8e5","name":"Reparos"},"providerCompany":{"id":"cea14541-9eb7-48e0-b097-7dc4e8b031ea","name":"Carla QA","companyName":"Construtora QA Ltda"},"shifts":[{"weekday":"MONDAY","startTime":"08:00","endTime":"12:00"},{"weekday":"MONDAY","startTime":"13:00","endTime":"17:00"}],"applicantCount":0,"myApplication":null,"createdAt":"2026-11-03T16:00:45.366"}}
+HTTP 200 1.104224s
+-- GET /jobs/applications (antes)
+{"applications":[]}
+HTTP 200 0.295489s
+-- POST apply
+{"application":{"id":"e0d5568e-2f0d-4ce8-bd11-d7aa7ac4b78f","status":"PENDING","message":"Tenho interesse, disponível de manhã.","createdAt":"2026-11-03T16:01:43.437","respondedAt":null,"jobPosting":{"id":"9d80ab7b-f5b5-47c5-b591-4a0e1fc16c59","title":"Ajudante de obra","companyName":"Carla QA","status":"OPEN"}}}
+HTTP 201 1.088124s
+-- POST apply de novo (duplicado)
+{"error":"Você já se candidatou a esta vaga"}
+HTTP 409 0.558166s
+-- GET /jobs/applications (depois)
+{"applications":[{"id":"e0d5568e-2f0d-4ce8-bd11-d7aa7ac4b78f","status":"PENDING","message":"Tenho interesse, disponível de manhã.","createdAt":"2026-11-03T16:01:43.437","respondedAt":null,"jobPosting":{"id":"9d80ab7b-f5b5-47c5-b591-4a0e1fc16c59","title":"Ajudante de obra","companyName":"Carla QA","status":"OPEN"}}]}
+HTTP 200 0.312526s
+## S5 disputa (POST tickets quebrado → insert via db)
+-- POST /support/tickets DISPUTE (esperado 500)
+
+HTTP 500 0.998493s
+[
+ {
+  "id": "99fdabe1-167c-4dc5-abb5-43e2f008b01e",
+  "userId": "2afc39a0-e5ab-4af1-916e-c438e2d552f0",
+  "orderId": "243bf5f8-1a27-427d-80b6-e79456316940",
+-- GET lista / detalhe
+{"tickets":[{"id":"99fdabe1-167c-4dc5-abb5-43e2f008b01e","orderId":"243bf5f8-1a27-427d-80b6-e79456316940","category":"DISPUTE","subject":"qa-20261103 Disputa S1 (insert db)","message":"O prestador cobrou valor diferente do combinado no app.","status":"OPEN","adminResponse":null,"resolvedAt":null,"createdAt":"2026-11-03T16:01:44"}]}
+HTTP 200 0.252449s
+{"ticket":{"id":"99fdabe1-167c-4dc5-abb5-43e2f008b01e","orderId":"243bf5f8-1a27-427d-80b6-e79456316940","category":"DISPUTE","subject":"qa-20261103 Disputa S1 (insert db)","message":"O prestador cobrou valor diferente do combinado no app.","status":"OPEN","adminResponse":null,"resolvedAt":null,"createdAt":"2026-11-03T16:01:44"}}
+HTTP 200 0.740899s
+-- admin resolve via db
+[
+ {
+  "id": "99fdabe1-167c-4dc5-abb5-43e2f008b01e",
+-- GET detalhe após resolver
+{"ticket":{"id":"99fdabe1-167c-4dc5-abb5-43e2f008b01e","orderId":"243bf5f8-1a27-427d-80b6-e79456316940","category":"DISPUTE","subject":"qa-20261103 Disputa S1 (insert db)","message":"O prestador cobrou valor diferente do combinado no app.","status":"RESOLVED","adminResponse":"Analisamos e estornaremos a diferença.","resolvedAt":"2026-11-03T16:01:44","createdAt":"2026-11-03T16:01:44"}}
+HTTP 200 0.263132s
+-- notificação SUPPORT apareceu?
+[]
+## S1-5
+{"orderId":"243bf5f8-1a27-427d-80b6-e79456316940","status":"AWAITING_CONFIRMATION","obs":"respondi no chat, start_route passou com CASH, start_work longe deu erro (ver report), no endereço passou, complete → AWAITING_CONFIRMATION. Pode confirmar e avaliar.","at":"2026-11-03T16:01:44Z"}
+-- GET order (timeline/tracking/payment)
+status=AWAITING_CONFIRMATION payment={"status":"PENDING","method":"CASH"} events=["CREATED:Chamada enviada@15:58:13","ACCEPTED:Chamada aceita@15:59:45","EN_ROUTE:Prestador a caminho@16:01:37","IN_PROGRESS:Serviço em execução@16:01:42","AWAITING_CONFIRMATION:Serviço marcado como concluído pelo prestador — aguardando confirmação do cliente@16:01:43"] tracking={"providerLat":-10.2317,"providerLng":-48.3242,"updatedAt":"2026-11-03T16:01:40.729","distanceKm":0,"etaMin":1,"route":[{"lat":-10.2317,"lng":-48.32431},{"lat":-10.2317,"lng":-48.32431}],"arrived":true} unread=1
+-- messages readAt
+[{"from":"Nina","body":"Oi Paulo! O interfone é o","readAt":"2026-11-03T16:01:33.765"},{"from":"Nina","body":"A tomada é a da bancada, ","readAt":"2026-11-03T16:01:33.765"},{"from":"Paulo","body":"Olá Nina, estou saindo ag","readAt":"2026-11-03T16:02:11.845"}]
+-- notificações (novas)
+unread=7 [{"type":"ORDER","title":"Troca de tomada","body":"Serviço marcado como concluído pelo prestador — aguardando confirmação do cliente","data":{"role":"client","type":"order","orderId":"243bf5f8-1a27-427d-80b6-e79456316940"}},{"type":"ORDER","title":"Troca de tomada","body":"Serviço em execução","data":{"role":"client","type":"order","orderId":"243bf5f8-1a27-427d-80b6-e79456316940"}},{"type":"ORDER","title":"Troca de tomada","body":"Prestador a caminho","data":{"role":"client","type":"order","orderId":"243bf5f8-1a27-427d-80b6-e79456316940"}},{"type":"MESSAGE","title":"Nova mensagem de Paulo Prestador QA","body":"Olá Nina, estou saindo agora, chego em 15 min.","data":{"role":"client","type":"chat","orderId":"243bf5f8-1a27-427d-80b6-e79456316940"}}]
+-- review antes de confirmar (409?)
+{"error":"Só é possível avaliar pedidos concluídos"}
+HTTP 409 0.326988s
+-- confirm_completion
+HTTP 200 3.487882s
+status=COMPLETED payment={"status":"PENDING","method":"CASH"} events=["CREATED","ACCEPTED","EN_ROUTE","IN_PROGRESS","AWAITING_CONFIRMATION","COMPLETED"]
+-- confirm de novo
+{"error":"Transição inválida a partir de COMPLETED"}
+HTTP 409 0.266940s
+-- GET review (antes)
+{"review":null}
+HTTP 200 0.248148s
+-- review rating 6 / 0
+{"error":"Avaliação inválida"}
+HTTP 400 0.005659s
+{"error":"Avaliação inválida"}
+HTTP 400 0.004130s
+-- review 5★
+{"review":{"id":"73cc78e8-cf64-4c3d-a6cc-148ca9fa6cdc","orderId":"243bf5f8-1a27-427d-80b6-e79456316940","rating":5,"comment":"Pontual · Caprichoso — Resolveu rápido, recomendo!","createdAt":"2026-11-03T16:02:19.277","author":{"id":"2afc39a0-e5ab-4af1-916e-c438e2d552f0","name":"Nina Cliente QA"}}}
+HTTP 201 1.270021s
+-- review de novo (409)
+{"error":"Você já avaliou este pedido"}
+HTTP 409 0.486910s
+-- GET review (depois)
+{"review":{"id":"73cc78e8-cf64-4c3d-a6cc-148ca9fa6cdc","orderId":"243bf5f8-1a27-427d-80b6-e79456316940","rating":5,"comment":"Pontual · Caprichoso — Resolveu rápido, recomendo!","createdAt":"2026-11-03T16:02:19.277","author":{"id":"2afc39a0-e5ab-4af1-916e-c438e2d552f0","name":"Nina Cliente QA"}}}
+HTTP 200 0.262390s
+-- GET /me/stats
+{"stats":{"completedOrders":1,"cancelledOrders":5,"totalOrders":7,"ratingAvg":null,"ratingCount":0}}
+HTTP 200 0.286365s
+-- GET /wallet como cliente
+{"wallet":{"balanceCents":0,"weekTotalCents":0,"daily":[{"day":"Qua","totalCents":0,"isToday":false},{"day":"Qui","totalCents":0,"isToday":false},{"day":"Sex","totalCents":0,"isToday":false},{"day":"Sáb","totalCents":0,"isToday":false},{"day":"Dom","totalCents":0,"isToday":false},{"day":"Seg","total
+HTTP 200 0.245718s
+-- cancelar pedido COMPLETED (409?)
+{"error":"Transição inválida a partir de COMPLETED"}
+HTTP 409 0.273361s
+-- chat em COMPLETED
+HTTP 201 0.747687s
+-- S1 payment após COMPLETED
+{"payment":{"id":"ff665b72-88d9-4d75-9fc5-cb751625a563","orderId":"243bf5f8-1a27-427d-80b6-e79456316940","method":"CASH","status":"PAID","amountCents":8640,"createdAt":"2026-11-03T16:01:00.594"}}
+HTTP 200 0.770090s
+## S3-3
+{"orderId":"ae282393-2cc3-487d-9bc5-e653ea766d2f","status":"ACCEPTED","obs":"HELPER ACEITOU a republicada ae282393 às 16:01:13 (HTTP 200, status ACCEPTED, providerId b4f06435). Na primeira (d0c687f6) perdi a corrida para o prestador: meu accept às 15:58:50 → 403 'Ação permitida apenas ao prestador' (mensagem enganosa). Pode seguir para S3-3 (propor novo valor).","at":"2026-11-03T16:01:57Z"}
+-- GET S3
+status=ACCEPTED provider=Heitor Helper QA price=8000 total=8640 detailsReady=false payment=null
+-- proposals antes
+{"proposals":[]}
+HTTP 200 0.575610s
+-- proposta 50 (abaixo de 100)
+{"error":"Proposta inválida"}
+HTTP 400 0.004356s
+-- proposta 6500
+{"error":"Não é possível negociar: o pagamento deste pedido já foi iniciado"}
+HTTP 409 0.680245s
+-- segunda proposta com uma pendente (409?)
+{"error":"Não é possível negociar: o pagamento deste pedido já foi iniciado"}
+HTTP 409 0.238600s
+-- pagar com proposta pendente (409 esperado)
+{"payment":{"id":"bf9c6c87-e8db-4868-b0ef-f721343dea64","orderId":"ae282393-2cc3-487d-9bc5-e653ea766d2f","method":"CASH","status":"PENDING","amountCents":8640,"createdAt":"2026-11-03T16:02:46.786"}}
+HTTP 201 1.726949s
+## S3 — prova do bug payment=[]
+-- payment rows no banco para S3 (antes)
+[
+ {
+  "id": "bf9c6c87-e8db-4868-b0ef-f721343dea64",
+  "method": "CASH",
+  "status": "PENDING"
+ }
+]
+-- apago meu pagamento CASH (dado meu)
+[
+ {
+  "id": "bf9c6c87-e8db-4868-b0ef-f721343dea64"
+ }
+]
+-- payment rows (depois)
+{
+ "count": 0,
+ "error": null
+}
+-- GET order payment
+payment=null status=ACCEPTED
+-- proposta 6500 de novo (sem pagamento no banco)
+{"error":"Não é possível negociar: o pagamento deste pedido já foi iniciado"}
+HTTP 409 0.321213s
+-- GET proposals
+{"proposals":[]}
+HTTP 200 0.507876s
+## S3 arrange
+-- arrange com pickup = endereço de outro usuário
+{"error":"Local de busca inválido"}
+HTTP 400 0.518358s
+-- arrange pickup=addr2 detailsReady
+HTTP 200 1.273529s
+detailsReady=true pickup=Mãe addr=Casa events=["CREATED:Solicitação publicada","ACCEPTED:Solicitação atendida","ACCEPTED:Locais combinados"]
+-- arrange pickup == address (vira null?)
+pickup=null
+-- arrange de volta pickup=addr2
+pickup=Mãe
+## S3 pagamento PIX
+{"payment":{"id":"8ba3d416-ea3c-4a1d-a62e-9e4bb2252b2e","orderId":"ae282393-2cc3-487d-9bc5-e653ea766d2f","method":"PIX","status":"PENDING","amountCents":8640,"createdAt":"2026-11-03T16:03:51.077"},"pix":{"data":"123456789br.gov.bcb.pixapi.developer.stripe.com/v1/p/v2/1234567890abcdef/789","imageUrl":"https://qr.stripe.com/test_YWNjdF8xTVlVdFhIVHI3cjhWTDhwLF9WWXJ2R2ZRd2k3eXM5RUpuMlpkdE5kNGtZbnZ4Mm050100vgsqmJ5k.png","expiresAt":"2026-11-03T20:03:50.000Z"}}
+HTTP 201 2.882456s
+-- GET payment
+{"payment":{"id":"8ba3d416-ea3c-4a1d-a62e-9e4bb2252b2e","orderId":"ae282393-2cc3-487d-9bc5-e653ea766d2f","method":"PIX","status":"PENDING","amountCents":8640,"createdAt":"2026-11-03T16:03:51.077"}}
+HTTP 200 2.123461s
+-- confirm (PIX pendente)
+{"error":"Pagamento ainda não confirmado no Stripe (requires_action)."}
+HTTP 409 2.035755s
+-- trocar para CASH após PIX
+{"payment":{"id":"8ba3d416-ea3c-4a1d-a62e-9e4bb2252b2e","orderId":"ae282393-2cc3-487d-9bc5-e653ea766d2f","method":"CASH","status":"PENDING","amountCents":8640,"createdAt":"2026-11-03T16:03:51.077"}}
+HTTP 201 3.056482s
+-- GET order final
+status=ACCEPTED payment={"status":"PENDING","method":"CASH"} total=8640
+=== S1-6-prestador
+{"orderId":"243bf5f8-1a27-427d-80b6-e79456316940","status":"COMPLETED","obs":"carteira e review conferidos (ver report)","at":"2026-11-03T16:02:58Z"}
+
+=== S2-0-prestador
+{"providerId":"852f3a4a-bbd8-40c0-a93e-406787f27815","allowsNegotiation":true,"serviceIds":["78d7fc42-c8ad-46d0-b79a-bf087e2b84c7","b571015b-974b-4f15-a69b-4ae89432096c"],"obs":"negociação ligada (POST /providers/me deu 500 mas o campo salvou). Pode criar a chamada direta do S2.","at":"2026-11-03T16:02:31Z"}
+
+=== S3-2b-helper
+{"orderId":"ae282393-2cc3-487d-9bc5-e653ea766d2f","status":"ACCEPTED","obs":"HELPER ACEITOU a republicada ae282393 às 16:01:13 (HTTP 200, status ACCEPTED, providerId b4f06435). Na primeira (d0c687f6) perdi a corrida para o prestador: meu accept às 15:58:50 → 403 'Ação permitida apenas ao prestador' (mensagem enganosa). Pode seguir para S3-3 (propor novo valor).","at":"2026-11-03T16:01:57Z"}
+
+## S1-6 conferência rating
+rating=5 reviews=1 isAvailable=true
+{"reviews":[{"id":"7a07d1b6-d347-4cd1-a6de-179172b200ee","orderId":"243bf5f8-1a27-427d-80b6-e79456316940","rating":5,"comment":"Cliente atenciosa, tudo certo.","createdAt":"2026-11-03T16:03:22.027","author":{"id":"07b9e2e9-648e-45dc-98af-e1b6bb20597f","name":"Paulo Prestador QA"}},{"id":"73cc78e8-cf64-4c3d-a6cc-148ca9fa6cdc","orderId":"243bf5f8-1a27-427d-80b6-e79456316940","rating":5,"comment":"Pontual · Caprichoso — Resolveu rápido, recomendo!","createdAt":"2026-11-03T16:02:19.277","author":{"i
+HTTP 200 0.523330s
+-- /me/stats (fui avaliada?)
+{"stats":{"completedOrders":1,"cancelledOrders":5,"totalOrders":7,"ratingAvg":5,"ratingCount":1}}
+HTTP 200 0.252622s
+## S2-1 chamada direta (prestador com allowsNegotiation)
+-- GET provider allowsNegotiation
+allowsNegotiation=true
+HTTP 201 1.263092s
+id=a0553218-4ca3-493a-9b69-b7cdb37943c3 price=15000 service=Instalação de chuveiro allowsNegotiation=true scheduledAt=2026-11-05T13:00:00
+## S4-1 chamada direta p/ recusa
+HTTP 201 2.068393s
+S4a=697a9c95-9b8e-43f8-af9a-659b7349fc6b
+-- pedidos CREATED abertos para o prestador agora:
+["697a9c95 Paulo Prestador QA","a0553218 Paulo Prestador QA"]
+## S4(c) reassign
+HTTP 201 1.572507s
+S4c=1747e5e5-8e22-4709-894c-c0c0fdf8cb4c createdAt=2026-11-03T16:06:11.762
+-- reassign para o mesmo prestador (400?)
+{"error":"Essa já é a pessoa da chamada"}
+HTTP 400 0.252061s
+-- reassign para pendente (400?)
+{"error":"Essa pessoa não está disponível agora"}
+HTTP 400 0.534844s
+-- reassign para empresa
+HTTP 200 1.518876s
+status=CREATED provider=Carla QA/Construtora QA Ltda createdAt=2026-11-03T16:06:13.876 service={"id":"78d7fc42-c8ad-46d0-b79a-bf087e2b84c7","name":"Troca de tomada"} price=8000 events=["CREATED:Chamada enviada","CREATED:Chamada reenviada para outra pessoa"]
+-- notificações no banco: empresa (67108c38) e prestador (07b9e2e9) para esse pedido
+[
+ {
+  "userId": "07b9e2e9-648e-45dc-98af-e1b6bb20597f",
+  "type": "ORDER",
+  "title": "Nova chamada",
+  "body": "Troca de tomada",
+  "data": {
+   "role": "provider",
+   "type": "order",
+   "orderId": "1747e5e5-8e22-4709-894c-c0c0fdf8cb4c"
+  },
+  "createdAt": "2026-11-03T16:06:12.607"
+ },
+ {
+  "userId": "67108c38-c5f2-40cf-8a9f-119cec05263b",
+  "type": "ORDER",
+  "title": "Nova chamada",
+  "body": "Troca de tomada",
+  "data": {
+   "role": "provider",
+   "type": "order",
+   "orderId": "1747e5e5-8e22-4709-894c-c0c0fdf8cb4c"
+  },
+  "createdAt": "2026-11-03T16:06:15.227"
+ },
+ {
+  "userId": "07b9e2e9-648e-45dc-98af-e1b6bb20597f",
+  "type": "ORDER",
+  "title": "Chamada encerrada",
+  "body": "O cliente chamou outra pessoa",
+  "data": {
+   "role": "provider",
+   "type": "order",
+   "orderId": "1747e5e5-8e22-4709-894c-c0c0fdf8cb4c"
+  },
+  "createdAt": "2026-11-03T16:06:15.273"
+ }
+]
+-- serviceId da chamada reatribuída ainda é 'Troca de tomada' do prestador antigo? GET order
+service={"id":"78d7fc42-c8ad-46d0-b79a-bf087e2b84c7","name":"Troca de tomada"} provider=Carla QA price=8000
+-- cancelo S4c (limpeza)
+HTTP 200 1.083208s
+## S3-9
+{"orderId":"ae282393-2cc3-487d-9bc5-e653ea766d2f","status":"AWAITING_CONFIRMATION","obs":"helper: location longe → start_route HTTP 200 1.151898s ; start_work longe → ver log; location=pickup → start_work HTTP 200 1.054914s; complete HTTP 200 1.106196s. Pode confirmar a conclusão (confirm_completion) e gravar S3-9-cliente.json.","at":"2026-11-03T16:05:48Z"}
+-- GET S3
+status=AWAITING_CONFIRMATION payment={"status":"PENDING","method":"CASH"} events=["CREATED:Solicitação publicada@16:00:23","ACCEPTED:Solicitação atendida@16:01:14","ACCEPTED:Locais combinados@16:03:46","EN_ROUTE:Prestador a caminho@16:05:42","IN_PROGRESS:Serviço em execução@16:05:44","AWAITING_CONFIRMATION:Entregue na 204 Sul@16:05:46"] tracking={"lat":-10.195,"arrived":false,"eta":8,"dist":5.7267}
+-- notificações (últimas 5)
+["ORDER|Frete|Entregue na 204 Sul","ORDER|Frete|Serviço em execução","ORDER|Frete|Prestador a caminho","MESSAGE|Nova mensagem de Heitor Helper QA|Oi Nina! Sou o Heitor, vou buscar o envelope. Chego em 10 min.","ORDER|Troca de tomada|Serviço marcado como concluído pelo prestador — aguardando confirmação do cliente"]
+-- confirm_completion
+status=COMPLETED
+-- review 4★
+HTTP 201 1.234938s
+-- GET /providers/:id helper após review (rating)
+rating=4 reviews=1 role=Ajuda perto de você
+-- GET payment
+status=PAID method=CASH
+## S2-3
+-- GET proposals
+{"proposals":[]}
+HTTP 200 0.504269s
+-- GET order payment/status
+status=CREATED payment=null price=15000
+-- payment rows no banco
+{
+ "count": 0,
+ "error": null
+}
+-- minha contraproposta 13000
+{"error":"Não é possível negociar: o pagamento deste pedido já foi iniciado"}
+HTTP 409 0.307318s
+-- notificações recentes
+["ORDER|Frete|Entregue na 204 Sul","ORDER|Frete|Serviço em execução","ORDER|Frete|Prestador a caminho"]
+## S4(e) duas chamadas CREATED em sequência rápida
+HTTP 201 1.459332s
+HTTP 201 1.795655s
+E1=2b8cc6f7-d4e8-4205-951c-07f819af10dd E2=894a1cca-73c6-4228-9938-22a14bab3e94
+## S4(b) chamada p/ aceite tardio (70 s)
+HTTP 201 1.310772s
+S4b=88f69fb5-8aeb-4a44-b29b-6d8beaabdc1e offerExpiresAt=2026-11-03T19:17:30.238Z
+=== S4-2-prestador
+{"orderId":"697a9c95-9b8e-43f8-af9a-659b7349fc6b","status":"CANCELLED","obs":"reject com note sem agenda","at":"2026-11-03T16:24:31Z"}
+
+=== S4-4-prestador
+{"orderId":"88f69fb5-8aeb-4a44-b29b-6d8beaabdc1e","status":"ver obs","obs":"accept >70s depois: ver report (API aceita expirado?)","at":"2026-11-03T16:24:34Z"}
+
+=== S4-6-prestador
+{"orderId":"1747e5e5-8e22-4709-894c-c0c0fdf8cb4c","obs":"ver report (notificação e lista)","at":"2026-11-03T16:24:36Z"}
+
+=== S4-8-prestador
+{"orderIds":["2b8cc6f7-d4e8-4205-951c-07f819af10dd","894a1cca-73c6-4228-9938-22a14bab3e94"],"obs":"ver report — resultado de cada accept","at":"2026-11-03T16:24:38Z"}
+
+=== S7-3-prestador
+{"jobId":"9d80ab7b-f5b5-47c5-b591-4a0e1fc16c59","accepted":"b448b85b-122a-478e-80f8-44964e75fe53 (helper)","rejected":" (cliente)","obs":"respondido; responder de novo → ver report","at":"2026-11-03T16:24:40Z"}
+
+## S2-3
+-- GET proposals S2
+{"proposals":[]}
+HTTP 200 0.509895s
+-- db orderproposal S2
+[]
+-- GET order S2
+status=CREATED price=15000 payment=null
+-- minha contraproposta 13000 (de novo)
+{"error":"Não é possível negociar: o pagamento deste pedido já foi iniciado"}
+HTTP 409 0.336955s
+## S4 resultados (lado cliente)
+697a9c95 status=CANCELLED cancelReason=sem agenda createdAt=16:04:52 events=["CREATED@16:04:52","CANCELLED@16:24:30"]
+88f69fb5 status=ACCEPTED cancelReason=null createdAt=16:16:30 events=["CREATED@16:16:30","ACCEPTED@16:24:33"]
+2b8cc6f7 status=ACCEPTED cancelReason=null createdAt=16:16:26 events=["CREATED@16:16:26","ACCEPTED@16:24:36"]
+894a1cca status=ACCEPTED cancelReason=null createdAt=16:16:28 events=["CREATED@16:16:28","ACCEPTED@16:24:37"]
+-- notificações do cliente para S4a/S4b/S4e
+["894a1cca|Troca de tomada|Chamada aceita","2b8cc6f7|Troca de tomada|Chamada aceita","88f69fb5|Troca de tomada|Chamada aceita","697a9c95|Troca de tomada|sem agenda"]
+-- S4b: pagar CASH no ACCEPTED e cancelar
+payment=PENDING/CASH
+HTTP 200 1.035016s
+status=CANCELLED payment={"status":"PENDING","method":"CASH"}
+payment após cancel=PENDING/CASH
+-- S4e: cancelar os que sobraram ACCEPTED/CREATED (limpeza)
+HTTP 200 1.047934s
+HTTP 200 1.471951s
+-- S2: cancelo (bloqueado por bug)
+HTTP 200 1.019498s
+## S7-3 conferência
+{"applications":[{"id":"e0d5568e-2f0d-4ce8-bd11-d7aa7ac4b78f","status":"REJECTED","message":"Tenho interesse, disponível de manhã.","createdAt":"2026-11-03T16:01:43.437","respondedAt":"2026-11-03T16:25:22.801","jobPosting":{"id":"9d80ab7b-f5b5-47c5-b591-4a0e1fc16c59","title":"Ajudante de obra","companyName":"Carla QA","status":"CLOSED"}}]}
+HTTP 200 0.239842s
+["Ajudante de obra|Sua candidatura foi recusada|{\"role\":\"candidate\",\"type\":\"job\",\"jobId\":\"9d80ab7b-f5b5-47c5-b591-4a0e1fc16c59\"}"]

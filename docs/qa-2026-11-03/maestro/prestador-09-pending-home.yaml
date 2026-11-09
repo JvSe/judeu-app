@@ -1,0 +1,17 @@
+appId: com.judeu.app
+---
+- tapOn: ".*Pronto para ajudar.*"
+- takeScreenshot: shots/prestador-22-pronto-pending-t0
+- tapOn:
+    text: "Allow.*|Permitir.*"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/prestador-23-pronto-pending-t1
+- tapOn:
+    point: "9%,10%"
+- extendedWaitUntil:
+    visible: ".*Sair da conta.*"
+    timeout: 15000
+- takeScreenshot: shots/prestador-24-perfil-pending
+- tapOn: ".*Receber chamadas.*"
+- takeScreenshot: shots/prestador-25-perfil-toggle-pending

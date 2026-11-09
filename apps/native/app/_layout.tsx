@@ -27,6 +27,7 @@ import {
   ensureNotificationChannels,
   INCOMING_HELP_CHANNEL,
   INCOMING_HELP_SOUND_FILE,
+  isIncomingHelp,
 } from "@/lib/push";
 import { QueryProvider } from "@/lib/query";
 import { Toaster } from "@/lib/toast";
@@ -102,16 +103,16 @@ export default function RootLayout() {
   useEffect(() => {
     const sub = Notifications.addNotificationReceivedListener((event) => {
       const { title, body, data } = event.request.content;
-      const isOrder = (data as { type?: string } | null)?.type === "order";
+      const incomingHelp = isIncomingHelp(data);
       notifee.displayNotification({
         title: title ?? undefined,
         body: body ?? undefined,
         data: data as Record<string, string | number | object>,
         android: {
-          channelId: isOrder ? INCOMING_HELP_CHANNEL : "default",
+          channelId: incomingHelp ? INCOMING_HELP_CHANNEL : "default",
           pressAction: { id: "default" },
         },
-        ios: { sound: isOrder ? INCOMING_HELP_SOUND_FILE : "default" },
+        ios: { sound: incomingHelp ? INCOMING_HELP_SOUND_FILE : "default" },
       });
     });
     return () => sub.remove();

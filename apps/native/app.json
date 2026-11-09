@@ -11,7 +11,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.judeu.app",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocalNetworkUsageDescription": "Usado no modo apresentação para conectar este aparelho direto ao outro, sem internet.",
+        "NSBonjourServices": ["_ajuda-demo._tcp", "_ajuda-demo._udp"]
       }
     },
     "android": {

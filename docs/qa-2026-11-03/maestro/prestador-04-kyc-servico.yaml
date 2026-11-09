@@ -1,0 +1,25 @@
+appId: com.judeu.app
+---
+- tapOn:
+    text: "0"
+    index: 0
+- eraseText
+- inputText: "5"
+- hideKeyboard
+- tapOn: "10"
+- eraseText
+- inputText: "0"
+- hideKeyboard
+- scrollUntilVisible:
+    element: ".*Adicionar serviço.*"
+    direction: DOWN
+- tapOn: ".*Adicionar serviço.*"
+- tapOn: "Nome do serviço"
+- inputText: "Troca de tomada"
+- tapOn: "Preço"
+- inputText: "0,50"
+- hideKeyboard
+- takeScreenshot: shots/prestador-08-kyc-servico
+- tapOn: ".*Atualizar cadastro.*|.*Enviar para análise.*"
+- waitForAnimationToEnd
+- takeScreenshot: shots/prestador-09-kyc-validacao-preco

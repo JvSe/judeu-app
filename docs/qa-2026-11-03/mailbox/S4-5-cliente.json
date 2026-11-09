@@ -1,0 +1,6 @@
+{
+ "orderId": "1747e5e5-8e22-4709-894c-c0c0fdf8cb4c",
+ "status": "REASSIGNED→CANCELLED",
+ "obs": "S4(c): chamada 1747e5e5-8e22-4709-894c-c0c0fdf8cb4c foi criada para você e reatribuída para a empresa (depois cancelada). Confira se recebeu notificação \"Chamada encerrada\" (GET /notifications) e grave S4-6-prestador.json.",
+ "at": "2026-11-03T16:06:17.098Z"
+}

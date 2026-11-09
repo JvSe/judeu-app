@@ -1,0 +1,21 @@
+appId: com.judeu.app
+---
+- tapOn:
+    point: "10%,11%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "9%,10%"
+- extendedWaitUntil:
+    visible: ".*Chamadas.*"
+    timeout: 15000
+- tapOn: ".*Chamadas.*"
+- waitForAnimationToEnd
+- takeScreenshot: shots/prestador-37-chamadas-pedi
+- tapOn:
+    text: ".*Atendi.*"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/prestador-38-chamadas-atendi
+- tapOn: ".*Ganhos.*"
+- waitForAnimationToEnd
+- takeScreenshot: shots/prestador-39-ganhos
