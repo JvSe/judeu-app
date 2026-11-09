@@ -306,7 +306,7 @@ function AskedActiveCard({ order }: { order: Order }) {
       price={order.totalCents}
       primaryAction={primaryAction}
       secondaryAction={
-        !isHelpAsk && canTrackOnMap ? { label: "Detalhes", run: goDetails } : undefined
+        (isHelpAsk ? needsPay : canTrackOnMap) ? { label: "Detalhes", run: goDetails } : undefined
       }
       onPress={needsPay ? goPayment : goDetails}
     />
