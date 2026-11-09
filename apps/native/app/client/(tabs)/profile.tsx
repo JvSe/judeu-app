@@ -1,5 +1,6 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import Constants from "expo-constants";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { Fragment } from "react";
@@ -242,6 +243,8 @@ export default function ClientProfile() {
             <Ionicons name="log-out-outline" size={18} color="#ff6b6b" />
             <Text style={styles.logoutText}>Sair da conta</Text>
           </Pressable>
+
+          <Text style={styles.version}>Versão {Constants.expoConfig?.version}</Text>
         </View>
       </ScrollView>
     </Screen>
@@ -408,6 +411,13 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 15,
     fontFamily: fonts.bold,
     color: "#ff6b6b",
+  },
+  version: {
+    fontSize: 12.5,
+    fontFamily: fonts.medium,
+    color: theme.colors.mutedForeground,
+    textAlign: "center",
+    marginTop: 16,
   },
   statusChip: {
     flexDirection: "row",

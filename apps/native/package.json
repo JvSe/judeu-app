@@ -1,6 +1,6 @@
 {
   "name": "native",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "main": "index.js",
   "scripts": {
@@ -10,7 +10,10 @@
     "web": "expo start --web",
     "prebuild": "expo prebuild",
     "check-types": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "update:development": "EXPO_NO_DOTENV=1 eas update --channel development --environment preview",
+    "update:staging": "EXPO_NO_DOTENV=1 eas update --channel staging --environment preview",
+    "update:production": "EXPO_NO_DOTENV=1 eas update --channel production --environment production"
   },
   "dependencies": {
     "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",

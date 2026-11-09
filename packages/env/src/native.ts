@@ -7,6 +7,9 @@ export const env = createEnv({
     // Chave pública do Stripe (PaymentSheet do cartão)
     EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().min(1).optional(),
   },
-  runtimeEnv: process.env,
+  // Por extenso: o Expo só embute no build `process.env.EXPO_PUBLIC_*` escrito assim.
+  runtimeEnv: {
+    EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+  },
   emptyStringAsUndefined: true,
 });
