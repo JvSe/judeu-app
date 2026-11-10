@@ -39,6 +39,7 @@ function RadarPulse({ delay, color }: { delay: number; color: string }) {
   return <Animated.View style={[styles.pulse, { backgroundColor: color }, style]} />;
 }
 
+/** Radar e pulso. Renderizar como marcador do mapa, para ficar preso à coordenada do usuário. */
 export function AttendRadar() {
   const { theme } = useUnistyles();
   const color = theme.colors.primary;
@@ -53,37 +54,27 @@ export function AttendRadar() {
   }));
 
   return (
-    <View pointerEvents="none" style={styles.wrap}>
-      <View style={styles.disc}>
-        <Animated.View style={[styles.sweep, sweep]}>
-          <LinearGradient
-            colors={["transparent", withAlpha(color, 0.05), withAlpha(color, 0.7)]}
-            locations={[0.45, 0.72, 1]}
-            start={{ x: 0.5, y: 0.5 }}
-            end={{ x: 1, y: 0.2 }}
-            style={StyleSheet.absoluteFill}
-          />
-        </Animated.View>
-        <RadarPulse delay={0} color={color} />
-        <RadarPulse delay={1100} color={color} />
-      </View>
+    <View pointerEvents="none" style={styles.disc}>
+      <Animated.View style={[styles.sweep, sweep]}>
+        <LinearGradient
+          colors={["transparent", withAlpha(color, 0.05), withAlpha(color, 0.7)]}
+          locations={[0.45, 0.72, 1]}
+          start={{ x: 0.5, y: 0.5 }}
+          end={{ x: 1, y: 0.2 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+      <RadarPulse delay={0} color={color} />
+      <RadarPulse delay={1100} color={color} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  // Maior que o pulso no ápice (220 × 2): o marcador do mapa pode cortar o que sair da view.
   disc: {
-    width: 300,
-    height: 300,
+    width: 440,
+    height: 440,
     alignItems: "center",
     justifyContent: "center",
   },

@@ -163,6 +163,15 @@ describe("modo apresentação — fluxo perfeito entre dois aparelhos", () => {
     const door = await iphone.call("GET", `/api/orders/${created.id}/door-code`);
     expect(door.code).toMatch(/^\d{4}$/);
 
+    // Sem o código certo o serviço não começa.
+    const wrongCode = door.code === "0000" ? "1111" : "0000";
+    await expect(
+      ipad.call("POST", `/api/orders/${created.id}/transition`, { action: "start_work" }),
+    ).rejects.toThrow(/código de chegada/i);
+    await expect(
+      ipad.call("POST", `/api/orders/${created.id}/transition`, { action: "start_work", doorCode: wrongCode }),
+    ).rejects.toThrow(/incorreto/i);
+
     await ipad.call("POST", `/api/orders/${created.id}/transition`, { action: "start_work", doorCode: door.code });
     advance(5000);
     await ipad.call("POST", `/api/orders/${created.id}/transition`, { action: "complete" });

@@ -3,14 +3,23 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { useController, useForm } from "react-hook-form";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { z } from "zod";
 
 import { FormErrorText } from "@/components/form/error-text";
 import { FormTextField } from "@/components/form/text-field";
+import { OtpInput } from "@/components/ui/base/otp-input";
+import { AuthBackground } from "@/components/auth-background";
 import { Screen } from "@/components/ui/screen";
 import { fonts } from "@/constants/fonts";
 import { ApiError } from "@/lib/api";
@@ -30,7 +39,12 @@ const resetPasswordSchema = z
 
 type ResetPasswordForm = z.infer<typeof resetPasswordSchema>;
 
-const digitsOnly = (value: string) => value.replace(/\D/g, "").slice(0, 6);
+const OTP_LENGTH = 6;
+const OTP_BOX_HEIGHT = 60;
+const OTP_BOX_GAP = 12;
+// Altura fixa do OtpInput quando mostra a mensagem de erro abaixo das caixas.
+const OTP_HEIGHT_WITH_ERROR = 120;
+const SCREEN_PADDING = 24;
 
 export default function ResetPassword() {
   const { theme } = useUnistyles();
@@ -38,7 +52,13 @@ export default function ResetPassword() {
   const { email } = useLocalSearchParams<{ email: string }>();
   const { resetPassword } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
+  const { width: windowWidth } = useWindowDimensions();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [codeRejected, setCodeRejected] = useState<string | null>(null);
+  const otpBoxWidth = Math.min(
+    52,
+    Math.floor((windowWidth - SCREEN_PADDING * 2 - OTP_BOX_GAP * OTP_LENGTH) / OTP_LENGTH),
+  );
 
   const { control, handleSubmit, formState } = useForm<ResetPasswordForm>({
     resolver: zodResolver(resetPasswordSchema),
@@ -47,22 +67,30 @@ export default function ResetPassword() {
     defaultValues: { code: "", newPassword: "", confirmPassword: "" },
   });
 
+  const { field: codeField, fieldState: codeState } = useController({ control, name: "code" });
+
   const onValid = handleSubmit(async (data) => {
     setSubmitError(null);
+    setCodeRejected(null);
     try {
       await resetPassword({ email, code: data.code, newPassword: data.newPassword });
       toast.success("Senha atualizada");
       router.replace("/client");
     } catch (e) {
       const message = e instanceof ApiError ? e.message : errorMessage(e, "Não foi possível trocar a senha.");
-      setSubmitError(message);
+      // O servidor responde 400 quando o código está errado ou expirou.
+      if (e instanceof ApiError && e.status === 400) {
+        setCodeRejected(message);
+      } else {
+        setSubmitError(message);
+      }
       toast.error(message);
     }
   });
 
   return (
     <Screen>
-      <View style={styles.glow} />
+      <AuthBackground />
 
       <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => router.back()} hitSlop={10}>
@@ -84,19 +112,37 @@ export default function ResetPassword() {
           Conta: <Text style={styles.email}>{email}</Text>
         </Text>
 
-        <FormTextField
-          control={control}
-          name="code"
-          label="Código"
-          icon="keypad-outline"
-          placeholder="000000"
-          keyboardType="number-pad"
-          maxLength={6}
-          editable={!formState.isSubmitting}
-          parseValue={digitsOnly}
-          inputStyle={styles.codeInput}
-          containerStyle={styles.fieldSpacing}
-        />
+        <View style={styles.fieldSpacing}>
+          <Text style={styles.codeLabel}>Código</Text>
+          <View
+            style={[
+              styles.otpWrap,
+              { height: codeRejected ? OTP_HEIGHT_WITH_ERROR : OTP_BOX_HEIGHT },
+            ]}
+          >
+            <OtpInput
+              otpCount={OTP_LENGTH}
+              enableAutoFocus
+              editable={!formState.isSubmitting}
+              inputWidth={otpBoxWidth}
+              inputHeight={OTP_BOX_HEIGHT}
+              inputBorderRadius={16}
+              textStyle={styles.codeDigit}
+              focusedBackgroundColor="rgba(28,28,58,0.85)"
+              unfocusedBackgroundColor="rgba(28,28,58,0.85)"
+              focusedBorderColor={theme.colors.primary}
+              unfocusedBorderColor="rgba(255,255,255,0.1)"
+              errorBorderColor={theme.colors.destructive}
+              error={!!codeRejected}
+              errorMessage={codeRejected ?? undefined}
+              onInputChange={(code) => {
+                codeField.onChange(code);
+                if (code) setCodeRejected(null);
+              }}
+            />
+          </View>
+          {codeState.error?.message && <FormErrorText>{codeState.error.message}</FormErrorText>}
+        </View>
 
         <FormTextField
           control={control}
@@ -156,16 +202,6 @@ export default function ResetPassword() {
 }
 
 const styles = StyleSheet.create((theme) => ({
-  glow: {
-    position: "absolute",
-    top: -90,
-    left: "50%",
-    width: 340,
-    height: 340,
-    borderRadius: 170,
-    marginLeft: -170,
-    backgroundColor: "rgba(255,102,0,0.12)",
-  },
   topBar: {
     paddingHorizontal: 24,
     paddingBottom: 6,
@@ -207,9 +243,21 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: 24,
     marginBottom: 0,
   },
-  codeInput: {
-    fontSize: 18,
-    letterSpacing: 4,
+  codeLabel: {
+    fontSize: 12.5,
+    fontFamily: fonts.bold,
+    color: theme.colors.mutedForeground,
+    marginBottom: 8,
+  },
+  // O OtpInput ocupa a largura da janela; compensa o padding da tela.
+  otpWrap: {
+    marginHorizontal: -SCREEN_PADDING,
+  },
+  codeDigit: {
+    fontSize: 24,
+    fontFamily: fonts.extraBold,
+    fontWeight: "normal",
+    color: "#fff",
   },
   submitError: {
     marginTop: 16,

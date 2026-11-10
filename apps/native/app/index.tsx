@@ -5,6 +5,7 @@ import { Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { fonts } from "@/constants/fonts";
+import { AuthBackground } from "@/components/auth-background";
 import { JudeuLogoBadge } from "@/components/ui/judeu-logo";
 import { Screen } from "@/components/ui/screen";
 import { useAuth } from "@/lib/auth-context";
@@ -20,8 +21,7 @@ export default function Onboarding() {
 
   return (
     <Screen>
-      <View style={styles.glowTop} />
-      <View style={styles.glowBottom} />
+      <AuthBackground />
 
       <View style={styles.hero}>
         <JudeuLogoBadge size={96} style={styles.logo} />
@@ -75,25 +75,6 @@ export default function Onboarding() {
 }
 
 const styles = StyleSheet.create((theme) => ({
-  glowTop: {
-    position: "absolute",
-    top: -70,
-    left: "50%",
-    transform: [{ translateX: -180 }],
-    width: 360,
-    height: 360,
-    borderRadius: 180,
-    backgroundColor: "rgba(255,102,0,0.16)",
-  },
-  glowBottom: {
-    position: "absolute",
-    bottom: 60,
-    right: -90,
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    backgroundColor: "rgba(255,102,0,0.08)",
-  },
   hero: {
     flex: 1,
     alignItems: "center",

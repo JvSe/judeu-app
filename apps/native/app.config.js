@@ -2,4 +2,9 @@
 // então aumente a versão sempre que mudar algo nativo.
 const { version } = require("./package.json");
 
-module.exports = ({ config }) => ({ ...config, version });
+// OTA_RUNTIME publica para builds já instalados de uma versão anterior.
+module.exports = ({ config }) => ({
+  ...config,
+  version,
+  ...(process.env.OTA_RUNTIME ? { runtimeVersion: process.env.OTA_RUNTIME } : {}),
+});

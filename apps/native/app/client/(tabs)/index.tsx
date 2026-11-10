@@ -222,7 +222,6 @@ export default function ClientHome() {
     lat: number;
     lng: number;
   } | null>(null);
-  const [radarReady, setRadarReady] = useState(false);
   const [demoPanelOpen, setDemoPanelOpen] = useState(false);
   const mapRef = useRef<RealMapHandle>(null);
   const helpSheetRef = useRef<BottomSheetMethods>(null);
@@ -250,24 +249,17 @@ export default function ClientHome() {
 
   useShareIdleLocation(work.isOn);
 
-  // Ao ligar o modo atender: centraliza primeiro e só então libera o radar.
+  // Ao ligar o modo atender, centraliza no usuário. O radar não espera: ele é um marcador
+  // preso à coordenada e já aparece no lugar certo.
   useEffect(() => {
     const attendingNow = work.isOn || work.arming;
     if (!attendingNow) {
       wasAttendingRef.current = false;
-      setRadarReady(false);
       return;
     }
     if (wasAttendingRef.current) return;
     wasAttendingRef.current = true;
-    setRadarReady(false);
-    let cancelled = false;
-    void centerOnMe().finally(() => {
-      if (!cancelled) setRadarReady(true);
-    });
-    return () => {
-      cancelled = true;
-    };
+    void centerOnMe();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- só reage à transição de ligar o modo
   }, [work.isOn, work.arming]);
 
@@ -377,7 +369,19 @@ export default function ClientHome() {
     helpSheetRef.current?.snapToIndex(0);
   };
 
+  const showRadar = (work.isOn || work.arming) && !activeOrder;
+
   const markers = [
+    // Primeiro da lista para ficar por baixo dos pins e não roubar o toque neles.
+    ...(origin && showRadar
+      ? [
+          {
+            id: "radar",
+            lngLat: [origin.lng, origin.lat] as [number, number],
+            render: () => <AttendRadar />,
+          },
+        ]
+      : []),
     ...incoming.map((order) => ({
       id: order.id,
       lngLat: [order.address.lng, order.address.lat] as [number, number],
@@ -523,9 +527,6 @@ export default function ClientHome() {
         variant="dark"
         zoom={14}
       />
-      {(work.isOn || work.arming) && !activeOrder && radarReady && (
-        <AttendRadar />
-      )}
 
       <View
         style={[styles.topArea, { paddingTop: insets.top + 10 }]}

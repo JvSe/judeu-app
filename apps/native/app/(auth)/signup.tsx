@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet } from "react-native-unistyles";
 import { z } from "zod";
 
+import { AuthBackground } from "@/components/auth-background";
 import { Screen } from "@/components/ui/screen";
 import { FormCheckbox } from "@/components/form/checkbox";
 import { FormErrorText } from "@/components/form/error-text";
@@ -115,6 +116,7 @@ export default function Signup() {
 
   return (
     <Screen>
+      <AuthBackground />
       <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="chevron-back" size={20} color="#fff" />

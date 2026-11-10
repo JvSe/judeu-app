@@ -1,10 +1,11 @@
 import "@/unistyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { BlurView } from "expo-blur";
 import Constants from "expo-constants";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { Fragment } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, StyleSheet as RNStyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
@@ -14,9 +15,12 @@ import { initialsOf } from "@/lib/format";
 import { useAttendButtonVisibility } from "@/lib/attend-button";
 import { useWorkMode } from "@/lib/work-mode";
 import { useClientStats } from "@/lib/hooks";
-import { Avatar } from "@/components/ui/avatar";
 import { JudeuIcon } from "@/components/ui/judeu-icon";
 import { Screen } from "@/components/ui/screen";
+import { AnimatedScrollView } from "@/components/ui/templates/parallax-header";
+
+const HEADER_HEIGHT_RATIO = 0.68;
+const MAX_HEADER_HEIGHT = 290;
 
 type MenuItem = {
   id: string;
@@ -72,6 +76,7 @@ function buildMenu(work: {
 export default function ClientProfile() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const { user, signOut } = useAuth();
   const { data: stats } = useClientStats();
   const helper = useWorkMode();
@@ -86,49 +91,71 @@ export default function ClientProfile() {
 
   const memberSince = user?.createdAt ? new Date(user.createdAt).getFullYear() : null;
 
+  const headerHeight = Math.min(windowWidth * HEADER_HEIGHT_RATIO, MAX_HEADER_HEIGHT);
+  const navBarHeight = insets.top + 56;
+  const avatarUrl = user?.avatarUrl;
+
+  const navBar = (
+    <View style={[styles.navBar, { height: navBarHeight, paddingTop: insets.top }]}>
+      <Text style={styles.navBarTitle}>Perfil</Text>
+      <Pressable style={styles.settingsButton} onPress={() => router.push("/client/privacy" as never)}>
+        <Ionicons name="settings-outline" size={19} color="#fff" />
+      </Pressable>
+    </View>
+  );
+
+  const headerShade = (
+    <LinearGradient
+      colors={["rgba(0,0,0,0.45)", "transparent", "transparent", "#0f0f26"]}
+      locations={[0, 0.3, 0.72, 1]}
+      style={RNStyleSheet.absoluteFill}
+      pointerEvents="none"
+    />
+  );
+
   return (
     <Screen>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
-        <LinearGradient colors={["#FF6600", "#d94f00"]} style={[styles.banner, { paddingTop: insets.top + 8 }]}>
-          <View style={styles.bannerTop}>
-            <Text style={styles.bannerTitle}>Perfil</Text>
-            <Pressable style={styles.settingsButton} onPress={() => router.push("/client/privacy" as never)}>
-              <Ionicons name="settings-outline" size={19} color="#fff" />
-            </Pressable>
-          </View>
-          <LinearGradient
-            colors={["transparent", "#0f0f26"]}
-            style={styles.bannerFade}
-            pointerEvents="none"
-          />
-        </LinearGradient>
-
+      <AnimatedScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 120 }}
+        headerMaxHeight={headerHeight}
+        topBarHeight={navBarHeight}
+        headerImage={avatarUrl ? { uri: avatarUrl } : undefined}
+        imageStyle={{ width: windowWidth }}
+        HeaderComponent={
+          avatarUrl ? (
+            headerShade
+          ) : (
+            <LinearGradient colors={["#FF6600", "#d94f00"]} style={styles.headerFallback}>
+              <Text style={styles.headerInitials}>{initialsOf(user?.fullName ?? "?")}</Text>
+              {headerShade}
+            </LinearGradient>
+          )
+        }
+        HeaderNavbarComponent={navBar}
+        TopNavBarComponent={
+          <BlurView intensity={50} tint="systemUltraThinMaterialDark" style={RNStyleSheet.absoluteFill}>
+            {navBar}
+          </BlurView>
+        }
+      >
         <View style={styles.body}>
-          <View style={styles.identityRow}>
-            <Avatar
-              initials={initialsOf(user?.fullName ?? "?")}
-              imageUri={user?.avatarUrl}
-              size={92}
-              fontSize={30}
-              radius={28}
-            />
-            <View style={styles.identityText}>
-              <View style={styles.nameRow}>
-                <Text style={styles.name}>{user?.fullName ?? "Você"}</Text>
-                {!!stats?.ratingCount && (
-                  <Ionicons name="star" size={17} color={theme.colors.primary} />
-                )}
-              </View>
-              {memberSince && <Text style={styles.memberSince}>Membro desde {memberSince}</Text>}
-              {helper.isProfessional && helper.profile && (
-                <View style={[styles.statusChip, { backgroundColor: `${statusColor}22` }]}>
-                  <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-                  <Text style={[styles.statusText, { color: statusColor }]}>
-                    {STATUS_LABEL[helper.profile.status]}
-                  </Text>
-                </View>
+          <View>
+            <View style={styles.nameRow}>
+              <Text style={styles.name}>{user?.fullName ?? "Você"}</Text>
+              {!!stats?.ratingCount && (
+                <Ionicons name="star" size={17} color={theme.colors.primary} />
               )}
             </View>
+            {memberSince && <Text style={styles.memberSince}>Membro desde {memberSince}</Text>}
+            {helper.isProfessional && helper.profile && (
+              <View style={[styles.statusChip, { backgroundColor: `${statusColor}22` }]}>
+                <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+                <Text style={[styles.statusText, { color: statusColor }]}>
+                  {STATUS_LABEL[helper.profile.status]}
+                </Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.statsRow}>
@@ -246,23 +273,30 @@ export default function ClientProfile() {
 
           <Text style={styles.version}>Versão {Constants.expoConfig?.version}</Text>
         </View>
-      </ScrollView>
+      </AnimatedScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
-  banner: {
-    height: 200,
-    paddingHorizontal: 20,
-  },
-  bannerTop: {
+  navBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    paddingHorizontal: 20,
   },
-  bannerTitle: {
+  navBarTitle: {
     fontSize: 22,
+    fontFamily: fonts.extraBold,
+    color: "#fff",
+  },
+  headerFallback: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerInitials: {
+    fontSize: 96,
     fontFamily: fonts.extraBold,
     color: "#fff",
   },
@@ -274,24 +308,9 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
   },
-  bannerFade: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 70,
-  },
   body: {
     paddingHorizontal: 20,
-    marginTop: -70,
-  },
-  identityRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 15,
-  },
-  identityText: {
-    paddingBottom: 6,
+    marginTop: -28,
   },
   nameRow: {
     flexDirection: "row",

@@ -17,6 +17,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useUnistyles } from "react-native-unistyles";
 import notifee, { EventType } from "react-native-notify-kit";
 
+import { AnimatedSplash } from "@/components/animated-splash";
 import { AuthSessionBoundary } from "@/components/auth-session-boundary";
 import { AuthProvider } from "@/lib/auth-context";
 // Registra a task de localização em background no boot (exigência do TaskManager).
@@ -90,12 +91,6 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (fontsLoaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded]);
-
-  useEffect(() => {
     void ensureNotificationChannels();
   }, []);
 
@@ -142,6 +137,7 @@ export default function RootLayout() {
               <Stack.Screen name="terms" />
               <Stack.Screen name="privacy-policy" />
             </Stack>
+            <AnimatedSplash />
             <Toaster position="top" theme="system" />
           </AuthProvider>
         </QueryProvider>

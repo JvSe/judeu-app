@@ -276,7 +276,14 @@ function route(me: string, method: string, fullPath: string, body: unknown): unk
       const action = b.action as OrderAction;
       const err = transitionError(order, action, me);
       if (err) fail(err);
-      // Na demo o código de chegada não trava: qualquer código de 4 dígitos passa.
+      // Mesmas mensagens do servidor. O ajudante do roteiro não passa por aqui.
+      if (action === "start_work") {
+        const typed = String(b.doorCode ?? "").replace(/\D/g, "");
+        if (!typed) fail("Peça à pessoa o código de chegada que aparece no app dela.");
+        if (typed !== doorCodeFor(order.id)) {
+          fail("Código incorreto. Confira com a pessoa o código que aparece no app dela.");
+        }
+      }
       record("transition", me, { orderId: order.id, action, note: (b.note as string | undefined) ?? null });
       return view();
     }

@@ -494,14 +494,29 @@ export function useUploadKycFile() {
   });
 }
 
+type ProviderProfileData = Awaited<ReturnType<typeof providerProfileApi.me>>;
+
 // Liga/desliga a disponibilidade do prestador para receber pedidos (RF-B4).
 export function useSetAvailability() {
   const qc = useQueryClient();
   const { user } = useAuth();
+  const profileKey = ["provider-profile", "me", user?.id ?? "anonymous"];
   return useMutation({
     mutationFn: (isAvailable: boolean) => providerProfileApi.setAvailability(isAvailable),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["provider-profile", "me", user?.id ?? "anonymous"] });
+    // Otimista: o modo muda na hora e só volta atrás se a API recusar.
+    onMutate: async (isAvailable) => {
+      await qc.cancelQueries({ queryKey: profileKey });
+      const previous = qc.getQueryData<ProviderProfileData>(profileKey);
+      qc.setQueryData<ProviderProfileData>(profileKey, (current) =>
+        current ? { ...current, isAvailable } : current,
+      );
+      return { previous };
+    },
+    onError: (_error, _isAvailable, context) => {
+      qc.setQueryData(profileKey, context?.previous);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: profileKey });
       // Ajuda aberta depende da posição/disponibilidade — força lista fresca.
       qc.invalidateQueries({ queryKey: ["orders", "provider"] });
     },

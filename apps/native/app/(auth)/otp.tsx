@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { fonts } from "@/constants/fonts";
+import { AuthBackground } from "@/components/auth-background";
 import { Screen } from "@/components/ui/screen";
 
 const digits = ["7", "3", "", ""];
@@ -16,7 +17,7 @@ export default function Otp() {
 
   return (
     <Screen>
-      <View style={styles.glow} />
+      <AuthBackground />
 
       <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => router.back()} hitSlop={10}>
@@ -68,16 +69,6 @@ export default function Otp() {
 }
 
 const styles = StyleSheet.create((theme) => ({
-  glow: {
-    position: "absolute",
-    top: -90,
-    left: "50%",
-    width: 340,
-    height: 340,
-    borderRadius: 170,
-    marginLeft: -170,
-    backgroundColor: "rgba(255,102,0,0.12)",
-  },
   topBar: {
     paddingHorizontal: 24,
     paddingBottom: 6,

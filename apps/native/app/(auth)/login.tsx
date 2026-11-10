@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { FormTextField } from "@/components/form/text-field";
 import { JudeuLogoBadge } from "@/components/ui/judeu-logo";
+import { AuthBackground } from "@/components/auth-background";
 import { Screen } from "@/components/ui/screen";
 import { fonts } from "@/constants/fonts";
 import { useAuth } from "@/lib/auth-context";
@@ -48,7 +49,7 @@ export default function Login() {
 
   return (
     <Screen>
-      <View style={styles.glow} />
+      <AuthBackground />
       <ScrollView
         contentContainerStyle={[styles.content, { paddingTop: insets.top + 30 }]}
         showsVerticalScrollIndicator={false}
@@ -143,16 +144,6 @@ export default function Login() {
 }
 
 const styles = StyleSheet.create((theme) => ({
-  glow: {
-    position: "absolute",
-    top: -80,
-    left: "50%",
-    width: 360,
-    height: 360,
-    borderRadius: 180,
-    marginLeft: -180,
-    backgroundColor: "rgba(255,102,0,0.14)",
-  },
   content: {
     paddingHorizontal: 28,
     paddingBottom: 30,
